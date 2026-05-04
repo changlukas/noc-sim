@@ -44,21 +44,25 @@
 
 ### 2.1 Flit 與 Link 參數
 
-以下為固定設計參數，與 [Flit 格式](02_flit.md) 一致：
+以下參數與 [Flit 格式](02_flit.md) 一致，預設值對應目前實作配置；完整參數列表（含 AXI sub-field 與 ECC 細項）見 [02_flit.md §1.2](02_flit.md#12-design-parameters)。
 
-| 參數 | 值 | 說明 |
-|------|-----|------|
-| `FLIT_WIDTH` | 408 bits | Flit 總寬度 (Header + Payload) |
-| `HEADER_WIDTH` | 56 bits | Header 寬度 |
+| 參數 | 預設值 | 說明 |
+|------|--------|------|
+| `FLIT_WIDTH` | 400 bits | Flit 總寬度 (Header + Payload) |
+| `HEADER_WIDTH` | 48 bits | Header 寬度 |
 | `PAYLOAD_WIDTH` | 352 bits (44 bytes) | 最大 Payload 寬度 (W/R channel) |
+| `LINK_WIDTH` | 402 bits | Physical link 寬度（valid + ready + flit） |
 | `AXI_DATA_WIDTH` | 256 bits (32 bytes) | AXI 資料寬度 |
 | `AXI_ADDR_WIDTH` | 64 bits | AXI 位址寬度 |
 | `AXI_ID_WIDTH` | 8 bits | AXI transaction ID 寬度 |
-| `NODE_ID_WIDTH` | 8 bits | 節點 ID 寬度（[7:4]=y, [3:0]=x） |
+| `AXI_USER_WIDTH` | 8 bits | AXI user signal 寬度 |
+| `X_WIDTH` / `Y_WIDTH` | 4 / 4 bits | 節點座標寬度（src_id/dst_id = `X_WIDTH + Y_WIDTH`） |
+| `PORT_ID_WIDTH` | 2 bits | Local port index 寬度 |
 | `QOS_WIDTH` | 4 bits | QoS 優先級寬度 |
 | `ROB_IDX_WIDTH` | 5 bits | RoB index 寬度 (32 entries) |
+| `VC_ID_WIDTH` | 3 bits | VC ID 寬度（Credit-Based mode） |
+| `MULTICAST_WIDTH` | 8 bits | Reserved for future multicast extension |
 | `ECC_WIDTH` | 32 bits | ECC 總寬度 (SECDED) |
-| Physical Link | 410 bits | valid + ready + 408-bit flit |
 
 ---
 

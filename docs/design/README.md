@@ -17,8 +17,8 @@
 | # | 文件 | 說明 |
 |---|------|------|
 | 01 | [System Overview](01_overview.md) | 拓撲參數、固定設計參數 |
-| 02 | [Flit Format](02_flit.md) | **基準文件** — 固定 408-bit flit、Header/Payload 格式 |
-| 03 | [Router](03_router.md) | Ports、XY Routing、Wormhole、Pipeline、Multicast、Reduction |
+| 02 | [Flit Format](02_flit.md) | **基準文件** — 可參數化 flit（預設 400-bit）、Header/Payload 格式 |
+| 03 | [Router](03_router.md) | Ports、XY Routing、Wormhole、Pipeline、QoS Arbitration |
 | 04 | [Network Interface](04_network_interface.md) | NMU/NSU、AXI ↔ Flit 轉換、RoB、ECC |
 
 ### Architecture — 05~08
@@ -27,7 +27,6 @@
 |---|------|------|
 | 05 | [Physical Channel](05_physical_channel.md) | 雙通道 Req/Rsp 架構、HoL Blocking 分析 |
 | 06 | [QoS Design](06_qos.md) | QoS 優先級設計、Generator、Probe |
-| 07 | [Multicast](07_multicast.md) | Rectangle Multicast 設計 |
 
 ### Simulation & Verification — 09~10
 

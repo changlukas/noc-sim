@@ -15,8 +15,8 @@
 | 項目 | 數值 |
 |------|------|
 | Mesh 預設大小 | 4 × 4（16 nodes，最大 16×16 = 256） |
-| Flit 寬度 | 408-bit（Header 56b + Payload 352b） |
-| Physical Link | 每 pair 4 × 410 = 1,640 bits（Req/Rsp × fwd/rev） |
+| Flit 寬度（預設） | 400-bit（Header 48b + Payload 352b，可參數化） |
+| Physical Link（預設） | 每 pair 4 × 402 = 1,608 bits（Req/Rsp × fwd/rev） |
 | Simulation Phases | 8 phases per cycle |
 | API Groups | 6 組（A~F） |
 | Internal Components | 十餘個（Router, NI, Channel, Memory 等） |
@@ -34,7 +34,7 @@
 - **Flow Control**: 雙模式 — Valid/Ready (Version A) 和 Credit-Based (Version B)，compile-time 選擇
 - **Interface**: AXI4 (AW/W/AR/B/R 五通道)
 - **Physical Channel**: Req/Rsp 物理分離（雙軌架構）
-- **Flit**: 固定 408-bit（Header 56b + Payload 352b）
+- **Flit**: 可參數化（預設 400-bit：Header 48b + Payload 352b）
 - **Injection Mode**: `HOST_DMA`（集中從 gateway node 注入）或 `DIRECT_PE`（分散到各 PE 直接注入）
 
 ### Node 結構
@@ -78,7 +78,7 @@ C++ model 作為 RTL 的 golden reference，確保硬體實作與行為模型一
 | **DPI-C 介面** | DPI-C Bridge 每 cycle 與 RTL module 交換 port 信號（flit + valid + ready + credit） |
 | **Hot-Swap** | 單一 Router 或 NI 可替換為 RTL，其餘維持 C++ |
 | **Response 驗證** | 攔截 RTL response，與 C++ model 預期結果比對 |
-| **Data Integrity** | Golden Data 機制，支援 MULTICAST |
+| **Data Integrity** | Golden Data 機制 |
 | **Waveform Dump** | 可選擇輸出 C++ model 內部狀態供 waveform 分析 |
 
 > **Key Takeaway**: C++ model = Golden Reference，支援 per-instance 替換 RTL 進行漸進驗證。
@@ -175,7 +175,7 @@ Transaction 提交後（`submit_write()` / `submit_read()`），使用者拿到�
 | Group | 名稱 | 主要 API |
 |-------|------|---------|
 | **A** | Construction | `NocSystem(config)`, `load_memory()`, `load_traffic()` |
-| **B** | Transaction | `submit_write()`, `submit_read()`, `submit_multicast_write()` → `TxnHandle` |
+| **B** | Transaction | `submit_write()`, `submit_read()` → `TxnHandle` |
 | **C** | Simulation | `process_cycle()`, `run(N)`, `run_until_idle()`, `run_all()` |
 | **D** | Completion | `is_complete()`, `get_status()`, `get_read_data()`, `set_completion_callback()` |
 | **E** | Metrics | `get_metrics()`, `verify()` |
@@ -205,8 +205,8 @@ void generate_golden(const std::string& output_dir) const;
 | `Channel<T>` | 帶可配置延遲的 link model |
 | `Allocator` | 抽象 arbiter base → RoundRobin / iSLIP / QoSAwareRR |
 | `InputBuffer` / `BufferState` | Data storage 與 credit tracking 分離 |
-| `Flit` | 408-bit flit 結構 + object pooling |
-| `RouteCompute` | XY routing + multicast RCR |
+| `Flit` | 可參數化 flit 結構（預設 400-bit）+ object pooling |
+| `RouteCompute` | XY routing |
 | `Scoreboard` | Online expected vs actual tracking (per-txn) |
 | `MetricsCollector` | Per-node, per-class 效能統計 |
 | `HostMemory` / `LocalMemory` | 記憶體模型 |
@@ -305,11 +305,11 @@ noc_c_model/
 | **1** | Core Library | 獨立 C++ model，可執行效能模擬 | Flit, Channel, Router, NI, Mesh, NocSystem, TrafficManager |
 | **2** | Verification | 驗證框架 + I/O pattern 支援 | Scoreboard, Memory, I/O loader/dumper, Validator |
 | **3** | Co-Sim Bridge | DPI-C bridge，RTL co-simulation | DPI-C Bridge, RTL harness, 同步機制 |
-| **4** | Advanced | 進階功能 | QoS, Multicast, Credit Flow Control, Virtual Channel |
+| **4** | Advanced | 進階功能 | QoS, Credit Flow Control, Virtual Channel |
 
 ### Phase 1: Core Library
 
-- [ ] 基礎資料結構: `Flit`（408-bit）、`AXITransaction`、`NocConfig`
+- [ ] 基礎資料結構: `Flit`（參數化，預設 400-bit）、`AXITransaction`、`NocConfig`
 - [ ] `Channel<T>` — 帶可配置延遲的 link model
 - [ ] `InputBuffer` + `BufferState`（data/credit 分離）
 - [ ] `Allocator` 抽象 + RoundRobin / iSLIP 實作
@@ -342,7 +342,6 @@ noc_c_model/
 ### Phase 4: Advanced Features
 
 - [ ] QoS 支援（16-level priority + QoS-Aware RR arbitration）
-- [ ] Multicast（Rectangle Multicast via RCR + in-network B reduction）
 - [ ] Credit-Based Flow Control (Version B)
 - [ ] Virtual Channel 支援
 - [ ] Cycle Trace 輸出（VCD / JSON）

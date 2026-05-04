@@ -25,8 +25,6 @@ Router 透過 4 個 mesh direction port（N/S/E/W）連接相鄰 Router，透過
 - XY Routing 保證 deadlock-free
 - Wormhole switching 保證封包完整性
 - QoS-aware arbitration 支援 16 級優先
-- Multicast 支援 independent per-port handshake
-- In-Network Reduction（RspRouter only）合併 multicast B response
 - Pluggable allocator 允許替換仲裁策略
 
 ---
@@ -64,14 +62,11 @@ Router 透過 4 個 mesh direction port（N/S/E/W）連接相鄰 Router，透過
 |------------|------|
 | InputBuffer | Per-port, per-VC flit 儲存。Push/Pop/Peek |
 | BufferState | Per-output credit tracking（sender side），與 InputBuffer 分離 |
-| RouteCompute | XY routing + Multicast RCR routing |
+| RouteCompute | XY routing |
 | VC Allocator | HEAD flit 的 VC 分配（Credit-Based mode only，pluggable） |
 | SW Allocator | Per-output switch arbitration（QoS-aware RR，pluggable） |
 | Crossbar | N×N non-blocking switch fabric |
 | PathLock | Per-input wormhole lock FSM |
-| MulticastTracker | Per-input multicast handshake tracking |
-| ReductionSync | 同步等待 multicast B response（RspRouter only） |
-| ReductionArbiter | 合併多個 B response 為一（RspRouter only） |
 
 ### 2.3 ReqRouter / RspRouter
 
@@ -84,7 +79,7 @@ Router A  ════ Req Link ════►  Router B
           ◄════ Rsp Link ════
 ```
 
-RspRouter 額外包含 ReductionSync + ReductionArbiter，處理 multicast B response 的 in-network reduction。
+ReqRouter 與 RspRouter 結構完全對稱。
 
 ---
 
@@ -110,8 +105,6 @@ Router 使用 compile-time parameter 定義結構，由上層 instantiation 時�
 | `XY_ROUTE_OPT` | bool | true | `XY_ROUTE_OPT` | 禁止 Y→X 連接（synthesis 優化） |
 | `NO_LOOPBACK` | bool | true | `NO_LOOPBACK` | 禁止 loopback（input==output） |
 | `VC_IMPL` | enum | VcNaive | `VC_IMPL` | VC 實作方式（見 3.3） |
-| `EN_MULTICAST` | bool | false | `EN_MULTICAST` | 啟用 multicast 支援 |
-| `EN_REDUCTION` | bool | false | `EN_REDUCTION` | 啟用 in-network reduction |
 
 ### 3.2 ROUTE_ALGO 列舉
 
@@ -135,10 +128,10 @@ Router 使用 compile-time parameter 定義結構，由上層 instantiation 時�
 
 | Parameter | Description | 來源 |
 |-----------|-------------|------|
-| `flit_t` | Flit data type（408 bits） | [Flit Format](02_flit.md) |
+| `flit_t` | Flit data type（`FLIT_WIDTH` bits, 預設 400） | [Flit Format](02_flit.md) |
 | `id_t` | Node ID type（`logic[ID_WIDTH-1:0]`） | ID_WIDTH 推導 |
 | `addr_rule_t` | Address routing rule（IdTable 用） | 上層定義 |
-| `payload_t` | Flit payload type（352 bits） | [Flit Format](02_flit.md) |
+| `payload_t` | Flit payload type（`PAYLOAD_WIDTH` bits, 預設 352） | [Flit Format](02_flit.md) |
 
 ### 3.5 Simulation Parameters（C++ model 專用）
 
@@ -149,9 +142,7 @@ Router 使用 compile-time parameter 定義結構，由上層 instantiation 時�
 | `ROUTING_DELAY` | NocConfig | 0 | Route computation 額外 cycle |
 | `VC_ALLOC_DELAY` | NocConfig | 0 | VC allocation 額外 cycle |
 | `SW_ALLOC_DELAY` | NocConfig | 0 | Switch allocation 額外 cycle |
-| `REDUCTION_TIMEOUT` | NocConfig | 1000 | ReductionSync 超時 cycle 數 |
 | `CREDIT_TIMEOUT` | NocConfig | 10000 | Credit starvation 偵測 cycle 數（0 = 停用） |
-| `MULTICAST_TIMEOUT` | NocConfig | 10000 | Multicast handshake 超時 cycle 數（0 = 停用） |
 
 **參數約束：**
 - `NUM_PHYS_CHANNELS ≤ NUM_VIRT_CHANNELS`
@@ -338,7 +329,7 @@ AW 與 W 為獨立 wormhole packet。AW→W ordering 由 NMU 注入順序保證�
 
 **Anti-starvation：** Round-Robin 保證同 QoS level 的 HEAD flit 不會被同 level 的其他 HEAD 無限期 skip。跨 QoS level 的 starvation 由 NI 端的 QoS Generator 緩解（Regulator mode 可自動提升長期低頻寬 master 的 QoS），詳見 [QoS](06_qos.md) §2.4 與 §6.1。
 
-**Pluggable Allocator：** VC Allocator 與 SW Allocator 均使用抽象 `Allocator` interface，可透過 NocConfig 切換實作（`round_robin` / `islip` / `qos_aware_rr`）。Allocator 維持 1:1 interface，不感知 multicast。
+**Pluggable Allocator：** VC Allocator 與 SW Allocator 均使用抽象 `Allocator` interface，可透過 NocConfig 切換實作（`round_robin` / `islip` / `qos_aware_rr`）。Allocator 維持 1:1 interface。
 
 ### FR-05: Buffer Management
 
@@ -378,83 +369,7 @@ AW 與 W 為獨立 wormhole packet。AW→W ordering 由 NMU 注入順序保證�
 
 **Credit Starvation Detection：** 當某 VC 的 `credit_counter == 0` 持續超過 `CREDIT_TIMEOUT` cycles（預設 10,000）且該 VC 有待送 flit 時，視為異常。觸發時回報 error 至 NI CSR `ERR_STATUS`，不做自動 recovery — 正常壅塞（如長 wormhole packet 佔住 downstream buffer）不會觸發此 timeout。
 
-### FR-08: Multicast (Independent Per-Port Handshake)
-
-**描述：** Multicast flit 的多 output 轉發採用 independent per-port handshake — 各 target output 可在不同 cycle 獨立完成，已完成的 output 立即釋放，input buffer 在**所有** target 完成後才 pop。
-
-**MulticastTracker（per input port, bitmap register）：**
-
-| Field | 寬度 | 說明 |
-|-------|------|------|
-| `expected` | NUM_OUTPUT bits | Routing function 決定的 target output set |
-| `past_handshakes` | NUM_OUTPUT bits | 已完成 handshake 的 output set（registered） |
-| `current_handshakes` | NUM_OUTPUT bits | 本 cycle 完成的 output set（combinational） |
-
-**行為規則：**
-
-```
-current_handshakes = masked_valid & masked_ready
-all_handshakes     = past_handshakes | current_handshakes
-all_done           = (all_handshakes & expected) == expected
-```
-
-| 條件 | `past_handshakes` 更新 |
-|------|----------------------|
-| `all_done`（所有 target 完成） | 清零 → `0`，input buffer pop |
-| 部分 target 完成 | 累積 → `past_handshakes | current_handshakes` |
-| 無 handshake | 保持不變 |
-
-**Valid 控制：** 對已完成 handshake 的 output 壓掉 valid（`valid & ~past_handshakes`），釋放該 output 給其他 traffic。
-
-**Unicast 退化：** `expected` 僅 1 bit 為 1 時，行為與標準 single-output handshake 完全一致（`past_handshakes` 永遠為 0，single-cycle 完成）。
-
-**時序範例（target = {N, E, L}）：**
-
-```
-Cycle 1: E accept ✓, N busy, L busy  → past = {E}
-Cycle 2: N accept ✓, L busy          → past = {E, N}
-Cycle 3: L accept ✓                  → all_done → past = 0, pop
-```
-
-| 特性 | 說明 |
-|------|------|
-| Output 早期釋放 | 已完成的 output 立即可服務其他 traffic |
-| 無 collateral blocking | 不阻擋無關 input port |
-| Arbiter 無感知 | Output arbiter 為標準 wormhole arbiter |
-| Input HoL blocking | Flit 在 input buffer 停留至所有 output 完成 |
-
-**Multicast Handshake Timeout：** 當 multicast flit 的 `past_handshakes != expected` 持續超過 `MULTICAST_TIMEOUT` cycles（預設 10,000）時，視為異常。觸發時回報 error 至 NI CSR `ERR_STATUS`，不做自動 recovery。
-
-### FR-09: In-Network Reduction (RspRouter Only)
-
-**描述：** Multicast write 的 B response 在 RspRouter 逐 hop 合併，Source NMU 僅收到 1 個已合併的 B response。
-
-**流程：**
-
-```
-Forward:  NMU → ReqRouter → fan-out → NSU₀...NSUₙ₋₁
-Backward: NSU₀...NSUₙ₋₁ → RspRouter → fan-in → NMU (1 merged B)
-```
-
-**Backward in_route_mask** = forward route_sel。Forward multicast fan-out 到的每個方向，backward 都會有 response 回來。
-
-**ReductionSync：** 同步等待所有 expected inputs 到齊後觸發合併。支援 timeout 安全網（`REDUCTION_TIMEOUT` cycles，預設 1000），超時時以部分 response 合併，final bresp = SLVERR + warning log。
-
-**ReductionArbiter 合併規則：**
-- `bresp`：任一 SLVERR → 最終 SLVERR；全部 OKAY → OKAY
-- `ecc_fail`：任一 true → 最終 true
-
-**合併後 routing：** Unicast XY routing 向 `src_id` 方向輸出，保持 `commtype = ParallelReduction`，使下一 hop 繼續 reduction。
-
-**Deadlock freedom 論證（需形式化驗證）：**
-1. B response 是 single-flit（無 wormhole blocking）
-2. 合併後走 unicast XY routing（deadlock-free 已證明）
-3. Reduction tree 是 DAG（同一 transaction 無環）
-4. Req/Rsp 物理分離
-
-**潛在風險：** 跨 transaction B response 共享 buffer 可能形成 cross-transaction circular wait。Timeout 作為 runtime safety net。
-
-### FR-10: Multi-Port LOCAL
+### FR-08: Multi-Port LOCAL
 
 **描述：** 每個 Router 可配置 0~4 個 LOCAL port，由 header `port_id`（2 bits）識別。
 
@@ -469,7 +384,7 @@ Backward: NSU₀...NSUₙ₋₁ → RspRouter → fan-in → NMU (1 merged B)
 - LOCAL port 間：不允許同 port_id self-loop，允許 inter-port 直連（L0→L1）
 - Mesh↔LOCAL：不受 no-UTurn 限制
 
-### FR-11: Error Handling
+### FR-09: Error Handling
 
 **描述：** 模擬目標為快速偵測設計 bug（assert 中止），非 runtime recovery。
 
@@ -511,7 +426,6 @@ Router 為 flit 透通轉發器，不檢查/修改 ECC。XY routing 保證 deadl
 |----------------|--------|------|
 | Wormhole path lock | 佔用 output port 直到 TAIL | Burst length 限制 |
 | HoL blocking | 阻塞同 input buffer 的其他 HEAD | VC 分離 |
-| Multicast HoL | Input blocked 直到所有 target 完成 | Output 早期釋放 |
 
 ---
 
@@ -522,5 +436,4 @@ Router 為 flit 透通轉發器，不檢查/修改 ECC。XY routing 保證 deadl
 - [Network Interface](04_network_interface.md) — NI 與 LOCAL port 連接
 - [Physical Channel](05_physical_channel.md) — 2-channel / 3-channel 架構
 - [QoS Design](06_qos.md) — QoS arbitration policy
-- [Multicast](07_multicast.md) — RCR routing algorithm
 - [Simulation](08_simulation.md) — 8-phase cycle model、NocConfig、Channel\<T\>

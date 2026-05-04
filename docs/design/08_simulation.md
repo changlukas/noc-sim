@@ -121,9 +121,7 @@ NocConfig 為**全局唯一的參數定義處**（single source of truth）。�
 | `MEMORY_READ_LATENCY` | 0 | Local memory read latency cycles（0 = ideal） |
 | `MEMORY_WRITE_LATENCY` | 0 | Local memory write latency cycles（0 = ideal） |
 | **Safety** | | |
-| `REDUCTION_TIMEOUT` | 1000 | ReductionSync timeout cycles（0 = 停用） |
 | `CREDIT_TIMEOUT` | 10000 | Credit starvation 偵測 cycles（0 = 停用） |
-| `MULTICAST_TIMEOUT` | 10000 | Multicast handshake timeout cycles（0 = 停用） |
 | `DEADLOCK_THRESHOLD` | 1000 | 無 forward progress 超過此 cycles 視為 deadlock |
 
 **JSON 配置範例：**
@@ -137,16 +135,16 @@ NocConfig 為**全局唯一的參數定義處**（single source of truth）。�
 }
 ```
 
-### 3.2 固定設計參數
+### 3.2 Flit 設計參數（預設值）
 
-以下參數為固定值，與 [Flit Format](02_flit.md) 一致，不可於模擬中調整：
+以下參數與 [Flit Format](02_flit.md) 一致，預設值對應目前實作配置（完整參數列表見 02_flit.md §1.2）：
 
-| 參數 | 值 | 說明 |
-|------|-----|------|
-| `FLIT_WIDTH` | 408 bits | Header 56 + Payload 352 |
+| 參數 | 預設值 | 說明 |
+|------|--------|------|
+| `FLIT_WIDTH` | 400 bits | Header 48 + Payload 352 |
 | `AXI_DATA_WIDTH` | 256 bits | AXI data 寬度 |
 | `AXI_ADDR_WIDTH` | 64 bits | AXI address 寬度 |
-| `NODE_ID_WIDTH` | 8 bits | [7:4]=y, [3:0]=x |
+| `X_WIDTH` / `Y_WIDTH` | 4 / 4 bits | 節點座標寬度 |
 | `QOS_WIDTH` | 4 bits | 16 級 QoS |
 | `ECC_WIDTH` | 32 bits | SECDED |
 
@@ -178,10 +176,9 @@ NocConfig 為**全局唯一的參數定義處**（single source of truth）。�
 | 欄位 | 說明 |
 |------|------|
 | `id` | Transaction 唯一識別碼 |
-| `type` | `WRITE` / `READ` / `MULTICAST_WRITE` |
+| `type` | `WRITE` / `READ` |
 | `src_node` | NMU 所在 node ID |
 | `dst_addr` | 64-bit AXI 地址（`[39:32]`=node_id, `[31:0]`=local_addr） |
-| `dst_nodes` | Multicast 目標 node list（僅 MULTICAST_WRITE） |
 | `data_file` | Write data 的 `.hex` 檔路徑 |
 | `data_size` | 傳輸大小 (bytes) |
 | `axi_id` | AXI transaction ID |
@@ -220,7 +217,7 @@ Debug 用途。每 cycle 記錄 router/NI/channel 狀態。VCD 或 JSON trace �
 | Group | 名稱 | 主要功能 |
 |-------|------|---------|
 | A | Construction & Configuration | NocConfig 載入、Memory 初始化 |
-| B | Transaction Submission | submit_write / submit_read / submit_multicast_write |
+| B | Transaction Submission | submit_write / submit_read |
 | C | Simulation Control | process_cycle / run / run_until_idle / run_all |
 | D | Completion & Response | is_complete / get_status / get_read_data / callback |
 | E | Metrics & Verification | get_metrics / verify |
@@ -245,7 +242,6 @@ Debug 用途。每 cycle 記錄 router/NI/channel 狀態。VCD 或 JSON trace �
 |----------|-------------|
 | `submit_write(addr, data, len, axi_id)` | 提交 write transaction |
 | `submit_read(addr, len, axi_id)` | 提交 read transaction |
-| `submit_multicast_write(addr, data, len, dst_nodes)` | 提交 multicast write |
 
 ### 5.4 Group C: Simulation Control
 
@@ -633,7 +629,6 @@ DPI-C bridge 為 thin wrapper，提供 SystemVerilog 與 C++ model 的互操作�
 | AXI protocol (AW/W/AR/B/R) | Y | Burst, reorder |
 | QoS-Aware arbitration | Y | QoS + Round-Robin |
 | ECC generate/check | Y | SECDED 行為模型 |
-| Multicast + In-Network Reduction | Y | |
 | Configurable channel delay | Y | Channel\<T\> |
 | Deadlock detection | Y | N cycles 無 progress → abort |
 | Clock domain crossing | N | 全域同步時脈 |
@@ -660,7 +655,7 @@ DPI-C bridge 為 thin wrapper，提供 SystemVerilog 與 C++ model 的互操作�
 ## 12. Related Documents
 
 - [System Overview](01_overview.md)
-- [Flit Format](02_flit.md) — 固定參數基準
+- [Flit Format](02_flit.md) — 參數化基準
 - [Router](03_router.md) — 8-phase pipeline、CppRouter pipeline stages
 - [Network Interface](04_network_interface.md) — NMU/NSU、CppNI functions
 - [Verification](09_verification.md) — Golden 驗證、效能指標、測試策略

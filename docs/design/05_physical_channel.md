@@ -20,19 +20,21 @@ NoC 採用 Request / Response 雙通道分離架構。每個邏輯 Router 內部
 ### 1.2 架構圖
 
 ```
-  Router A                                                Router B
-  ┌──────────────────┐                                   ┌──────────────────┐
-  │  ┌─────────────┐ │   Req Link (410b) ──────────►    │ ┌─────────────┐  │
-  │  │  ReqRouter  │ │   ◄────────── Req Link (410b)    │ │  ReqRouter  │  │
-  │  │  (408b flit)│ │                                   │ │  (408b flit)│  │
-  │  └─────────────┘ │                                   │ └─────────────┘  │
-  │  ┌─────────────┐ │   Rsp Link (410b) ──────────►    │ ┌─────────────┐  │
-  │  │  RspRouter  │ │   ◄────────── Rsp Link (410b)    │ │  RspRouter  │  │
-  │  │  (408b flit)│ │                                   │ │  (408b flit)│  │
-  │  └─────────────┘ │                                   │ └─────────────┘  │
-  └──────────────────┘                                   └──────────────────┘
-        Total per router pair: 4 × 410 = 1,640 bits (bidirectional)
+  Router A                                                       Router B
+  ┌──────────────────┐                                          ┌──────────────────┐
+  │  ┌─────────────┐ │   Req Link (LINK_WIDTH) ──────────►     │ ┌─────────────┐  │
+  │  │  ReqRouter  │ │   ◄────────── Req Link (LINK_WIDTH)     │ │  ReqRouter  │  │
+  │  │ (FLIT_WIDTH)│ │                                          │ │ (FLIT_WIDTH)│  │
+  │  └─────────────┘ │                                          │ └─────────────┘  │
+  │  ┌─────────────┐ │   Rsp Link (LINK_WIDTH) ──────────►     │ ┌─────────────┐  │
+  │  │  RspRouter  │ │   ◄────────── Rsp Link (LINK_WIDTH)     │ │  RspRouter  │  │
+  │  │ (FLIT_WIDTH)│ │                                          │ │ (FLIT_WIDTH)│  │
+  │  └─────────────┘ │                                          │ └─────────────┘  │
+  └──────────────────┘                                          └──────────────────┘
+        Total per router pair: 4 × LINK_WIDTH (預設 1,608) bits (bidirectional)
 ```
+
+預設值：`FLIT_WIDTH = 400`、`LINK_WIDTH = 402`，詳見 [Flit Format](02_flit.md) §1.2。
 
 ### 1.3 Deadlock Avoidance
 
@@ -53,7 +55,7 @@ Request buffer full 不影響 Response 傳輸，反之亦然。無需 software i
 
 ### 1.4 對稱設計優勢
 
-Req/Rsp link 寬度完全對稱（均為 410 bits），兩個 sub-router 可複用同一硬體模組：
+Req/Rsp link 寬度完全對稱（均為 `LINK_WIDTH`），兩個 sub-router 可複用同一硬體模組：
 
 | Aspect | Benefit |
 |--------|---------|
@@ -64,11 +66,11 @@ Req/Rsp link 寬度完全對稱（均為 410 bits），兩個 sub-router 可複�
 
 ### 1.5 Full-Duplex 頻寬
 
-| Metric | Value |
-|--------|-------|
-| Per-link payload bandwidth | 256 bits = 32 bytes/cycle |
-| Per-direction (Req + Rsp) | 2 × 408 = 816 bits/cycle |
-| Bidirectional total | 4 × 408 = 1,632 bits/cycle |
+| Metric | Formula | 預設值 |
+|--------|---------|--------|
+| Per-link payload bandwidth | `AXI_DATA_WIDTH` | 256 bits = 32 bytes/cycle |
+| Per-direction (Req + Rsp) | 2 × `FLIT_WIDTH` | 800 bits/cycle |
+| Bidirectional total | 4 × `FLIT_WIDTH` | 1,600 bits/cycle |
 
 ### 1.6 Flow Control Timing
 
@@ -178,17 +180,24 @@ Response network（B + R）同理：R burst 會鎖定路徑阻塞 B flit，但 B
 
 ### 3.1 設計動機
 
-2-channel 使用統一 408-bit flit，對 address-only channel（AW/AR/B）浪費大量 padding。更重要的是，wide data burst（256b W/R）會阻塞 narrow control flit（AW/AR/B）。
+2-channel 使用統一 `FLIT_WIDTH`（預設 400b）flit，對 address-only channel（AW/AR/B）浪費大量 padding。更重要的是，wide data burst（256b W/R）會阻塞 narrow control flit（AW/AR/B）。
 
 3-channel 引入第三條 physical channel，將 **narrow 控制封包** 與 **wide 資料封包** 分離。
 
 ### 3.2 三通道定義
 
+3-channel 模式引入兩個本節區域性參數（不在 [Flit Format](02_flit.md) 全域參數列表中）：
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `NARROW_FLIT_WIDTH` | 164 | Narrow flit 總寬度（含 `HEADER_WIDTH` + narrow payload） |
+| `NARROW_LINK_WIDTH` | 166 | `NARROW_FLIT_WIDTH + 2`（valid + ready） |
+
 | Channel | Flit Width | Link Width | 承載 AXI Channels |
 |---------|-----------|------------|-------------------|
-| **req** (Narrow) | 164b | 166b | NarrowAW, NarrowW, NarrowAR, WideAR |
-| **rsp** (Narrow) | 164b | 166b | NarrowR, NarrowB, WideB |
-| **wide** | 408b | 410b | WideAW, WideW, WideR |
+| **req** (Narrow) | `NARROW_FLIT_WIDTH` (預設 164b) | `NARROW_LINK_WIDTH` (預設 166b) | NarrowAW, NarrowW, NarrowAR, WideAR |
+| **rsp** (Narrow) | `NARROW_FLIT_WIDTH` (預設 164b) | `NARROW_LINK_WIDTH` (預設 166b) | NarrowR, NarrowB, WideB |
+| **wide** | `FLIT_WIDTH` (預設 400b) | `LINK_WIDTH` (預設 402b) | WideAW, WideW, WideR |
 
 ### 3.3 Dual AXI Interface
 
@@ -219,18 +228,18 @@ Response network（B + R）同理：R burst 會鎖定路徑阻塞 B flit，但 B
 - **WideAR 走 req（非 wide）**：AR 為 address-only 小封包，不佔 wide 頻寬
 - **WideB 走 rsp（非 wide）**：B 為 response-only 小封包，不佔 wide 頻寬
 
-### 3.5 Narrow Flit Format（164 bits）
+### 3.5 Narrow Flit Format
 
-Narrow flit 使用與 [Flit Format](02_flit.md) **相同的 56-bit header**，payload 縮小為 108 bits：
+Narrow flit 使用與 [Flit Format](02_flit.md) **相同的 `HEADER_WIDTH` header**，payload 寬度為 `NARROW_FLIT_WIDTH - HEADER_WIDTH`：
 
 ```
-  163            108 107              0
-  ┌─────────────────┬─────────────────┐
-  │  Header (56b)   │  Payload (108b) │
-  └─────────────────┴─────────────────┘
+  NARROW_FLIT_WIDTH-1   HEADER_WIDTH HEADER_WIDTH-1     0
+  ┌──────────────────────────────┬──────────────────────┐
+  │  Header (HEADER_WIDTH)       │  Narrow Payload      │
+  └──────────────────────────────┴──────────────────────┘
 ```
 
-108-bit payload 可容納 address channel（AW/AR 約 108b）與 narrow data（64b data + 8b strb + 8b ECC + metadata）。Wide flit 格式與 2-channel 的 408-bit flit 完全相同。
+預設配置（`HEADER_WIDTH=48`、`NARROW_FLIT_WIDTH=164`）下 narrow payload = 116 bits，可容納 address channel（AW/AR 約 105b）與 narrow data（64b data + 8b strb + 8b ECC + metadata）。Wide flit 格式與 2-channel flit 完全相同（`FLIT_WIDTH`）。
 
 ### 3.6 axi_ch 欄位處理
 
@@ -252,11 +261,11 @@ Narrow flit 使用與 [Flit Format](02_flit.md) **相同的 56-bit header**，pa
 
 | Sub-Router | Flit Width | 承載 AXI Channels |
 |------------|-----------|-------------------|
-| **ReqRouter** | 164b | NarrowAW, NarrowW, NarrowAR, WideAR |
-| **RspRouter** | 164b | NarrowR, NarrowB, WideB |
-| **WideRouter** | 408b | WideAW, WideW, WideR |
+| **ReqRouter** | `NARROW_FLIT_WIDTH` | NarrowAW, NarrowW, NarrowAR, WideAR |
+| **RspRouter** | `NARROW_FLIT_WIDTH` | NarrowR, NarrowB, WideB |
+| **WideRouter** | `FLIT_WIDTH` | WideAW, WideW, WideR |
 
-ReqRouter 和 RspRouter 共用同一 164-bit 寬度設計，可複用 RTL 模組。WideRouter 使用現有 408-bit 寬度設計。所有 sub-router 共用相同 routing algorithm 與 arbitration policy。
+ReqRouter 和 RspRouter 共用同一 `NARROW_FLIT_WIDTH` 寬度設計，可複用 RTL 模組。WideRouter 使用 `FLIT_WIDTH` 寬度設計。所有 sub-router 共用相同 routing algorithm 與 arbitration policy。
 
 ---
 
@@ -264,12 +273,12 @@ ReqRouter 和 RspRouter 共用同一 164-bit 寬度設計，可複用 RTL 模組
 
 ### 4.1 Wire Count
 
-| 設計 | Links per direction | Wires per direction | Per router pair |
-|------|---------------------|---------------------|-----------------|
-| 2-Channel | 2 × 410 | 820 | 4 × 410 = **1,640** |
-| 3-Channel | 2 × 166 + 410 | 742 | 2 × 742 = **1,484 (-9.5%)** |
+| 設計 | Links per direction | Wires per direction (預設) | Per router pair (預設) |
+|------|---------------------|---------------------------|------------------------|
+| 2-Channel | 2 × `LINK_WIDTH` | 804 | 4 × `LINK_WIDTH` = **1,608** |
+| 3-Channel | 2 × `NARROW_LINK_WIDTH` + `LINK_WIDTH` | 734 | 2 × 734 = **1,468 (-8.7%)** |
 
-3-channel 反而比 2-channel **少 9.5% wire**，因為 narrow channels 使用適當寬度的 flit。
+3-channel 反而比 2-channel **少約 8.7% wire**（預設配置下），因為 narrow channels 使用適當寬度的 flit。
 
 ### 4.2 HoL Blocking 改善
 
@@ -286,9 +295,9 @@ ReqRouter 和 RspRouter 共用同一 164-bit 寬度設計，可複用 RTL 模組
 | Aspect | 2-Channel | 3-Channel |
 |--------|-----------|-----------|
 | Sub-routers per logical router | 2 | 3 |
-| Flit widths | 408b (uniform) | 164b + 408b |
-| Wire count (per pair) | 1,640 | 1,484 (-9.5%) |
-| RTL module reuse | ReqRouter = RspRouter | ReqRouter = RspRouter (164b) + WideRouter (408b) |
+| Flit widths | `FLIT_WIDTH` (uniform, 預設 400b) | `NARROW_FLIT_WIDTH` + `FLIT_WIDTH` (預設 164b + 400b) |
+| Wire count (per pair, 預設) | 1,608 | 1,468 (-8.7%) |
+| RTL module reuse | ReqRouter = RspRouter | ReqRouter = RspRouter (`NARROW_FLIT_WIDTH`) + WideRouter (`FLIT_WIDTH`) |
 | HoL blocking (wide vs narrow) | 有 | 消除 |
 | AXI interface support | Single width (256b) | Dual width (64b + 256b) |
 | Buffer total (per router) | 2 × 5 ports × depth | 3 × 5 ports × depth |
@@ -300,7 +309,7 @@ ReqRouter 和 RspRouter 共用同一 164-bit 寬度設計，可複用 RTL 模組
 |------|------|------|
 | 僅 256b AXI 介面 | 2-Channel | 無 narrow 流量，3-Ch 無效益 |
 | 同時有 64b + 256b AXI | 3-Channel | 分離 narrow/wide，降低 HoL blocking |
-| Wire budget 受限 | 3-Channel | 少 9.5% wires |
+| Wire budget 受限 | 3-Channel | 少約 8.7% wires |
 | Router 設計簡化 | 2-Channel | 2 sub-router vs 3 sub-router |
 | FPGA prototype 優先 | 2-Channel | 較簡單，FPGA 資源較少 |
 

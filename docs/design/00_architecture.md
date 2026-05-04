@@ -13,7 +13,7 @@
 
 - **Purpose**：Pre-silicon performance evaluation + RTL co-simulation golden reference
 - **API**：5 groups — Construction / Transaction / Simulation / Metrics / Debug
-- **Mesh**：N×N (N=2\~16)，Node = PE → NI → Router，408-bit Flit，XY Routing + Wormhole
+- **Mesh**：N×N (N=2\~16)，Node = PE → NI → Router，可參數化 Flit（預設 400-bit），XY Routing + Wormhole
 - **Hot-Swap**：NI & Router 可獨立替換為 RTL (DPI-C)，Channel 始終 C++
 - **Verification**：Scoreboard online per-txn 比對；C++ vs RTL byte-exact match
 
@@ -43,7 +43,7 @@
    NI       NI       NI       NI
 
   ═══ = Router 間 link (Req/Rsp 各一條，雙向 full-duplex)
-  (x,y) = Router，座標編碼為 8-bit node_id（[7:4]=y, [3:0]=x）
+  (x,y) = Router，座標編碼為 (X_WIDTH + Y_WIDTH)-bit node_id（預設 8b: [7:4]=y, [3:0]=x）
   NI = Network Interface，透過 Router LOCAL port 連接
 ```
 
@@ -110,7 +110,6 @@
   │                                                       │
   │  ┌─────────────── RspRouter ────────────────────┐    │
   │  │  B/R flits（結構與 ReqRouter 完全對稱）        │    │
-  │  │  + In-Network Reduction（Multicast B 合併）    │    │
   │  └─────────────────────────────────────────────────┘
   │                                                       │
   └───────────────────────────────────────────────────────┘
@@ -206,7 +205,7 @@
 
 ### 2.3 Flit 傳輸單位
 
-所有 data flow 使用統一的 408-bit flit（56-bit header + 352-bit payload）。一個 AXI transaction 在 NoC 中映射為一或多個 flit：
+所有 data flow 使用統一的 flit（預設 400-bit：48-bit header + 352-bit payload，寬度由 [Flit Format](02_flit.md) 參數決定）。一個 AXI transaction 在 NoC 中映射為一或多個 flit：
 
 | AXI Transaction | Request Flits | Response Flits |
 |-----------------|:-------------:|:--------------:|
@@ -305,17 +304,17 @@ Interface 合約確保 C++ 與 RTL 實作的行為一致。替換粒度為單一
 每條 Router ↔ Router / NI ↔ Router link 的信號定義：
 
 ```
-  410 bits per direction:
+  LINK_WIDTH bits per direction (預設 402):
   ┌──────────────────────────────────────────────────────┬───────┬───────┐
-  │                 flit (408 bits)                       │ ready │ valid │
-  │         header (56b)  +  payload (352b)              │  (1b) │  (1b) │
+  │              flit (FLIT_WIDTH, 預設 400)               │ ready │ valid │
+  │     header (HEADER_WIDTH=48b) + payload (352b)         │  (1b) │  (1b) │
   └──────────────────────────────────────────────────────┴───────┴───────┘
 
-  Router A ════════[410b Req fwd]════════► Router B
-  Router A ◄═══════[410b Req rev]═════════ Router B
-  Router A ════════[410b Rsp fwd]════════► Router B
-  Router A ◄═══════[410b Rsp rev]═════════ Router B
-                 Total: 4 × 410 = 1,640 bits per router pair
+  Router A ════════[LINK_WIDTH Req fwd]════════► Router B
+  Router A ◄═══════[LINK_WIDTH Req rev]═════════ Router B
+  Router A ════════[LINK_WIDTH Rsp fwd]════════► Router B
+  Router A ◄═══════[LINK_WIDTH Rsp rev]═════════ Router B
+                 Total: 4 × LINK_WIDTH (預設 1,608) bits per router pair
 ```
 
 ---
@@ -451,7 +450,7 @@ C++ model 為主控方。當某個 CppRouter/CppNI 被替換為 RTL 時，DPI-C 
   │                      │  └──────────┘    │                      │
   └──────────────────────┘                  └──────────────────────┘
 
-  每 cycle 交換：flit (408b) + valid (1b) + ready (1b) + credit
+  每 cycle 交換：flit (FLIT_WIDTH, 預設 400b) + valid (1b) + ready (1b) + credit
 ```
 
 ---
@@ -505,7 +504,6 @@ C++ model 將 RTL 的並行行為拆為 8 個循序 phase，以 ordering 保證�
 | | `dump_local_memory(node_id, addr, buf, len)` | 傾印 LocalMemory |
 | **B: Transaction** | `submit_write(addr, data, len, axi_id)` → `TxnHandle` | 提交 write transaction |
 | | `submit_read(addr, len, axi_id)` → `TxnHandle` | 提交 read transaction |
-| | `submit_multicast_write(addr, data, len, dst_nodes)` → `TxnHandle` | 提交 multicast write |
 | **C: Simulation** | `process_cycle()` | 執行 1 cycle（8 phases） |
 | | `run(N)` | 執行 N cycles |
 | | `run_until_idle(max_cycles)` | 執行直到 network idle |
@@ -593,12 +591,10 @@ Online 追蹤每筆 transaction 的 expected vs actual outcome。Submit 時記�
 | | `_OutputQueuing()` | Write to OutputBuffer |
 | **sub-module** | `InputBuffer` | per-port FIFO（depth = config） |
 | | `BufferState` | Credit tracking（與 Buffer 分離） |
-| | `RouteCompute` | XY routing + multicast RCR |
+| | `RouteCompute` | XY routing |
 | | `Crossbar` | N×N switch fabric |
 | | `PathLock` | Wormhole path locking FSM |
 | | `Allocator` | Pluggable: RoundRobin / iSLIP / QoSAwareRR |
-| | `MulticastTracker` | Multicast fork tracking |
-| | `ReductionSync` / `ReductionArb` | In-network reduction（B response 合併） |
 
 ### 7.6 CppNI（NI_Interface\<Mode\>）
 
@@ -678,7 +674,6 @@ Buffer 與 credit tracking 分離（booksim2 pattern）。
 | Function | 說明 |
 |----------|------|
 | `compute_route(src, dst)` → `Port` | XY routing：X-first then Y |
-| `compute_multicast(src, bbox)` → `PortSet` | Rectangle bounding box multicast routing |
 
 ### 7.11 Memory
 
@@ -705,7 +700,6 @@ Buffer 與 credit tracking 分離（booksim2 pattern）。
 | Req/Rsp Separation | 獨立 physical link，消除 protocol deadlock | [Physical Channel](05_physical_channel.md) |
 | QoS-Aware Arbitration | 16-level priority + Round-Robin tie-break | [QoS](06_qos.md) |
 | ECC Protection | SECDED end-to-end (NMU generate, NSU check) | [NI](04_network_interface.md) |
-| Multicast | Rectangle bounding box + in-network B reduction | [Multicast](07_multicast.md) |
 | Reorder Buffer | Per-NMU RoB, out-of-order response support | [NI](04_network_interface.md) |
 | Hot-Swap | Router/NI 可替換為 RTL proxy (DPI-C) | [Simulation](08_simulation.md) |
 
@@ -780,7 +774,7 @@ Mesh 內由上到下分 3 層：
 |------|------|------|
 | **CppRouter** | Public | `tick()` Phase 1-4、`post_wire()` Phase 6-7、`get_output()/set_input()` |
 | | Pipeline | 6 stage：InputQueuing → RouteEval → VCAllocEval → SWAllocEval → SwitchTraverse → OutputQueue |
-| | Sub-Modules | InputBuffer、BufferState、RouteCompute、Crossbar、PathLock、Allocator、MulticastTracker、ReductionSync/Arb |
+| | Sub-Modules | InputBuffer、BufferState、RouteCompute、Crossbar、PathLock、Allocator |
 | **CppNI** | Public | `tick()` Phase 8、`get_output()/set_input()` |
 | | NMU | AddrTranslate → QosGenerate → PackAW/W/AR → EccGenerate → Inject + UnpackB/R + AllocRoB |
 | | NSU | UnpackAW/AR/W → Reassemble → EccCheck → PackB/R + StoreReqInfo + MemoryOp |
@@ -888,8 +882,8 @@ RTL Router (SV)
 
 ## Related Documents
 
-- [System Overview](01_overview.md) — 拓撲參數、固定設計參數
-- [Flit Format](02_flit.md) — 408-bit flit header/payload 定義
+- [System Overview](01_overview.md) — 拓撲參數、設計參數預設值
+- [Flit Format](02_flit.md) — 可參數化 flit header/payload 定義（預設 400-bit）
 - [Router](03_router.md) — Router pipeline、XY routing、wormhole
 - [Network Interface](04_network_interface.md) — NMU/NSU、AXI ↔ Flit
 - [Physical Channel](05_physical_channel.md) — 2-ch / 3-ch 架構

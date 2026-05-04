@@ -1,6 +1,6 @@
-# Flit Format — Fixed-Width Design
+# Flit Format — Parameterized Design
 
-NoC 基本傳輸單元。全固定參數設計，消除 configurable width，簡化 RTL 實作與驗證。
+NoC 基本傳輸單元。所有欄位寬度透過 symbol 參數表達，預設值對應目前實作配置（最大 16×16 mesh、AXI 256-bit data）。Multicast 相關欄位保留位置但功能未定義。
 
 ---
 
@@ -8,79 +8,134 @@ NoC 基本傳輸單元。全固定參數設計，消除 configurable width，簡
 
 ### 1.1 Design Philosophy
 
-全固定參數設計，理由：
+採用 **可參數化欄位寬度** 設計：
 
-1. **多數配置從未使用** — Node ID、Address 寬度等在 tape-out 前即確定
-2. **Configurable width 增加 RTL 複雜度** — payload union 需 generate-if，bit-range 計算散佈各模組
-3. **驗證矩陣爆炸** — N×P×A 組合使 coverage closure 困難
-
-所有參數鎖定為單一固定值，設計目標支援最大 16×16 mesh（256 nodes）。
+1. **每個欄位皆有對應 width parameter** — 包含 1-bit flag 在內，命名一致便於跨模組引用
+2. **預設值對齊現行配置** — 未調參時 `FLIT_WIDTH = 400 bits`，`HEADER_WIDTH = 48 bits`
+3. **預留欄位明確標示** — `rsvd_commtype` (2b)、`multicast` (8b)、`rsvd_mc_status` (2b) 為 future extension 預留位置，當前傳輸時設 0、接收端忽略
+4. **Multicast 編碼方式 TBD** — 本文件不定義 multicast 路由與 response 行為
 
 ### 1.2 Design Parameters
 
-| Parameter | Value | Description |
-|-----------|-------|-------------|
+#### Group 1 — Topology
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
 | `X_WIDTH` | 4 | X coordinate width (max 16 columns) |
 | `Y_WIDTH` | 4 | Y coordinate width (max 16 rows) |
-| `NODE_ID_WIDTH` | 8 | src_id / dst_id width (X_WIDTH + Y_WIDTH) |
-| `PORT_ID_WIDTH` | 2 | Port ID width (4 ports per router) |
-| `AXI_ADDR_WIDTH` | 64 | AXI address width |
-| `AXI_ID_WIDTH` | 8 | AXI transaction ID width |
-| `AXI_DATA_WIDTH` | 256 | AXI data width (32 bytes) |
-| `AXI_USER_WIDTH` | 8 | AXI user signal width |
-| `ROB_IDX_WIDTH` | 5 | RoB index width (32 entries) |
-| `QOS_WIDTH` | 4 | QoS priority width |
-| `ECC_WIDTH` | 32 | Total ECC width (4 × 64-bit granules, 8-bit SECDED each) |
-| `HEADER_WIDTH` | 56 | Header width (both versions) |
-| `PAYLOAD_WIDTH` | 352 | Maximum payload width (W/R channels) |
-| `FLIT_WIDTH` | 408 | Total flit width (Header + Payload) |
+| `PORT_ID_WIDTH` | 2 | Local port index width (4 ports per router) |
+
+`src_id` 與 `dst_id` 寬度為 `X_WIDTH + Y_WIDTH`（預設 8 bits），編碼 `[X_WIDTH-1:0]=x`、`[X_WIDTH+Y_WIDTH-1:X_WIDTH]=y`。
+
+#### Group 2 — Header Fields
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `QOS_WIDTH` | 4 | QoS priority |
+| `AXI_CH_WIDTH` | 3 | AXI channel type (5 channels: AW/W/AR/B/R) |
+| `LAST_WIDTH` | 1 | Packet end marker |
+| `ROB_REQ_WIDTH` | 1 | RoB request flag |
+| `ROB_IDX_WIDTH` | 5 | RoB index (32 entries) |
+| `RSVD_COMMTYPE_WIDTH` | 2 | Reserved for future communication type extension |
+| `MULTICAST_WIDTH` | 8 | Reserved for future multicast extension (encoding TBD) |
+| `VC_ID_WIDTH` | 3 | Virtual Channel ID (Credit-Based mode only, max 8 VCs) |
+
+#### Group 3 — AXI Payload Sub-Fields
+
+下列寬度遵循 AXI4 規範，調整可能需 AXI bridge / converter 同步修改：
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `AXI_ADDR_WIDTH` | 64 | AXI address |
+| `AXI_ID_WIDTH` | 8 | AXI transaction ID |
+| `AXI_DATA_WIDTH` | 256 | AXI data (32 bytes) |
+| `AXI_USER_WIDTH` | 8 | AXI user signal |
+| `AXI_LEN_WIDTH` | 8 | Burst length |
+| `AXI_SIZE_WIDTH` | 3 | Burst size |
+| `AXI_BURST_WIDTH` | 2 | Burst type |
+| `AXI_CACHE_WIDTH` | 4 | Cache attributes |
+| `AXI_LOCK_WIDTH` | 1 | Exclusive access |
+| `AXI_PROT_WIDTH` | 3 | Protection type |
+| `AXI_REGION_WIDTH` | 4 | Memory region identifier |
+| `AXI_RESP_WIDTH` | 2 | Response status (bresp/rresp) |
+| `AXI_LAST_WIDTH` | 1 | AXI last beat (wlast/rlast) |
+
+#### Group 4 — ECC
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ECC_GRANULE_WIDTH` | 64 | Data bits per ECC granule |
+| `ECC_PER_GRANULE_WIDTH` | 8 | ECC bits per granule (Hsiao SECDED) |
+| `ECC_FAIL_WIDTH` | 1 | ECC error flag |
+| `ECC_WIDTH` | derived = 32 | `(AXI_DATA_WIDTH / ECC_GRANULE_WIDTH) × ECC_PER_GRANULE_WIDTH` |
+
+#### Group 5 — B Channel Reserved
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `RSVD_MC_STATUS_WIDTH` | 2 | Reserved for future multicast status extension |
+
+#### Group 6 — Composite / Derived
+
+| Parameter | Default | Formula |
+|-----------|---------|---------|
+| `WSTRB_WIDTH` | 32 | `AXI_DATA_WIDTH / 8` |
+| `HEADER_WIDTH` | 48 | Σ Group 1+2 fields (見 §2.1) |
+| `AW_PAYLOAD_WIDTH` | 108 | Σ AW fields (見 §3.1) |
+| `W_PAYLOAD_WIDTH` | 352 | Σ W fields (見 §3.2) |
+| `AR_PAYLOAD_WIDTH` | 108 | Σ AR fields (見 §3.1) |
+| `B_PAYLOAD_WIDTH` | 64 | Σ B fields (見 §3.3) |
+| `R_PAYLOAD_WIDTH` | 352 | Σ R fields (見 §3.4) |
+| `PAYLOAD_WIDTH` | 352 | `max(AW, W, AR, B, R)_PAYLOAD_WIDTH` |
+| `FLIT_WIDTH` | 400 | `HEADER_WIDTH + PAYLOAD_WIDTH` |
+| `LINK_WIDTH` | 402 | `FLIT_WIDTH + 2` (valid + ready) |
 
 ### 1.3 Flit Structure
 
 ```
-  55                                        0   351                              0
-  ┌────────────────────────────────────────────┬──────────────────────────────────┐
-  │               Header (56 bits)             │        Payload (352 bits)        │
-  └────────────────────────────────────────────┴──────────────────────────────────┘
-  |<──────────────────────── Flit: 408 bits ────────────────────────────────>|
+  HEADER_WIDTH-1                    0   PAYLOAD_WIDTH-1                   0
+  ┌────────────────────────────────────┬──────────────────────────────────┐
+  │       Header (HEADER_WIDTH)        │      Payload (PAYLOAD_WIDTH)     │
+  └────────────────────────────────────┴──────────────────────────────────┘
+  |<──────────────────── Flit: FLIT_WIDTH ─────────────────────────────>|
 ```
 
-所有 AXI channel 共用 408-bit flit width，較短 payload 以 zero-padding 對齊至 352 bits。Request 與 Response flit 寬度對稱。
+預設配置下 Header = 48 bits、Payload = 352 bits、Flit = 400 bits。所有 AXI channel 共用 `FLIT_WIDTH`，較短 payload 以 zero-padding 對齊至 `PAYLOAD_WIDTH`。Request 與 Response flit 寬度對稱。
 
 Flit 內 wdata/rdata 採 little-endian byte ordering（byte address 0 = data[7:0]），與 AXI bus 一致。Header 與 payload metadata 使用 MSB-first bit numbering（[MSB:LSB]），遵循 SystemVerilog 慣例。
 
 ---
 
-## 2. Header Format (56 bits)
+## 2. Header Format
 
-Header 固定 56 bits，提供 Valid/Ready mode（No-VC）與 Credit-Based mode（With-VC）兩種配置。兩者僅 bit [55:50] 的 vc_id/rsvd 配置不同，其餘欄位位置與寬度完全相同。
+Header 預設 `HEADER_WIDTH = 48 bits`，提供 Valid/Ready mode（No-VC）與 Credit-Based mode（With-VC）兩種配置。兩者僅 vc_id / rsvd 區段配置不同，其餘欄位位置與寬度完全相同。
 
 ### 2.1 Bit Allocation
 
-| Bit Range | Field | Width | Description |
-|-----------|-------|-------|-------------|
-| [3:0] | qos | 4 | QoS priority |
-| [6:4] | axi_ch | 3 | AXI channel type |
-| [14:7] | src_id | 8 | Source node ID |
-| [22:15] | dst_id | 8 | Destination node ID (Multicast: don't care, 見 2.2.8) |
-| [24:23] | port_id | 2 | Target local port index |
-| [25] | last | 1 | Packet end marker |
-| [26] | rob_req | 1 | RoB request flag |
-| [31:27] | rob_idx | 5 | RoB index (32 entries) |
-| [33:32] | commtype | 2 | Communication type |
-| [49:34] | multicast_mask | 16 | Multicast bounding box `{x_min, x_max, y_min, y_max}` (見 2.2.8) |
-| [52:50] | vc_id ‡ | 3 | Virtual Channel ID (0\~7) |
-| [55:53] | rsvd ‡ | 3 | Reserved |
-| | **Total** | **56** | |
+| Field | Width Symbol | Default Range | Description |
+|-------|--------------|---------------|-------------|
+| qos | `QOS_WIDTH` | [3:0] | QoS priority |
+| axi_ch | `AXI_CH_WIDTH` | [6:4] | AXI channel type |
+| src_id | `X_WIDTH + Y_WIDTH` | [14:7] | Source node ID |
+| dst_id | `X_WIDTH + Y_WIDTH` | [22:15] | Destination node ID |
+| port_id | `PORT_ID_WIDTH` | [24:23] | Target local port index |
+| last | `LAST_WIDTH` | [25] | Packet end marker |
+| rob_req | `ROB_REQ_WIDTH` | [26] | RoB request flag |
+| rob_idx | `ROB_IDX_WIDTH` | [31:27] | RoB index |
+| rsvd_commtype | `RSVD_COMMTYPE_WIDTH` | [33:32] | Reserved (future commtype) |
+| multicast | `MULTICAST_WIDTH` | [41:34] | Reserved (future multicast) |
+| vc_id ‡ | `VC_ID_WIDTH` | [44:42] | Virtual Channel ID |
+| rsvd ‡ | derived | [47:45] | Reserved |
+| | **HEADER_WIDTH** | | |
 
 **‡ Version-dependent fields:**
 
-- **Valid/Ready mode (No-VC):** bit [55:50] 全為 rsvd（6b），無 vc_id。VC 由 signal-level 多組 valid/ready lines 實現。
-- **Credit-Based mode (With-VC):** bit [52:50] 為 vc_id（3b），bit [55:53] 為 rsvd（3b）。VC ID 編碼於 header，搭配 credit-based flow control。
+- **Valid/Ready mode (No-VC):** Header 高位 `VC_ID_WIDTH + 3` bits 全為 rsvd（預設 [47:42]，6 bits），無 vc_id。VC 由 signal-level 多組 valid/ready lines 實現。
+- **Credit-Based mode (With-VC):** vc_id 佔 `VC_ID_WIDTH` bits（預設 [44:42]），其後 3 bits 為 rsvd（預設 [47:45]）。VC ID 編碼於 header，搭配 credit-based flow control。
 
 ### 2.2 Field Definitions
 
-#### 2.2.1 QoS (4 bits)
+#### 2.2.1 QoS (`QOS_WIDTH` = 4 bits)
 
 由 NI 自 AXI `awqos`（Write）或 `arqos`（Read）提取，作為 router arbitration 優先級依據。
 
@@ -91,7 +146,7 @@ Header 固定 56 bits，提供 Valid/Ready mode（No-VC）與 Credit-Based mode�
 
 AW/AR payload 不重複儲存 qos，header 為唯一來源。Response flit 繼承對應 request 的 `qos`。Router arbiter 以 `qos` 為第一優先級比較依據。詳見 [QoS Design](06_qos.md)。
 
-#### 2.2.2 AXI Channel Type (axi_ch, 3 bits)
+#### 2.2.2 AXI Channel Type (`AXI_CH_WIDTH` = 3 bits)
 
 | Value | Name | Channel | Description |
 |-------|------|---------|-------------|
@@ -104,20 +159,18 @@ AW/AR payload 不重複儲存 qos，header 為唯一來源。Response flit 繼�
 
 Router 依據 `axi_ch` 判定 flit 所屬之 Request 或 Response network。
 
-#### 2.2.3 Node ID (src_id / dst_id, 8 bits each)
+#### 2.2.3 Node ID (src_id / dst_id, `X_WIDTH + Y_WIDTH` bits each)
 
-採用 8-bit 座標編碼（[7:4]=y, [3:0]=x）：
+採用座標編碼：
 
 | Bits | Field | Description |
 |------|-------|-------------|
-| [3:0] | x | X coordinate (0\~15) |
-| [7:4] | y | Y coordinate (0\~15) |
+| `[X_WIDTH-1:0]` | x | X coordinate (預設 4 bits, 0\~15) |
+| `[X_WIDTH+Y_WIDTH-1:X_WIDTH]` | y | Y coordinate (預設 4 bits, 0\~15) |
 
 XY routing 依據 dst_id 的 x/y 座標進行路由決策。src_id 用於 response 回程路由及 error handling 來源識別。src_id 置於 dst_id 前方的理由見 Section 2.3。
 
-> **Multicast 模式**: 當 `commtype=1` 時，路由改用 `multicast_mask`（16 bits）中的 RCR bounding box 座標，`dst_id` 不參與路由（don't care）。詳見 Section 2.2.8。
-
-#### 2.2.4 Port ID (port_id, 2 bits)
+#### 2.2.4 Port ID (`PORT_ID_WIDTH` = 2 bits)
 
 獨立於 node ID，指定目標 Router 的 local port：
 
@@ -130,7 +183,7 @@ XY routing 依據 dst_id 的 x/y 座標進行路由決策。src_id 用於 respon
 
 Request 時指定目標 local port；response 時 NI 填入原始 requester 的 `port_id`。
 
-#### 2.2.5 Flit Control: last (1 bit)
+#### 2.2.5 Flit Control: last (`LAST_WIDTH` = 1 bit)
 
 | Value | Meaning |
 |-------|---------|
@@ -139,90 +192,35 @@ Request 時指定目標 local port；response 時 NI 填入原始 requester 的 
 
 Wormhole switching 依據 `last` 釋放 path lock。Single-flit packet（AW, AR, B）恆為 `last=1`；multi-flit packet（W, R）僅末尾設 `last=1`。
 
-#### 2.2.6 RoB Fields: rob_req (1 bit), rob_idx (5 bits)
+#### 2.2.6 RoB Fields: rob_req (`ROB_REQ_WIDTH` = 1 bit), rob_idx (`ROB_IDX_WIDTH` = 5 bits)
 
 | Field | Width | Description |
 |-------|-------|-------------|
-| rob_req | 1 | 1 = request RoB reorder; 0 = no reorder |
-| rob_idx | 5 | RoB entry index (0\~31) |
+| rob_req | `ROB_REQ_WIDTH` | 1 = request RoB reorder; 0 = no reorder |
+| rob_idx | `ROB_IDX_WIDTH` | RoB entry index (預設 5b → 0\~31) |
 
 Source NI 分配 `rob_idx`，destination NI 依此 index 將 response 寫入對應 RoB slot。`rob_req=0` 時 `rob_idx` 為 don't care。RoB 架構見 Section 5。
 
-#### 2.2.7 Communication Type (commtype, 2 bits)
+#### 2.2.7 Reserved: rsvd_commtype (`RSVD_COMMTYPE_WIDTH` = 2 bits)
 
-Communication Type 定義：
+預留欄位，當前所有傳輸視為 Unicast。寬度預設 2 bits 為未來通訊類型擴展（例如 multicast、reduction 等）保留位置，編碼方式 **TBD**。傳輸時設為 0，接收端忽略。
 
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | Unicast | Single destination (default) |
-| 1 | Multicast | Multi-destination broadcast (bounding box) |
-| 2 | ParallelReduction | In-network response reduction (B channel) |
-| 3 | Reserved | — |
+#### 2.2.8 Reserved: multicast (`MULTICAST_WIDTH` = 8 bits)
 
-**commtype 轉換規則**：Dest NI 收到 `commtype=1`（Multicast）的 AW flit 後，產生的 B response flit 設為 `commtype=2`（ParallelReduction）。Response Router 據此在 backward path 逐 hop 合併 B response。詳見 [Router Specification](03_router.md) Section 10.3 及 [NI Specification](04_network_interface.md) Section 9。
-
-#### 2.2.8 Multicast Bounding Box (multicast_mask, 16 bits)
-
-當 `commtype=1`（Multicast）或 `commtype=2`（ParallelReduction）時，`multicast_mask`（16 bits）採用 **RCR (Rectangle Coordinate-Range)** 編碼，以 `(min, max)` 座標對表達任意軸對齊矩形，不受 power-of-2 對齊限制。詳見 [RCR-Multicast Spec](07_multicast.md)。
-
-> **ParallelReduction 時的 multicast_mask**：B response flit 複製原始 Multicast AW flit 的 `multicast_mask`，使 Response Router 能用相同的 RCR 公式計算 `in_route_mask`。
-
-**multicast_mask 內部編碼（16 bits, [49:34]）：**
-
-| Mask Bits | Header Bits | Field | Width | Description |
-|-----------|-------------|-------|-------|-------------|
-| [15:12] | [49:46] | x_min | 4 | 矩形左邊界（含） |
-| [11:8] | [45:42] | x_max | 4 | 矩形右邊界（含） |
-| [7:4] | [41:38] | y_min | 4 | 矩形下邊界（含） |
-| [3:0] | [37:34] | y_max | 4 | 矩形上邊界（含） |
-
-對應 RCR spec 之 `multicast_hdr_t`：
-
-```
-multicast_mask = {x_min[3:0], x_max[3:0], y_min[3:0], y_max[3:0]}   // [49:34]
-
-矩形範圍：X ∈ [x_min, x_max], Y ∈ [y_min, y_max]
-目標節點數 = (x_max - x_min + 1) × (y_max - y_min + 1)
-```
-
-**Multicast 時各欄位語義：**
-
-| Field | Unicast (commtype=0) | Multicast (commtype=1) |
-|-------|---------------------|----------------------|
-| `dst_id` [22:15] | 目標 node ID（[7:4]=y, [3:0]=x） | Don't care（不參與路由） |
-| `multicast_mask` [49:34] | Don't care (=0) | RCR bounding box `{x_min, x_max, y_min, y_max}` |
-
-RCR 路由使用 `src_id`（取得 source 座標）與 `multicast_mask`（取得矩形邊界），`dst_id` 不參與 multicast 路由。
-
-**有效性約束：**
-1. `x_min <= x_max <= MAX_X` (MAX_X = mesh_cols - 1)
-2. `y_min <= y_max <= MAX_Y` (MAX_Y = mesh_rows - 1)
-3. Source 應位於矩形內或邊界上
-
-**退化情形（無需特殊硬體）：**
-
-| 模式 | 編碼 |
-|------|------|
-| Unicast 至 (dx, dy) | x_min=x_max=dx, y_min=y_max=dy |
-| 全網 Broadcast | (0, MAX_X, 0, MAX_Y) |
-| 整行/整列 | 固定一軸 min=max，另一軸全展開 |
-
-**Example:** `multicast_mask={x_min=2, x_max=4, y_min=1, y_max=3}` → X ∈ [2,4], Y ∈ [1,3]，共 3×3=9 nodes。
-
-Multicast 僅適用 Request channel（AW/W）。Response 使用 **ParallelReduction**（`commtype=2`）在 Response Router 中逐 hop 合併 B response，Source NMU 僅收到 **1 個**已合併的 B response。詳見 [Router Specification](03_router.md) Section 10.3 及 [NI Specification](04_network_interface.md) Section 9。
+預留欄位。寬度預設 8 bits 為未來 multicast 編碼方案保留位置（例如 destination mask、bounding box 或其他形式），**編碼方式與路由行為均未定義**。傳輸時設為 0，接收端忽略。
 
 #### 2.2.9 VC ID & Reserved
 
-**vc_id (3 bits, Credit-Based mode only):**
+**vc_id (`VC_ID_WIDTH` = 3 bits, Credit-Based mode only):**
 
-支援最多 8 個 Virtual Channels（bit [52:50]）。用途含 Request/Response 分離避免 deadlock、traffic class 隔離。Valid/Ready mode 中此 3 bits 歸入 reserved。
+支援最多 `2^VC_ID_WIDTH` 個 Virtual Channels（預設 8）。用途含 Request/Response 分離避免 deadlock、traffic class 隔離。Valid/Ready mode 中此 bits 歸入 reserved。
 
 **Reserved bits:**
 
-| Mode | Bit Range | Width |
-|------|-----------|-------|
-| Valid/Ready (No-VC) | [55:50] | 6 |
-| Credit-Based (With-VC) | [55:53] | 3 |
+| Mode | Bit Range (default) | Width Formula |
+|------|---------------------|---------------|
+| Valid/Ready (No-VC) | [47:42] | `VC_ID_WIDTH + 3` (=6) |
+| Credit-Based (With-VC) | [47:45] | 3 |
 
 傳輸時設為 0，接收端忽略。
 
@@ -235,117 +233,106 @@ Multicast 僅適用 Request channel（AW/W）。Response 使用 **ParallelReduct
 | 3 | Routing | src_id, dst_id, port_id | XY routing, local port selection |
 | 4 | Flit Control | last | Wormhole path lock release |
 | 5 | Flow Control | rob_req, rob_idx | Destination NI processing |
-| 6 | Multicast | commtype, multicast_mask | Bounding box routing |
+| 6 | Reserved | rsvd_commtype, multicast | Future extension |
 | 7 | VC / Reserved | vc_id, rsvd | Version-dependent |
 
-高頻存取欄位置於 LSB 端，第一級 pipeline 僅需 qos + axi_ch 即可完成 arbitration 與 channel 分離。Multicast 與 reserved 置於 MSB 端，未來擴展不影響既有 bit position。
+高頻存取欄位置於 LSB 端，第一級 pipeline 僅需 qos + axi_ch 即可完成 arbitration 與 channel 分離。Reserved 欄位置於 MSB 端，未來擴展不影響既有 bit position。
 
 src_id 置於 dst_id 前方：response 路由以 src_id 為回程目的地，error handling 需優先識別來源。
 
-### 2.4 Bit Layout Diagrams
+### 2.4 Bit Layout Diagrams (default values)
 
 #### Valid/Ready Mode (No-VC)
 
 ```
- 55    50 49              34 33 32 31    27  26   25  24 23 22    15 14     7  6  4  3  0
-┌───────┬─────────────────┬─────┬──────┬────┬────┬─────┬────────┬────────┬─────┬──────┐
-│ rsvd  │ multicast_mask   │comm │ rob  │rob │last│port │ dst_id │ src_id │ axi │ qos  │
-│  6b   │      16b         │type │idx 5b│req │ 1b │id 2b│   8b   │   8b   │ch 3b│  4b  │
-│       │{xmin,xmax,       │ 2b  │      │ 1b │    │     │        │        │     │      │
-│       │ ymin,ymax}       │     │      │    │    │     │        │        │     │      │
-└───────┴─────────────────┴─────┴──────┴────┴────┴─────┴────────┴────────┴─────┴──────┘
+ 47    42 41         34 33 32 31    27  26   25  24 23 22    15 14     7  6  4  3  0
+┌───────┬─────────────┬─────┬──────┬────┬────┬─────┬────────┬────────┬─────┬──────┐
+│ rsvd  │  multicast  │rsvd_│ rob  │rob │last│port │ dst_id │ src_id │ axi │ qos  │
+│  6b   │   8b        │comm │idx 5b│req │ 1b │id 2b│   8b   │   8b   │ch 3b│  4b  │
+│       │ (reserved)  │type │      │ 1b │    │     │        │        │     │      │
+│       │             │ 2b  │      │    │    │     │        │        │     │      │
+└───────┴─────────────┴─────┴──────┴────┴────┴─────┴────────┴────────┴─────┴──────┘
 ```
 
 #### Credit-Based Mode (With-VC)
 
 ```
- 55 53 52 50 49              34 33 32 31    27  26   25  24 23 22    15 14     7  6  4  3  0
-┌────┬────┬─────────────────┬─────┬──────┬────┬────┬─────┬────────┬────────┬─────┬──────┐
-│rsvd│ vc │ multicast_mask   │comm │ rob  │rob │last│port │ dst_id │ src_id │ axi │ qos  │
-│ 3b │id 3b│      16b        │type │idx 5b│req │ 1b │id 2b│   8b   │   8b   │ch 3b│  4b  │
-│    │    │{xmin,xmax,       │ 2b  │      │ 1b │    │     │        │        │     │      │
-│    │    │ ymin,ymax}       │     │      │    │    │     │        │        │     │      │
-└────┴────┴─────────────────┴─────┴──────┴────┴────┴─────┴────────┴────────┴─────┴──────┘
+ 47 45 44 42 41         34 33 32 31    27  26   25  24 23 22    15 14     7  6  4  3  0
+┌────┬────┬─────────────┬─────┬──────┬────┬────┬─────┬────────┬────────┬─────┬──────┐
+│rsvd│ vc │  multicast  │rsvd_│ rob  │rob │last│port │ dst_id │ src_id │ axi │ qos  │
+│ 3b │id 3b│   8b       │comm │idx 5b│req │ 1b │id 2b│   8b   │   8b   │ch 3b│  4b  │
+│    │    │ (reserved)  │type │      │ 1b │    │     │        │        │     │      │
+│    │    │             │ 2b  │      │    │    │     │        │        │     │      │
+└────┴────┴─────────────┴─────┴──────┴────┴────┴─────┴────────┴────────┴─────┴──────┘
 ```
 
 ---
 
-## 3. Payload Format (352 bits max)
+## 3. Payload Format
 
-所有 payload union-aligned 至 352 bits（由 W/R channel 主導），較短 payload 以 zero-padding 補齊。
+各 channel payload 以 union 方式共享 `PAYLOAD_WIDTH`（預設 352 bits，由 W/R channel 主導），較短 payload 以 zero-padding 補齊。
 
-### 3.1 AW/AR Channel Payload (108 bits)
+### 3.1 AW/AR Channel Payload (`AW_PAYLOAD_WIDTH` / `AR_PAYLOAD_WIDTH` = 108 bits)
 
 AW 與 AR 結構相同，以下以 AW 為例。AR 各欄位將 `aw` 前綴替換為 `ar`。
 
-| Field | Bit Range | Width | Description |
-|-------|-----------|-------|-------------|
-| awid | [7:0] | 8 | Transaction ID |
-| awaddr | [71:8] | 64 | Write address |
-| awlen | [79:72] | 8 | Burst length (0\~255) |
-| awsize | [82:80] | 3 | Burst size |
-| awburst | [84:83] | 2 | Burst type |
-| awcache | [88:85] | 4 | Cache attributes |
-| awlock | [89] | 1 | Exclusive access |
-| awprot | [92:90] | 3 | Protection type |
-| awregion | [96:93] | 4 | Memory region identifier |
-| awuser | [104:97] | 8 | AXI user signal |
-| aw_rsvd | [107:105] | 3 | Reserved (alignment) |
-| | | **108** | |
+| Field | Width Symbol | Default Range | Description |
+|-------|--------------|---------------|-------------|
+| awid | `AXI_ID_WIDTH` | [7:0] | Transaction ID |
+| awaddr | `AXI_ADDR_WIDTH` | [71:8] | Write address |
+| awlen | `AXI_LEN_WIDTH` | [79:72] | Burst length (0\~255) |
+| awsize | `AXI_SIZE_WIDTH` | [82:80] | Burst size |
+| awburst | `AXI_BURST_WIDTH` | [84:83] | Burst type |
+| awcache | `AXI_CACHE_WIDTH` | [88:85] | Cache attributes |
+| awlock | `AXI_LOCK_WIDTH` | [89] | Exclusive access |
+| awprot | `AXI_PROT_WIDTH` | [92:90] | Protection type |
+| awregion | `AXI_REGION_WIDTH` | [96:93] | Memory region identifier |
+| awuser | `AXI_USER_WIDTH` | [104:97] | AXI user signal |
+| aw_rsvd | derived (3) | [107:105] | Reserved (alignment) |
+| | **AW_PAYLOAD_WIDTH** | | |
 
-### 3.2 W Channel Payload (352 bits)
+### 3.2 W Channel Payload (`W_PAYLOAD_WIDTH` = 352 bits)
 
-| Field | Bit Range | Width | Description |
-|-------|-----------|-------|-------------|
-| wlast | [0] | 1 | Last beat marker |
-| wuser | [8:1] | 8 | AXI user signal |
-| wdata | [264:9] | 256 | Write data |
-| wstrb | [296:265] | 32 | Write strobe (per-byte enable) |
-| wecc | [328:297] | 32 | ECC (SECDED per 64-bit granule) |
-| w_rsvd | [351:329] | 23 | Reserved |
-| | | **352** | |
+| Field | Width Symbol | Default Range | Description |
+|-------|--------------|---------------|-------------|
+| wlast | `AXI_LAST_WIDTH` | [0] | Last beat marker |
+| wuser | `AXI_USER_WIDTH` | [8:1] | AXI user signal |
+| wdata | `AXI_DATA_WIDTH` | [264:9] | Write data |
+| wstrb | `WSTRB_WIDTH` | [296:265] | Write strobe (per-byte enable) |
+| wecc | `ECC_WIDTH` | [328:297] | ECC (SECDED per granule) |
+| w_rsvd | derived (23) | [351:329] | Reserved |
+| | **W_PAYLOAD_WIDTH** | | |
 
-`wecc`：每 64-bit wdata granule 產生 8-bit SECDED ECC，4 granules × 8 bits = 32 bits。由 responder 驗證，錯誤透過 `bresp` 回報。
+`wecc`：每 `ECC_GRANULE_WIDTH` bits wdata granule 產生 `ECC_PER_GRANULE_WIDTH` bits SECDED ECC，總計 `(AXI_DATA_WIDTH / ECC_GRANULE_WIDTH) × ECC_PER_GRANULE_WIDTH` bits（預設 32 bits）。由 responder 驗證，錯誤透過 `bresp` 回報。
 
-### 3.3 B Channel Payload (64 bits)
+### 3.3 B Channel Payload (`B_PAYLOAD_WIDTH` = 64 bits)
 
-| Field | Bit Range | Width | Description |
-|-------|-----------|-------|-------------|
-| bid | [7:0] | 8 | Write transaction ID |
-| bresp | [9:8] | 2 | Write response status |
-| buser | [17:10] | 8 | AXI user signal |
-| ecc_fail | [18] | 1 | ECC error detected (SECDED uncorrectable) |
-| multicast_status | [20:19] | 2 | Multicast completion status |
-| b_rsvd | [63:21] | 43 | Reserved |
-| | | **64** | |
+| Field | Width Symbol | Default Range | Description |
+|-------|--------------|---------------|-------------|
+| bid | `AXI_ID_WIDTH` | [7:0] | Write transaction ID |
+| bresp | `AXI_RESP_WIDTH` | [9:8] | Write response status |
+| buser | `AXI_USER_WIDTH` | [17:10] | AXI user signal |
+| ecc_fail | `ECC_FAIL_WIDTH` | [18] | ECC error detected (SECDED uncorrectable) |
+| rsvd_mc_status | `RSVD_MC_STATUS_WIDTH` | [20:19] | Reserved (future multicast status) |
+| b_rsvd | derived (43) | [63:21] | Reserved |
+| | **B_PAYLOAD_WIDTH** | | |
 
-**multicast_status encoding:**
+`ecc_fail` 為 NoC 內部欄位，NI 記錄於 CSR，AXI interface 透過 `bresp` 回報（任一錯誤 → SLVERR）。`buser` 為 AXI user signal pass-through。`rsvd_mc_status` 預留供未來 multicast status 編碼，當前傳輸時設 0、接收端忽略。
 
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | UNICAST | Non-multicast transaction |
-| 1 | MC_ALL_OK | All destinations succeeded |
-| 2 | MC_PARTIAL | Partial failure |
-| 3 | MC_ALL_FAIL | All destinations failed |
+### 3.4 R Channel Payload (`R_PAYLOAD_WIDTH` = 352 bits)
 
-`ecc_fail` 與 `multicast_status` 為 NoC 內部欄位，NI 記錄於 CSR，AXI interface 透過 `bresp` 回報（任一錯誤 → SLVERR）。`buser` 為 AXI user signal pass-through。
+| Field | Width Symbol | Default Range | Description |
+|-------|--------------|---------------|-------------|
+| rlast | `AXI_LAST_WIDTH` | [0] | Last beat marker |
+| rid | `AXI_ID_WIDTH` | [8:1] | Read transaction ID |
+| rresp | `AXI_RESP_WIDTH` | [10:9] | Read response status |
+| ruser | `AXI_USER_WIDTH` | [18:11] | AXI user signal |
+| rdata | `AXI_DATA_WIDTH` | [274:19] | Read data |
+| recc | `ECC_WIDTH` | [306:275] | ECC (SECDED per granule) |
+| r_rsvd | derived (45) | [351:307] | Reserved |
+| | **R_PAYLOAD_WIDTH** | | |
 
-Multicast response aggregation：多個 destination 的 B response 經 ParallelReduction 在 source NI 彙整 — 全部 OKAY → MC_ALL_OK，部分非 OKAY → MC_PARTIAL，全部非 OKAY → MC_ALL_FAIL。Multicast 下 `ecc_fail` 表示任一 destination 偵測到 uncorrectable error。Aggregation 機制詳見 [NI Specification](04_network_interface.md)。
-
-### 3.4 R Channel Payload (352 bits)
-
-| Field | Bit Range | Width | Description |
-|-------|-----------|-------|-------------|
-| rlast | [0] | 1 | Last beat marker |
-| rid | [8:1] | 8 | Read transaction ID |
-| rresp | [10:9] | 2 | Read response status |
-| ruser | [18:11] | 8 | AXI user signal |
-| rdata | [274:19] | 256 | Read data |
-| recc | [306:275] | 32 | ECC (SECDED per 64-bit granule) |
-| r_rsvd | [351:307] | 45 | Reserved |
-| | | **352** | |
-
-`recc`：每 64-bit rdata granule 產生 8-bit SECDED ECC，共 32 bits。由 requester 驗證，錯誤由軟體處理。
+`recc`：與 `wecc` 同公式產生（預設 32 bits）。由 requester 驗證，錯誤由軟體處理。
 
 ### 3.5 W/R Layout Convention
 
@@ -353,22 +340,22 @@ W 與 R channel 採用相同欄位排列慣例：control fields → data → ECC
 
 | Aspect | W Channel | R Channel |
 |--------|-----------|-----------|
-| Transaction ID | N/A (AXI4 removed WID) | rid (8b) |
-| Response status | N/A | rresp (2b) |
-| Byte enable | wstrb (32b) | N/A |
-| Data | wdata (256b) | rdata (256b) |
-| ECC | wecc (32b) | recc (32b) |
+| Transaction ID | N/A (AXI4 removed WID) | rid (`AXI_ID_WIDTH`) |
+| Response status | N/A | rresp (`AXI_RESP_WIDTH`) |
+| Byte enable | wstrb (`WSTRB_WIDTH`) | N/A |
+| Data | wdata (`AXI_DATA_WIDTH`) | rdata (`AXI_DATA_WIDTH`) |
+| ECC | wecc (`ECC_WIDTH`) | recc (`ECC_WIDTH`) |
 
 ### 3.6 ECC Design
 
-採用 SECDED（Single Error Correct, Double Error Detect）取代 DataCheck（odd parity per 8-bit）。
+採用 SECDED（Single Error Correct, Double Error Detect）。
 
-| Parameter | Value |
-|-----------|-------|
-| Data granule | 64 bits |
-| ECC per granule | 8 bits (Hsiao SECDED) |
-| Granules per 256-bit data | 4 |
-| Total ECC width | 32 bits |
+| Parameter | Value (default) |
+|-----------|-----------------|
+| Data granule | `ECC_GRANULE_WIDTH` (=64) |
+| ECC per granule | `ECC_PER_GRANULE_WIDTH` (=8, Hsiao SECDED) |
+| Granules per data word | `AXI_DATA_WIDTH / ECC_GRANULE_WIDTH` (=4) |
+| Total ECC width | `ECC_WIDTH` (=32) |
 | Error correction | 1-bit per granule |
 | Error detection | 2-bit per granule |
 
@@ -384,25 +371,25 @@ Source NI (generate) → Router (pass-through) → ... → Dest NI (check)
 
 ### 3.7 Union Alignment & Utilization
 
-各 channel payload 以 union 方式共享 352-bit 空間：
+各 channel payload 以 union 方式共享 `PAYLOAD_WIDTH` 空間：
 
 | Channel | Network | Actual Payload | Padding | Flit Total |
 |---------|---------|---------------|---------|------------|
-| AW | REQ | 108 | 244 | 408 |
-| W | REQ | 352 | 0 | 408 |
-| AR | REQ | 108 | 244 | 408 |
-| B | RSP | 64 | 288 | 408 |
-| R | RSP | 352 | 0 | 408 |
+| AW | REQ | 108 | 244 | 400 |
+| W | REQ | 352 | 0 | 400 |
+| AR | REQ | 108 | 244 | 400 |
+| B | RSP | 64 | 288 | 400 |
+| R | RSP | 352 | 0 | 400 |
 
-**Effective utilization**（非 reserved 欄位佔 352-bit payload 比例）：
+**Effective utilization**（非 reserved 欄位佔 `PAYLOAD_WIDTH` 比例，預設值）：
 
 | Channel | Effective Bits | Utilization |
 |---------|---------------|-------------|
 | W | 329 (last+user+data+strb+ecc) | 93.5% |
 | R | 307 (last+id+resp+user+data+ecc) | 87.2% |
-| AW | 108 | 30.7% |
-| AR | 108 | 30.7% |
-| B | 21 (id+resp+user+ecc_fail+mc_status) | 6.0% |
+| AW | 105 (id+addr+len+size+burst+cache+lock+prot+region+user) | 29.8% |
+| AR | 105 | 29.8% |
+| B | 19 (id+resp+user+ecc_fail) | 5.4% |
 
 典型 burst write（awlen=15）組成 1×AW + 16×W + 1×B = 18 flits，W flit 佔 89%，整體 padding waste 約 8%。單次傳輸（awlen=0）padding waste 約 50%，但 burst workload 下整體 link utilization 仍屬高效。
 
@@ -420,19 +407,19 @@ Request link 與 Response link 結構對稱，差異僅在 flit data 欄位名�
 |-------|-----|-------|-------------|
 | valid | [0] | 1 | Data valid |
 | ready | [1] | 1 | Receiver ready |
-| flit | [409:2] | 408 | Flit data (req or rsp) |
-| | | **410** | |
+| flit | `[FLIT_WIDTH+1:2]` | `FLIT_WIDTH` | Flit data (req or rsp) |
+| | | **`LINK_WIDTH`** | |
 
-兩版 header 的 physical link 寬度相同 — version 差異僅在 header 內部 bit 解釋，不影響 wire width。
+預設 `LINK_WIDTH = 402` bits。兩版 header 的 physical link 寬度相同 — version 差異僅在 header 內部 bit 解釋，不影響 wire width。
 
 ### 4.2 Flow Control Modes
 
 | Feature | Handshake (Ver. A) | Credit-Based (Ver. B) |
 |---------|--------------------------|--------------------------|
 | VC identification | Signal-level (per-VC valid/ready) | Header `vc_id` field |
-| Wires per link | NumVC × 410 | 410 (shared) |
-| Wire count (4 VC) | 1,640 wires/dir | 410 wires/dir |
-| Header overhead | 0 bits | 3 bits (from rsvd) |
+| Wires per link | `NumVC × LINK_WIDTH` | `LINK_WIDTH` (shared) |
+| Wire count (4 VC, default) | 1,608 wires/dir | 402 wires/dir |
+| Header overhead | 0 bits | `VC_ID_WIDTH` (=3) (from rsvd) |
 | Arbitration | Per-VC at receiver | Muxed at sender |
 
 ASIC 實作推薦 Credit-Based mode — wire count 不隨 VC 數增長，適合高 VC 數與 wire-constrained 場景。Valid/Ready mode 適用 VC ≤ 2 且無需 credit tracking 的簡化設計。
@@ -472,7 +459,7 @@ ASIC 實作推薦 Credit-Based mode — wire count 不隨 VC 數增長，適合�
 └───────────────────────────────────────────────────────────┘
 ```
 
-每個 NI 擁有獨立 32-entry RoB（per-source-NI），所有 outstanding transactions 共享（跨 axi_id 與 destination）。Source NI 於發送 request 時分配 `rob_idx`，response 攜帶相同 index 返回。
+每個 NI 擁有獨立 `2^ROB_IDX_WIDTH`-entry RoB（預設 32），所有 outstanding transactions 共享（跨 axi_id 與 destination）。Source NI 於發送 request 時分配 `rob_idx`，response 攜帶相同 index 返回。
 
 同一 `axi_id` 的多筆 outstanding transactions 各佔一個 rob_idx，per-ID ordering 由 Status Table 保證 — 同 ID responses 依 rob_idx 分配順序依序 release。
 
@@ -480,57 +467,56 @@ ASIC 實作推薦 Credit-Based mode — wire count 不隨 VC 數增長，適合�
 
 ## 6. Functionality Supported by Packet Design
 
-- **XY Routing** — `src_id` (8b), `dst_id` (8b)
-  - 座標編碼（[7:4]=y, [3:0]=x），Router 從 `dst_id` 提取座標進行 X-first then Y routing
+- **XY Routing** — `src_id`, `dst_id` (`X_WIDTH + Y_WIDTH` each)
+  - 座標編碼，Router 從 `dst_id` 提取座標進行 X-first then Y routing
   - `src_id` 用於 response 回程路由與 error handling 來源識別
-  - 支援最大 16×16 mesh（256 nodes）
+  - 預設支援最大 16×16 mesh（256 nodes）
 
-- **Wormhole Switching & AXI Response Interleaving** — `last` (1b)
+- **Wormhole Switching & AXI Response Interleaving** — `last` (`LAST_WIDTH`)
   - Packet-level path lock，`last=1` 釋放路徑
   - Single-flit packet（AW, AR, B）恆為 `last=1`；multi-flit（W, R）僅末尾設 `last=1`
   - 支援 AXI read data interleaving：不同 `rid` 的 R packet 可在 packet boundary 交錯傳輸
 
-- **Multi-port Addressing** — `port_id` (2b)
-  - 每 Router 最多 4 local ports（CPU / DMA / MemCtrl / Accelerator）
+- **Multi-port Addressing** — `port_id` (`PORT_ID_WIDTH`)
+  - 每 Router 最多 `2^PORT_ID_WIDTH` 個 local ports（預設 4：CPU / DMA / MemCtrl / Accelerator）
   - Response 時填入原始 requester 的 `port_id` 確保回程正確
 
-- **QoS Arbitration** — `qos` (4b)
-  - 16 級優先級（0=Best Effort, 15=Real-time Critical）
+- **QoS Arbitration** — `qos` (`QOS_WIDTH`)
+  - `2^QOS_WIDTH` 級優先級（預設 16：0=Best Effort, 15=Real-time Critical）
   - 置於 header LSB 端，支援單級 pipeline partial decode
 
-- **Virtual Channel** — `vc_id` (3b, Credit-Based mode), `rsvd` (Valid/Ready mode)
+- **Virtual Channel** — `vc_id` (`VC_ID_WIDTH`, Credit-Based mode), rsvd (Valid/Ready mode)
   - Valid/Ready mode：signal-level VC（多組 valid/ready lines）
-  - Credit-Based mode：header-level VC（max 8 VCs），搭配 credit-based flow control
+  - Credit-Based mode：header-level VC（max `2^VC_ID_WIDTH` VCs，預設 8），搭配 credit-based flow control
   - 用途：Req/Rsp 分離避免 deadlock、traffic class 隔離
 
-- **Multicast & Reduction** — `commtype` (2b), `multicast_mask` (16b)
-  - 16-bit RCR bounding box `{x_min, x_max, y_min, y_max}` 編碼任意軸對齊矩形
-  - Request 使用 Multicast broadcast，Response 使用 ParallelReduction gather
-
-- **Out-of-Order Completion** — `rob_req` (1b), `rob_idx` (5b)
-  - 32-entry RoB per NI，跨 axi_id 與 destination 共享
+- **Out-of-Order Completion** — `rob_req` (`ROB_REQ_WIDTH`), `rob_idx` (`ROB_IDX_WIDTH`)
+  - `2^ROB_IDX_WIDTH`-entry RoB per NI（預設 32），跨 axi_id 與 destination 共享
   - 允許 response 亂序返回，由 destination NI 依 `rob_idx` 重排
 
-- **AXI Protocol Mapping** — `axi_ch` (3b), 5 channel payloads (352b max)
+- **AXI Protocol Mapping** — `axi_ch` (`AXI_CH_WIDTH`), 5 channel payloads (`PAYLOAD_WIDTH` max)
   - 五通道 union-aligned：W/R 佔滿 352b（utilization 87\~93%），AW/AR 108b，B 64b
   - 典型 burst（awlen=15）整體 padding waste 約 8%
 
-- **End-to-End Data Integrity** — `wecc`/`recc` (32b), `ecc_fail` (1b)
-  - SECDED ECC per 64-bit granule：1-bit correct, 2-bit detect
+- **End-to-End Data Integrity** — `wecc`/`recc` (`ECC_WIDTH`), `ecc_fail` (`ECC_FAIL_WIDTH`)
+  - SECDED ECC per granule：1-bit correct, 2-bit detect
   - 保護範圍：Source NI generate → Router pass-through → Dest NI check
 
-- **Dual Physical Network** — Req/Rsp link (410b each)
+- **Dual Physical Network** — Req/Rsp link (`LINK_WIDTH` each)
   - 獨立 full-duplex link，消除 Req-Rsp circular dependency（protocol deadlock avoidance）
-  - 每方向每 cycle 32 bytes，Req/Rsp 對稱且 flit 寬度統一（408b）
+  - 每方向每 cycle `AXI_DATA_WIDTH/8` bytes（預設 32），Req/Rsp 對稱且 flit 寬度統一（預設 400b）
+
+- **Reserved for Future Extension** — `rsvd_commtype` (`RSVD_COMMTYPE_WIDTH`), `multicast` (`MULTICAST_WIDTH`), `rsvd_mc_status` (`RSVD_MC_STATUS_WIDTH`)
+  - Header 預留 10 bits、B payload 預留 2 bits 供未來通訊類型 / multicast 擴展使用，當前編碼 TBD
 
 ---
 
 ## 7. Limitations & Out-of-Scope
 
 - **AXI4-Stream / Atomic Operations** — 不在本設計範圍。僅支援 AXI4 五通道（AW/W/AR/B/R）
-- **Header integrity** — ECC 僅保護 payload data（wdata/rdata），不涵蓋 56-bit header 及 payload metadata（wstrb、axi_id 等）。Header integrity 依賴 physical link layer（wire-level parity 或 CRC）。`dst_id` bit flip 將導致 misrouting
-- **Multicast bounding box** — 16-bit RCR 編碼可表達任意軸對齊矩形，不受 power-of-2 對齊限制。但 L 形、對角線、稀疏子集等非矩形區域無法精確表達，需由軟體分解為多個矩形封包或 unicast
-- **RoB sizing** — 32 entries 基於典型 embedded SoC workload（CPU + DMA）。高 outstanding 需求（如 GPU）可能需擴展 `ROB_IDX_WIDTH`
+- **Header integrity** — ECC 僅保護 payload data（wdata/rdata），不涵蓋 header 及 payload metadata（wstrb、axi_id 等）。Header integrity 依賴 physical link layer（wire-level parity 或 CRC）。`dst_id` bit flip 將導致 misrouting
+- **Multicast / Reduction** — 本文件不定義；`rsvd_commtype` / `multicast` / `rsvd_mc_status` 為預留欄位，編碼方式 TBD
+- **RoB sizing** — `ROB_IDX_WIDTH=5`（32 entries）基於典型 embedded SoC workload（CPU + DMA）。高 outstanding 需求（如 GPU）可能需擴展
 
 ---
 
@@ -541,4 +527,3 @@ ASIC 實作推薦 Credit-Based mode — wire count 不隨 VC 數增長，適合�
 - [Network Interface Specification](04_network_interface.md)
 - [Physical Channel Architecture](05_physical_channel.md)
 - [Width Converter](10_width_converter.md)
-

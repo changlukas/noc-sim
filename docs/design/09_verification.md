@@ -38,7 +38,6 @@
 | NMU | flit packing (AW/W/AR), RoB allocate/release | 12 |
 | NSU | flit unpacking, W reassembly, B/R response | 10 |
 | ECC | generate/check round-trip, 1-bit correct, 2-bit detect | 6 |
-| ReductionSync/Arbiter | in-network B reduction, partial/all-ok/all-fail | 6 |
 | AddressTranslation | XY offset mode, SAM table mode | 4 |
 
 ---
@@ -56,15 +55,13 @@
 | IT-05 | Burst Read (arlen=15) | NMU→Mesh→NSU→Mesh→NMU | Multi-flit R response |
 | IT-06 | 交叉流量衝突 | 2 NMU→同一 Router port | QoS arbitration, backpressure |
 | IT-07 | Wormhole stall 傳播 | 長 burst + buffer 滿 | Backpressure propagation |
-| IT-08 | Multicast Write | NMU→4 NSU | B response aggregation |
-| IT-09 | Read-after-Write | Write 完成後 Read 同地址 | Data consistency |
-| IT-10 | Max outstanding | 32 pending transactions | RoB full backpressure |
-| IT-11 | Multi-ID reorder | 不同 axi_id 的 response OoO | RoB per-ID ordering |
-| IT-12 | Credit exhaustion | 持續注入至 credit=0 | Flow control correctness |
-| IT-13 | ECC single-bit error | 注入 1-bit error | ECC correction |
-| IT-14 | ECC double-bit error | 注入 2-bit error | ECC detection, SLVERR |
-| IT-15 | Multicast timeout | 一個 NSU 不回應 | Timeout mechanism |
-| IT-16 | Width Converter | up/down conversion | Data integrity through converter |
+| IT-08 | Read-after-Write | Write 完成後 Read 同地址 | Data consistency |
+| IT-09 | Max outstanding | 32 pending transactions | RoB full backpressure |
+| IT-10 | Multi-ID reorder | 不同 axi_id 的 response OoO | RoB per-ID ordering |
+| IT-11 | Credit exhaustion | 持續注入至 credit=0 | Flow control correctness |
+| IT-12 | ECC single-bit error | 注入 1-bit error | ECC correction |
+| IT-13 | ECC double-bit error | 注入 2-bit error | ECC detection, SLVERR |
+| IT-14 | Width Converter | up/down conversion | Data integrity through converter |
 
 ---
 
@@ -133,7 +130,6 @@ NMU RoB (response data) ──(3) Compare──► PASS/FAIL
 | Write data integrity | NSU local memory | NMU 注入的原始資料 |
 | Read data integrity | NMU 收到的 R response | NSU local memory 的實際資料 |
 | Response ordering | NMU RoB release 順序 | Per-AXI-ID FIFO 順序 |
-| Multicast completeness | Aggregator | 所有 target node 的 B response |
 | ECC pass-through | Destination NI | Source NI 產生的 ECC 值 |
 
 ---
@@ -167,8 +163,8 @@ MetricsCollector 提供統一的效能指標收集介面，支援時間序列快
 
 | Metric | Formula |
 |--------|---------|
-| Throughput | `bytes_transferred / total_cycles`（以 AXI data 計量，32 bytes/flit） |
-| Link Throughput (上限) | `FLIT_WIDTH / cycle = 408 bits/cycle = 51 bytes/cycle` |
+| Throughput | `bytes_transferred / total_cycles`（以 AXI data 計量，預設 32 bytes/flit） |
+| Link Throughput (上限) | `FLIT_WIDTH / cycle`（預設 400 bits/cycle = 50 bytes/cycle） |
 | Latency | `ejection_cycle - injection_cycle` |
 | Buffer Utilization | `avg_occupancy / total_capacity` |
 
@@ -217,11 +213,10 @@ MetricsCollector 提供統一的效能指標收集介面，支援時間序列快
 |---|------|------|
 | 1 | Smoke test | Single write/read, C++ vs RTL transaction result match |
 | 2 | Stress test | 100 random transactions, all transaction results match |
-| 3 | Corner cases | Buffer full, credit exhaustion, multicast timeout |
+| 3 | Corner cases | Buffer full, credit exhaustion |
 | 4 | Performance | Latency/throughput within 5% tolerance |
-| 5 | Multicast deadlock | Concurrent multicast write，驗證 ReductionSync |
-| 6 | Reset behavior | Reset 後 state 歸零，新 traffic 正常運作 |
-| 7 | Hot-swap drain | Channel drain 後替換元件，flit 不遺失 |
+| 5 | Reset behavior | Reset 後 state 歸零，新 traffic 正常運作 |
+| 6 | Hot-swap drain | Channel drain 後替換元件，flit 不遺失 |
 
 ---
 
@@ -245,14 +240,13 @@ MetricsCollector 提供統一的效能指標收集介面，支援時間序列快
 | XY Routing (all directions) | IT-01, IT-02 |
 | Wormhole lock/unlock | IT-03, IT-07 |
 | QoS arbitration | IT-06 |
-| Credit flow control | IT-12 |
-| Multicast aggregation | IT-08, IT-15 |
-| RoB reorder | IT-10, IT-11 |
-| ECC generate/check | IT-13, IT-14 |
-| Backpressure propagation | IT-07, IT-12 |
-| NMU injection buffer | IT-10 |
+| Credit flow control | IT-11 |
+| RoB reorder | IT-09, IT-10 |
+| ECC generate/check | IT-12, IT-13 |
+| Backpressure propagation | IT-07, IT-11 |
+| NMU injection buffer | IT-09 |
 | NSU W-flit reassembly | IT-03 |
-| Width Converter | IT-16 |
+| Width Converter | IT-14 |
 
 ---
 

@@ -64,14 +64,13 @@ The model supports the following features:
 
 - **2D Mesh Topology** — configurable from 2×2 to 16×16 (up to 256 nodes)
 - **Uniform Router** — all routers identical in structure, no edge/compute distinction
-- **408-bit Fixed Flit** — 56-bit header + 352-bit payload, carrying all five AXI channels (AW, W, AR, B, R) in a unified format
+- **Parameterized Flit** — width fully parameterized; default 400-bit (48-bit header + 352-bit payload), carrying all five AXI channels (AW, W, AR, B, R) in a unified format
 - **XY Deterministic Routing** — X-first then Y, deadlock-free by construction
 - **Wormhole Switching** — head flit reserves the path, `last` bit releases it
 - **Dual Flow Control** — Valid/Ready mode and Credit-Based mode, selected at compile time via template parameter
 - **Req/Rsp Physical Separation** — independent request and response networks, eliminating protocol-level deadlock
 - **QoS-Aware Arbitration** — 16-level priority with round-robin tie-breaking; pluggable allocator (RoundRobin, iSLIP, QoS-Aware RR)
 - **SECDED ECC** — end-to-end data integrity (NMU generates, router passes through, NSU checks)
-- **Multicast** — rectangle bounding box (RCR) multicast with in-network B response reduction
 - **Reorder Buffer** — per-NMU RoB for out-of-order response support
 - **Configurable Channel Delay** — link propagation modelled as N-cycle pipeline
 - **Hot-Swap Interface** — individual routers or NIs replaceable with RTL proxies via DPI-C
@@ -82,38 +81,38 @@ The model supports the following features:
 
 ## Flit Format
 
-All data in the NoC is transported as 408-bit flits — a fixed-width design that eliminates configurable widths and simplifies both RTL implementation and verification. Every flit consists of a 56-bit header and a 352-bit payload. All five AXI channels (AW, W, AR, B, R) share the same flit width; shorter payloads are zero-padded to 352 bits.
+All data in the NoC is transported as parameterized flits whose widths are configurable via symbolic parameters; the default configuration is 400 bits (48-bit header + 352-bit payload). All five AXI channels (AW, W, AR, B, R) share the same flit width; shorter payloads are zero-padded to `PAYLOAD_WIDTH`.
 
-### Header (56 bits)
+### Header (default 48 bits)
 
-The header is common to all flit types. Two modes exist: Valid/Ready (No-VC) and Credit-Based (With-VC), differing only in bits [55:50].
+The header is common to all flit types. Two modes exist: Valid/Ready (No-VC) and Credit-Based (With-VC), differing only in bits [47:42].
 
 ```
- 55    50 49              34 33 32 31    27  26   25  24 23 22    15 14     7  6  4  3  0
-┌───────┬─────────────────┬─────┬──────┬────┬────┬─────┬────────┬────────┬─────┬──────┐
-│vc/rsvd│ multicast_mask   │comm │ rob  │rob │last│port │ dst_id │ src_id │ axi │ qos  │
-│  6b   │      16b         │type │idx 5b│req │ 1b │id 2b│   8b   │   8b   │ch 3b│  4b  │
-│       │{xmin,xmax,       │ 2b  │      │ 1b │    │     │{y,x}   │{y,x}   │     │      │
-│       │ ymin,ymax}       │     │      │    │    │     │        │        │     │      │
-└───────┴─────────────────┴─────┴──────┴────┴────┴─────┴────────┴────────┴─────┴──────┘
+ 47    42 41         34 33 32 31    27  26   25  24 23 22    15 14     7  6  4  3  0
+┌───────┬─────────────┬─────┬──────┬────┬────┬─────┬────────┬────────┬─────┬──────┐
+│vc/rsvd│  multicast  │rsvd_│ rob  │rob │last│port │ dst_id │ src_id │ axi │ qos  │
+│  6b   │     8b      │comm │idx 5b│req │ 1b │id 2b│   8b   │   8b   │ch 3b│  4b  │
+│       │ (reserved)  │type │      │ 1b │    │     │{y,x}   │{y,x}   │     │      │
+│       │             │ 2b  │      │    │    │     │        │        │     │      │
+└───────┴─────────────┴─────┴──────┴────┴────┴─────┴────────┴────────┴─────┴──────┘
 ```
 
 | Bit Range | Field | Width | Description |
 |-----------|-------|-------|-------------|
-| [3:0] | `qos` | 4 | QoS priority (0=best effort, 15=critical) |
-| [6:4] | `axi_ch` | 3 | AXI channel type (0=AW, 1=W, 2=AR, 3=B, 4=R) |
-| [14:7] | `src_id` | 8 | Source node ID（[7:4]=y, [3:0]=x） |
-| [22:15] | `dst_id` | 8 | Destination node ID（[7:4]=y, [3:0]=x） |
-| [24:23] | `port_id` | 2 | Target LOCAL port index (0–3) |
-| [25] | `last` | 1 | Last flit in packet (releases wormhole path lock) |
-| [26] | `rob_req` | 1 | RoB request flag |
-| [31:27] | `rob_idx` | 5 | RoB entry index (0–31) |
-| [33:32] | `commtype` | 2 | 0=Unicast, 1=Multicast, 2=ParallelReduction |
-| [49:34] | `multicast_mask` | 16 | RCR bounding box {x_min, x_max, y_min, y_max} |
-| [52:50] | `vc_id` | 3 | Virtual Channel ID (Credit-Based mode only; rsvd in Valid/Ready mode) |
-| [55:53] | `rsvd` | 3 | Reserved (Credit-Based mode); bits [55:50] all rsvd in Valid/Ready mode |
+| [3:0] | `qos` | `QOS_WIDTH` (4) | QoS priority (0=best effort, 15=critical) |
+| [6:4] | `axi_ch` | `AXI_CH_WIDTH` (3) | AXI channel type (0=AW, 1=W, 2=AR, 3=B, 4=R) |
+| [14:7] | `src_id` | `X_WIDTH + Y_WIDTH` (8) | Source node ID（[7:4]=y, [3:0]=x） |
+| [22:15] | `dst_id` | `X_WIDTH + Y_WIDTH` (8) | Destination node ID（[7:4]=y, [3:0]=x） |
+| [24:23] | `port_id` | `PORT_ID_WIDTH` (2) | Target LOCAL port index (0–3) |
+| [25] | `last` | `LAST_WIDTH` (1) | Last flit in packet (releases wormhole path lock) |
+| [26] | `rob_req` | `ROB_REQ_WIDTH` (1) | RoB request flag |
+| [31:27] | `rob_idx` | `ROB_IDX_WIDTH` (5) | RoB entry index (0–31) |
+| [33:32] | `rsvd_commtype` | `RSVD_COMMTYPE_WIDTH` (2) | Reserved for future communication type extension |
+| [41:34] | `multicast` | `MULTICAST_WIDTH` (8) | Reserved for future multicast extension (encoding TBD) |
+| [44:42] | `vc_id` | `VC_ID_WIDTH` (3) | Virtual Channel ID (Credit-Based mode only; rsvd in Valid/Ready mode) |
+| [47:45] | `rsvd` | 3 | Reserved (Credit-Based mode); bits [47:42] all rsvd in Valid/Ready mode |
 
-High-frequency fields (`qos`, `axi_ch`) are placed at the LSB end so that the first pipeline stage needs only a narrow slice for arbitration and channel selection. Multicast and reserved fields sit at the MSB end, leaving room for future extension without disturbing existing bit positions.
+High-frequency fields (`qos`, `axi_ch`) are placed at the LSB end so that the first pipeline stage needs only a narrow slice for arbitration and channel selection. Reserved fields sit at the MSB end, leaving room for future extension without disturbing existing bit positions.
 
 ### Payload Formats
 
@@ -121,10 +120,10 @@ Each AXI channel maps to a payload within the 352-bit field:
 
 | Channel | Network | Key Fields | Used Bits | Utilisation |
 |---------|---------|------------|:---------:|:-----------:|
-| AW | REQ | awid(8), awaddr(64), awlen(8), awsize(3), awburst(2), awcache(4), awlock(1), awprot(3), awregion(4), awuser(8) | 108 | 30.7% |
+| AW | REQ | awid(8), awaddr(64), awlen(8), awsize(3), awburst(2), awcache(4), awlock(1), awprot(3), awregion(4), awuser(8) | 105 | 29.8% |
 | W | REQ | wlast(1), wuser(8), wdata(256), wstrb(32), wecc(32) | 329 | 93.5% |
-| AR | REQ | arid(8), araddr(64), arlen(8), arsize(3), arburst(2), arcache(4), arlock(1), arprot(3), arregion(4), aruser(8) | 108 | 30.7% |
-| B | RSP | bid(8), bresp(2), buser(8), ecc_fail(1), multicast_status(2) | 21 | 6.0% |
+| AR | REQ | arid(8), araddr(64), arlen(8), arsize(3), arburst(2), arcache(4), arlock(1), arprot(3), arregion(4), aruser(8) | 105 | 29.8% |
+| B | RSP | bid(8), bresp(2), buser(8), ecc_fail(1) | 19 | 5.4% |
 | R | RSP | rlast(1), rid(8), rresp(2), ruser(8), rdata(256), recc(32) | 307 | 87.2% |
 
 W and R payloads carry 32 bits of SECDED ECC (8-bit ECC per 64-bit data granule, 4 granules). ECC is generated by the source NI, passed through routers transparently, and checked by the destination NI. A 1-bit error is auto-corrected; a 2-bit error sets `ecc_fail` in the B response or reports via `rresp`.
@@ -133,7 +132,7 @@ In a typical burst write (awlen=15), the flit sequence is 1×AW + 16×W + 1×B =
 
 ### Physical Link
 
-Each router-to-router or NI-to-router connection carries four unidirectional links: Req forward, Req reverse, Rsp forward, and Rsp reverse. Each link is 410 bits wide (1 valid + 1 ready + 408 flit data), totalling 1,640 bits per router pair.
+Each router-to-router or NI-to-router connection carries four unidirectional links: Req forward, Req reverse, Rsp forward, and Rsp reverse. Each link is `LINK_WIDTH` bits (default 402: 1 valid + 1 ready + `FLIT_WIDTH`), totalling 4 × `LINK_WIDTH` (default 1,608) bits per router pair.
 
 Request and response use independent physical links (dual-rail full-duplex), eliminating request-response circular dependency as the primary protocol deadlock avoidance mechanism.
 
@@ -169,11 +168,11 @@ The signal-level interface is used when one or more C++ components are replaced 
 ```systemverilog
 import "DPI-C" function void noc_set_port_input(chandle h, int node, int port,
                                                  int ch, bit valid,
-                                                 input bit [407:0] flit,
+                                                 input bit [`FLIT_WIDTH-1:0] flit,
                                                  int ready_or_credit);
 import "DPI-C" function void noc_get_port_output(chandle h, int node, int port,
                                                   int ch, output bit valid,
-                                                  output bit [407:0] flit,
+                                                  output bit [`FLIT_WIDTH-1:0] flit,
                                                   output int ready_or_credit);
 ```
 
@@ -277,13 +276,9 @@ The NSU unpacks the flits back into AXI format, verifies ECC, reassembles W burs
 
 Read transactions follow a similar path. The NMU packs an AR flit which traverses the request network to the destination NSU. The NSU reads local memory and generates one or more R response flits (one per beat for burst reads). These traverse the response network back to the NMU, where the RoB reassembles the data and signals completion.
 
-### Multicast Write
-
-Multicast writes use the RCR (Rectangle Covering Route) mechanism. The NMU sets a multicast bitmask in the flit header defining a rectangular bounding box of destination nodes. Routers within the bounding box replicate the flit to the appropriate output ports using purely combinational logic (8 comparators per router). B responses from all destinations are reduced in-network: the response router merges multiple B flits into a single response before forwarding upstream. A timeout mechanism (configurable via `REDUCTION_TIMEOUT`) prevents indefinite waiting for responses.
-
 ### Flit Mapping
 
-All data flows use a uniform 408-bit flit (56-bit header + 352-bit payload). The mapping from AXI transactions to flits is:
+All data flows use a uniform flit of `FLIT_WIDTH` bits (default 400: `HEADER_WIDTH` 48 + `PAYLOAD_WIDTH` 352). The mapping from AXI transactions to flits is:
 
 | AXI Transaction | Request Flits | Response Flits |
 |-----------------|:-------------:|:--------------:|
@@ -332,21 +327,19 @@ The model works through a single configuration object, NocConfig, which serves a
 | `MEMORY_READ_LATENCY` | 0 | Local memory read latency (0 = ideal) |
 | `MEMORY_WRITE_LATENCY` | 0 | Local memory write latency (0 = ideal) |
 | **Safety** | | |
-| `REDUCTION_TIMEOUT` | 1000 | Multicast reduction timeout cycles |
 | `CREDIT_TIMEOUT` | 10000 | Credit starvation detection cycles (0 = disabled) |
-| `MULTICAST_TIMEOUT` | 10000 | Multicast handshake timeout cycles (0 = disabled) |
 | `DEADLOCK_THRESHOLD` | 1000 | Forward progress timeout cycles |
 
-### Fixed Design Parameters
+### Flit Design Parameters (Defaults)
 
-The following parameters are fixed at design time and cannot be changed during simulation:
+The following parameters match [Flit Format](02_flit.md); defaults correspond to the current implementation configuration. Full parameter list (including AXI sub-fields and ECC details) is in 02_flit.md §1.2.
 
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| `FLIT_WIDTH` | 408 bits | Header 56 + Payload 352 |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `FLIT_WIDTH` | 400 bits | Header 48 + Payload 352 |
 | `AXI_DATA_WIDTH` | 256 bits | AXI data bus width |
 | `AXI_ADDR_WIDTH` | 64 bits | AXI address width |
-| `NODE_ID_WIDTH` | 8 bits | [7:4]=y, [3:0]=x |
+| `X_WIDTH` / `Y_WIDTH` | 4 / 4 bits | Node coordinate widths |
 | `QOS_WIDTH` | 4 bits | 16 QoS levels |
 | `ECC_WIDTH` | 32 bits | SECDED |
 
@@ -378,10 +371,9 @@ The traffic pattern is defined in a JSON file specifying a sequence of AXI trans
 | Field | Description |
 |-------|-------------|
 | `id` | Unique transaction identifier |
-| `type` | `WRITE` / `READ` / `MULTICAST_WRITE` |
+| `type` | `WRITE` / `READ` |
 | `src_node` | Source NMU node ID |
 | `dst_addr` | 64-bit AXI address (`[39:32]` = node_id, `[31:0]` = local_addr) |
-| `dst_nodes` | Multicast destination list (MULTICAST_WRITE only) |
 | `data_file` | Path to `.hex` file containing write data |
 | `data_size` | Transfer size in bytes |
 | `axi_id` | AXI transaction ID |
@@ -569,9 +561,6 @@ void               dump_local_memory(uint8_t node_id, uint64_t addr,
 TxnHandle          submit_write(uint64_t addr, const uint8_t* data,
                                 size_t len, uint8_t axi_id);
 TxnHandle          submit_read(uint64_t addr, size_t len, uint8_t axi_id);
-TxnHandle          submit_multicast_write(uint64_t addr, const uint8_t* data,
-                                          size_t len,
-                                          const std::vector<uint8_t>& dst_nodes);
 ```
 
 ### Group C: Simulation Control
@@ -676,7 +665,7 @@ This is analogous to RTL parameter elaboration — the template parameter select
 
 ### Router Architecture
 
-Each router consists of two structurally symmetric sub-routers: a ReqRouter for AW/W/AR flits and a RspRouter for B/R flits. The RspRouter additionally includes in-network reduction logic for multicast B response merging.
+Each router consists of two structurally symmetric sub-routers: a ReqRouter for AW/W/AR flits and a RspRouter for B/R flits.
 
 The router pipeline within Phase 4 processes each head flit through four sub-stages, each with a configurable delay:
 
@@ -692,12 +681,10 @@ The router's sub-modules and their responsibilities:
 |------------|-------------|
 | InputBuffer | Per-port FIFO (configurable depth) |
 | BufferState | Credit tracking, separated from data storage |
-| RouteCompute | XY routing + RCR multicast routing |
+| RouteCompute | XY routing |
 | Crossbar | N×N switch fabric |
 | PathLock | Wormhole path locking FSM |
 | Allocator | Pluggable: RoundRobin / iSLIP / QoSAwareRR |
-| MulticastTracker | Multicast fork tracking |
-| ReductionSync / ReductionArb | In-network B response reduction |
 
 ### Network Interface Architecture
 
@@ -914,7 +901,6 @@ The `dump_state()` function outputs the complete internal state of every router,
 | AXI protocol (AW/W/AR/B/R) | Y | Burst, reorder, interleaving |
 | QoS-aware arbitration | Y | 16-level priority + round-robin tie-break |
 | ECC generate/check | Y | SECDED behavioural model |
-| Multicast + in-network reduction | Y | RCR bounding box + B response merging |
 | Configurable channel delay | Y | Channel\<T\> N-cycle pipeline |
 | Deadlock detection | Y | Configurable forward progress timeout |
 
@@ -938,7 +924,7 @@ The model decomposes RTL's parallel behaviour into 8 sequential phases. Combinat
 
 1. **Pipeline delay calibration** — The Phase 4 per-flit state machine delays (`ROUTING_DELAY`, `VC_ALLOC_DELAY`, `SW_ALLOC_DELAY`) must be calibrated against RTL pipeline depths for cycle-accurate matching. Incorrect calibration produces functionally correct but timing-shifted results.
 2. **Memory latency** — Configurable via `MEMORY_READ_LATENCY` / `MEMORY_WRITE_LATENCY` (default 0 = ideal). Non-zero values add cycles to NSU memory access but do not model DRAM refresh or bank conflicts.
-3. **Header integrity** — ECC protects only payload data (wdata/rdata). The 56-bit header and payload metadata (wstrb, axi_id, etc.) rely on physical link layer integrity. A `dst_id` bit flip will cause misrouting.
+3. **Header integrity** — ECC protects only payload data (wdata/rdata). The header and payload metadata (wstrb, axi_id, etc.) rely on physical link layer integrity. A `dst_id` bit flip will cause misrouting.
 
 ---
 
@@ -976,7 +962,6 @@ Integration tests exercise end-to-end transaction flows through a small mesh:
 | Multi-hop | 4×4 mesh, corner-to-corner |
 | Backpressure | Buffer full → flow control |
 | Credit flow | Credit-Based mode credit exchange |
-| Multicast | RCR multicast + B reduction |
 | QoS priority | High-priority preemption |
 | Deadlock detection | Timeout and abort |
 | Multiple outstanding | N transactions in flight |

@@ -14,10 +14,10 @@ QoS 機制整合 QoS Generator、Probe 架構與 flit header qos 欄位等設計
 
 #### 來自 Flit Format 的參數
 
-| Parameter | Range | Source |
-|-----------|-------|--------|
-| `NODE_ID_WIDTH` | 8 (Fixed) | 02_flit.md |
-| `QOS_WIDTH` | 4 (Fixed) | 02_flit.md |
+| Parameter | Default | Source |
+|-----------|---------|--------|
+| `QOS_WIDTH` | 4 | 02_flit.md |
+| `X_WIDTH` / `Y_WIDTH` | 4 / 4 | 02_flit.md（src_id/dst_id 寬度 = `X_WIDTH + Y_WIDTH`） |
 
 #### QoS 模組專用參數
 
@@ -375,8 +375,6 @@ Bin N: latency >= THRESHOLD_{N-1}
 | 0x104 | `ERR_COUNT` | RO | 錯誤計數 (ERR_COUNTER_WIDTH, saturating) |
 | 0x108 | `ECC_UNCORR_ERR_CNT` | RO | ECC Uncorrectable 錯誤計數 (ERR_COUNTER_WIDTH, saturating) |
 | 0x10C | `LAST_ERR_INFO` | RO | 最近錯誤資訊 (width depends on N) |
-| 0x110 | `MC_STATUS` | RO | Multicast 狀態 |
-| 0x114 | `MC_FAIL_COUNT` | RO | Multicast 失敗計數 (ERR_COUNTER_WIDTH, saturating) |
 
 ### 4.2 Error Status Register (0x100)
 
@@ -384,19 +382,17 @@ Bin N: latency >= THRESHOLD_{N-1}
 |-------|-----|-------------|
 | `ecc_uncorr_err` | [0] | ECC Uncorrectable 錯誤發生 |
 | `timeout_err` | [1] | Timeout 錯誤發生 |
-| `multicast_partial` | [2] | Multicast 部分失敗 |
-| `multicast_fail` | [3] | Multicast 全部失敗 |
-| Reserved | [7:4] | — |
+| Reserved | [7:2] | — |
 
 ### 4.3 Last Error Info Register (0x10C)
 
-Register 寬度固定（NODE_ID_WIDTH = 8）：
+Register 欄位寬度依 [Flit Format](02_flit.md) 預設值（`AXI_ID_WIDTH=8`、src_id/dst_id = `X_WIDTH + Y_WIDTH = 8`）：
 
 | Field | Bit | Width | Description |
 |-------|-----|-------|-------------|
-| `err_axi_id` | [7:0] | 8 | 錯誤 transaction 的 AXI ID |
-| `err_src_id` | [15:8] | 8 | 錯誤來源 node ID |
-| `err_dst_id` | [23:16] | 8 | 錯誤目標 node ID |
+| `err_axi_id` | [7:0] | `AXI_ID_WIDTH` | 錯誤 transaction 的 AXI ID |
+| `err_src_id` | [15:8] | `X_WIDTH + Y_WIDTH` | 錯誤來源 node ID |
+| `err_dst_id` | [23:16] | `X_WIDTH + Y_WIDTH` | 錯誤目標 node ID |
 | Reserved | [31:24] | 8 | — |
 
 ### 4.4 Error Counter Behavior
@@ -407,7 +403,6 @@ Register 寬度固定（NODE_ID_WIDTH = 8）：
 |---------|-------|------------|-------|
 | `ERR_COUNT` | ERR_COUNTER_WIDTH (default 16) | 2^W - 1 | Write 1 to ERR_STATUS[0] |
 | `ECC_UNCORR_ERR_CNT` | ERR_COUNTER_WIDTH (default 16) | 2^W - 1 | Write 1 to ERR_STATUS[0] |
-| `MC_FAIL_COUNT` | ERR_COUNTER_WIDTH (default 16) | 2^W - 1 | Write 1 to MC_STATUS[0] |
 
 **Saturation Behavior:**
 ```
@@ -451,24 +446,7 @@ Arbitration 在所有 valid 且未 blocked 的 input 中，選出 `qos` 最高�
 | Minimum bandwidth guarantee | Regulator mode 保證最低頻寬 |
 | Separate VC per QoS class | 不同 QoS 使用不同 Virtual Channel |
 
-### 6.2 Multicast QoS
-
-Multicast transaction 的 QoS 處理：
-
-```
-Request phase:
-  - Multicast request 使用發送端設定的 qos
-  - 所有 target 收到相同 qos 的 request
-
-Response aggregation:
-  - 所有 target response 繼承原始 request 的 qos
-  - Response aggregator 收齊所有 response 後合併
-  - 合併後的 B response qos = original_request.qos
-```
-
-> **bresp 合併規則**：取 worst case（任一 SLVERR → 最終 SLVERR）
-
-### 6.3 Error Response QoS
+### 6.2 Error Response QoS
 
 Response flit 的 qos **繼承自對應 request**，不因錯誤而修改：
 
@@ -516,7 +494,7 @@ QoS 只影響 **arbitration**，不影響 **flow control**。即使 qos=15，若
 
 ## Related Documents
 
-- [Flit Format](02_flit.md) - Header qos 欄位定義、NODE_ID_WIDTH、QOS_WIDTH
+- [Flit Format](02_flit.md) - Header qos 欄位定義、QOS_WIDTH、X_WIDTH/Y_WIDTH
 - [Network Interface](04_network_interface.md) - NI 架構
 - [Router](03_router.md) - Router arbitration
 

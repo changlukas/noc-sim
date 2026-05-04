@@ -4,7 +4,7 @@
 
 ### 1.1 用途
 
-Network Interface (NI) 負責 AXI 與 NoC 之間的 Protocol Conversion，包含地址轉換、Flit Packing/Unpacking、Reorder Buffer、ECC 與 Multicast Response 處理。
+Network Interface (NI) 負責 AXI 與 NoC 之間的 Protocol Conversion，包含地址轉換、Flit Packing/Unpacking、Reorder Buffer、ECC。
 
 ### 1.2 在系統中的位置
 
@@ -29,7 +29,6 @@ NI 透過 Router 的 Eject port 連接，使用與 Router-Router **完全相同*
 - AXI4 full protocol conversion（AW/W/AR/B/R）
 - Reorder Buffer 支援 out-of-order response
 - SECDED ECC end-to-end protection
-- Multicast B response 透過 in-network reduction 合併
 - 可配置為 NMU-only / NSU-only / Full
 
 ---
@@ -64,7 +63,7 @@ AXI Slave  ────►│  │  FlitPack ← ECC Gen ← AXI Response   │ 
 |------------|------|
 | AddrTrans | AXI address → dst_id + local_addr |
 | QoSGen | 產生 header qos 值（4 modes） |
-| FlitPack (AW/W/AR) | AXI request → 408-bit flit |
+| FlitPack (AW/W/AR) | AXI request → flit |
 | ECC Gen | SECDED ECC 產生（W channel wdata） |
 | FlitUnpack (B/R) | Response flit → AXI B/R |
 | ECC Check | SECDED ECC 驗證（R channel rdata） |
@@ -123,8 +122,6 @@ NI 使用 config struct 組織參數，由上層 instantiation 時傳入。
 | `XY_ADDR_OFFSET_X` | int | 32 | `ROUTE_CFG.XY_ADDR_OFFSET_X` | X coordinate 在 address 中的 bit offset |
 | `XY_ADDR_OFFSET_Y` | int | 36 | `ROUTE_CFG.XY_ADDR_OFFSET_Y` | Y coordinate 在 address 中的 bit offset |
 | `NUM_SAM_RULES` | int | 0 | `ROUTE_CFG.NUM_SAM_RULES` | SAM rules 數量（USE_ID_TABLE 時） |
-| `EN_MULTICAST` | bool | false | `ROUTE_CFG.EN_MULTICAST` | 啟用 multicast |
-| `EN_PARALLEL_REDUCTION` | bool | false | `ROUTE_CFG.EN_PARALLEL_REDUCTION` | 啟用 in-network B response reduction |
 
 ### 3.4 RoB Type 列舉（`rob_type_e`）
 
@@ -138,8 +135,8 @@ NI 使用 config struct 組織參數，由上層 instantiation 時傳入。
 
 | Parameter | Description | 來源 |
 |-----------|-------------|------|
-| `flit_t` | Flit data type（408 bits） | [Flit Format](02_flit.md) |
-| `hdr_t` | Flit header type（56 bits） | [Flit Format](02_flit.md) |
+| `flit_t` | Flit data type（`FLIT_WIDTH` bits, 預設 400） | [Flit Format](02_flit.md) |
+| `hdr_t` | Flit header type（`HEADER_WIDTH` bits, 預設 48） | [Flit Format](02_flit.md) |
 | `id_t` | Node ID type | `logic[ID_WIDTH-1:0]` |
 | `noc_req_t` | Request link type（valid + flit） | Req network |
 | `noc_rsp_t` | Response link type（valid + flit） | Rsp network |
@@ -160,7 +157,6 @@ NI 使用 config struct 組織參數，由上層 instantiation 時傳入。
 **參數約束：**
 - `MAX_OUTSTANDING ≤ MAX_TXNS`（MAX_TXNS 為硬體上限，MAX_OUTSTANDING 為軟體配置）
 - NSU reassembly depth = `MAX_BURST_LEN`
-- `EN_PARALLEL_REDUCTION` 需要 `EN_MULTICAST` 同時啟用
 
 ---
 
@@ -245,19 +241,19 @@ AXI side port 定義：
 
 ### FR-02: Flit Packing（AXI → Flit）
 
-**描述：** NMU 將 AXI request 打包為 408-bit flit，NSU 將 AXI response 打包為 flit。
+**描述：** NMU 將 AXI request 打包為 flit（預設 400-bit），NSU 將 AXI response 打包為 flit。
 
-**Payload 使用率：**
+**Payload 使用率（預設配置）：**
 
 | Channel | Network | Used (bits) | Padding (bits) | 主要欄位 |
 |---------|---------|-------------|----------------|---------|
 | AW | REQ | 108 | 244 | awid, awaddr, awlen, awsize, awburst, awcache, awprot, awuser |
 | W | REQ | 352 | 0 | wlast, wuser, wdata[256], wstrb[32], wecc[32] |
 | AR | REQ | 108 | 244 | arid, araddr, arlen, arsize, arburst, arcache, arprot, aruser |
-| B | RSP | 64 | 288 | bid, bresp, buser, ecc_fail, multicast_status |
+| B | RSP | 64 | 288 | bid, bresp, buser, ecc_fail |
 | R | RSP | 352 | 0 | rlast, rid, rresp, ruser, rdata[256], recc[32] |
 
-Header 56 bits 的欄位來源（NMU request path）：`qos` ← QoSGen、`src_id` ← 本地座標、`dst_id` ← AddrTrans、`last` ← single-flit(AW/AR)=1 / W 末尾=1、`rob_idx` ← RoB allocate、`commtype` ← 0(unicast) / 1(multicast)。
+Header 預設 48 bits 的欄位來源（NMU request path）：`qos` ← QoSGen、`src_id` ← 本地座標、`dst_id` ← AddrTrans、`last` ← single-flit(AW/AR)=1 / W 末尾=1、`rob_idx` ← RoB allocate、`rsvd_commtype` ← 0。
 
 Payload bit-level layout 詳見 [Flit Format](02_flit.md) Section 3。
 
@@ -362,24 +358,6 @@ W flit 的 `qos` 繼承對應 AW flit 值。Response flit 的 `qos` 繼承 reque
 
 詳見 [QoS Design](06_qos.md)。
 
-### FR-08: Multicast Response（In-Network Reduction）
-
-**描述：** Multicast write 的 B response 在 RspRouter 中逐 hop 合併，Source NMU 僅收到 1 個已合併的 B response。
-
-**NSU 行為：** 收到 multicast AW → 完成 write → 產生 B flit，`commtype` 轉換為 `ParallelReduction`，保留原始 `multicast_mask`、`src_id`、`rob_idx`。
-
-**NMU 行為：** 統一接收 — in-network reduction 後的 multicast B flit 與 unicast B flit 處理方式完全相同，直接送入 RoB。
-
-**合併規則（Router 層執行）：**
-
-| Condition | bresp | multicast_status |
-|-----------|-------|-----------------|
-| 全部 OKAY | OKAY | MC_ALL_OK |
-| 部分非 OKAY | SLVERR | MC_PARTIAL |
-| 全部非 OKAY | SLVERR | MC_ALL_FAIL |
-
-Router 層 reduction 詳見 [Router Specification](03_router.md) FR-09。
-
 ---
 
 ## 6. Performance
@@ -415,6 +393,6 @@ Router 層 reduction 詳見 [Router Specification](03_router.md) FR-09。
 
 - [System Overview](01_overview.md) — Mesh 拓撲與系統架構
 - [Flit Format](02_flit.md) — Header/Payload bit-level 定義、ECC 設計
-- [Router Specification](03_router.md) — Router port interface、in-network reduction
+- [Router Specification](03_router.md) — Router port interface
 - [QoS Design](06_qos.md) — QoS Generator 模式、CSR Memory Map
 - [Simulation](08_simulation.md) — NocSystem API、NocConfig、Channel\<T\>
