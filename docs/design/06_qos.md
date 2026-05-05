@@ -347,7 +347,7 @@ Bin N: latency >= THRESHOLD_{N-1}
 | 0x00C | `SATURATION_THRESHOLD` | RW | 飽和閾值 |
 | 0x010 | `LOW_PRIORITY` | RW | 低優先級值 |
 | 0x014 | `BANDWIDTH_BUDGET` | RW | Regulator 頻寬預算 |
-| 0x018 | `BASE_QOS` | RW | 基礎 qos 值 |
+| 0x018 | `BASE_QOS` | RW | 基礎 qos 值 + URGENCY_STEP（field layout 見 §4.5） |
 | 0x01C | `SOCKET_QOS_EN` | RW | Socket QoS 啟用 |
 | 0x020 | `SOCKET_QOS` | RW | Socket QoS 值 |
 | **Packet Probe** ||||
@@ -371,7 +371,7 @@ Bin N: latency >= THRESHOLD_{N-1}
 | 0x098 | `TXN_MAX_LATENCY` | RO | 最大延遲 |
 | 0x09C | `TXN_TOTAL_COUNT` | RO | 總 transaction 數 |
 | **Error Status** ||||
-| 0x100 | `ERR_STATUS` | RO | 錯誤狀態 |
+| 0x100 | `ERR_STATUS` | RW1C | 錯誤狀態 (write 1 to clear bit and the associated saturating counter) |
 | 0x104 | `ERR_COUNT` | RO | 錯誤計數 (ERR_COUNTER_WIDTH, saturating) |
 | 0x108 | `ECC_UNCORR_ERR_CNT` | RO | ECC Uncorrectable 錯誤計數 (ERR_COUNTER_WIDTH, saturating) |
 | 0x10C | `LAST_ERR_INFO` | RO | 最近錯誤資訊 (width depends on N) |
@@ -412,6 +412,16 @@ if (counter < MAX_VALUE)
 ```
 
 > **設計理由**：使用 saturating counter 而非 wrap-around，確保軟體讀取時永遠知道「至少發生了這麼多錯誤」。若 counter 已飽和，軟體應優先處理錯誤並清除 counter。
+
+### 4.5 BASE_QOS Register (0x018) Field Layout
+
+| Field | Bit | Width | Description |
+|-------|-----|-------|-------------|
+| `BASE_QOS` | [3:0] | 4 | Regulator mode 基礎 QoS 值 (urgency_level=0 時使用，0~15) |
+| `URGENCY_STEP` | [5:4] | 2 | Urgency 每次調整的步進值 (1~3；軟體寫 0 時硬體視同 1) |
+| Reserved | [31:6] | 26 | — |
+
+> URGENCY_STEP 為 2-bit Regulator-mode CSR（§2.4.6），與 BASE_QOS 同為 Regulator 模式配置，合併入同一 32-bit 暫存器以節省 CSR offset 空間。
 
 ---
 
