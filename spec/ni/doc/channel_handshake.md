@@ -109,7 +109,7 @@ flowchart LR
 
 - AXI AW handshake must precede the corresponding AW flit injection (NMU pulls the address from the handshake before packing the flit).
 - W flit injection may interleave with AW flit injection in time on `noc_req_o` (both go on same link); ordering between AW and W flits at the NMU output is FIFO-natural.
-- TODO(designer): formal NMU AR-during-W ordering guarantee — convert the working assumption into a named `AXI4_MST_NOC_AR_DURING_W` rule in `protocol_rules.md` (no issue yet — current ToO §"AR-during-W ordering" Reviewer-assumption commits to AR-may-interleave with W burst on the same `noc_req_o` link; final formal rule wording deferred until the FlooNoC RTL reference (https://github.com/pulp-platform/FlooNoC) is studied to confirm the chosen NMU's actual injection-arbiter behavior). Default assumption: yes (AR is single-flit and goes before/between W beats per arbiter).
+- AR injection on `noc_req_o` is wormhole-locked-out while a W burst is in progress on the same link: the NMU injection arbiter holds the W-packet slot until the W burst's `last=1` flit is accepted before granting any other packet (next AW, next W, or AR). See `theory_of_operation.md` §"AR-during-W ordering" for rationale and `protocol_rules.md` `NOC_MST_WORMHOLE_LOCK` for the formal rule.
 
 ### NSU forward path: NoC request flit → AXI request
 
@@ -133,4 +133,4 @@ flowchart LR
 - **NoC side**: routers preserve flit order along same source / destination route within same `qos`; flits with different routes or different `qos` may interleave / overtake.
 - **Cross-protocol**: flit reception order from `noc_rsp_i` may not match request injection order at `noc_req_o` (RoB reorders into AXI per-ID order). The RoB is the gatekeeper.
 
-TODO(designer): formalise NoC-level ordering guarantees vs. router QoS arbitration (no issue yet — final wording deferred until the FlooNoC RTL reference (https://github.com/pulp-platform/FlooNoC) is studied to confirm router arbitration semantics; current working model is QoS-aware arbitration with wormhole no-preemption per source-doc 06_qos.md §5). Source-doc 06_qos.md §5 hints at QoS-aware arbitration with wormhole no-preemption.
+**QoS-aware arbitration as extension to FlooNoC baseline**: this NI design extends the baseline FlooNoC RTL reference (`hw/floo_router.sv` + `hw/floo_output_arbiter.sv`, which uses plain round-robin wormhole arbitration without QoS) with a QoS-priority comparator stage before the round-robin fallback among same-priority flits. Wormhole no-preemption (lock-in until packet `last=1` per `NOC_MST_WORMHOLE_LOCK`) is preserved from FlooNoC unchanged. Refer to `docs/design/06_qos.md §5` for the QoS-aware arbitration policy and `docs/design/03_router.md` for the router arbiter contract; the unmodified upstream FlooNoC does NOT provide QoS-aware arbitration and a user-side modification to `floo_output_arbiter.sv` is required for RTL implementation.

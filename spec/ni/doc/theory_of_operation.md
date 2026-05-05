@@ -236,11 +236,9 @@ Cross-domain partial reset → CDC FIFO is in inconsistent state; integrator mus
 
 When NMU has a W burst in flight on `noc_req_o`, may it inject an AR flit between W beats?
 
-**Decision**: Yes. AR flits are single-cycle and may interleave with W burst beats on the same `noc_req_o` link. The router fabric does not assume W-burst contiguity at the NMU output; W-burst integrity is reconstructed at NSU's W-reassembly buffer using the flit `axi_ch=1` field plus per-NMU sequencing. AR flits carry `axi_ch=2` and are routed independently.
+**Decision**: No. AR injection is blocked while a W burst is in progress on the same `noc_req_o` link. The NMU's injection arbiter wormhole-locks to the W-packet slot from the first W flit until the burst's final beat (`wlast=1`, reflected in flit header `last=1`) is accepted by the router; only after the lock releases can the next packet (AW, W, or AR) be granted.
 
-**Rationale**: separating AR from W at injection avoids head-of-line blocking when a slow remote slave back-pressures the W burst. The cost is slight increase in NSU complexity (W reassembly must tolerate interleaved AR observation), but this is implementation-internal and bounded.
-
-*Reviewer assumption: confirm vs alternative (AR injection blocked until W burst completes — simpler at NSU but introduces HoL blocking).*
+**Rationale**: matches the FlooNoC RTL reference (`hw/floo_axi_chimney.sv` instantiates `floo_wormhole_arbiter` over the AW/W and AR slots; the wormhole arbiter uses `rr_arb_tree` with `LockIn=1` and releases only on `last & ready`). The benefit is W-burst contiguity at the NMU output — W beats arrive at NSU in tight succession with no interleaved foreign flits to filter, simplifying NSU's W-reassembly buffer logic. The cost is potential head-of-line blocking on AR when a slow remote slave back-pressures the W burst; this is acceptable for the target workloads (CPU-driven and DMA-style bulk transfers both tolerate it). Formalised in `protocol_rules.md` `NOC_MST_WORMHOLE_LOCK`.
 
 ## ATOPs scope
 

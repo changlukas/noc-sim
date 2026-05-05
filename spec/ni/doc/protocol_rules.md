@@ -162,6 +162,7 @@ A rule with role `SLV` referencing `AW` applies at the BFM's slave-side AXI port
 | NOC_MST_VALID_STABLE | A NoC output (`noc_*_o.valid`) rises HIGH | Must remain HIGH until the receiver's `ready` is observed HIGH. | FAIL | (none) |
 | NOC_MST_FLIT_STABLE | `noc_*_o.valid` is HIGH | `noc_*_o.flit_data[FLIT_WIDTH-1:0]` must not change between valid rise and ready observation. | FAIL | (none) |
 | NOC_SLV_READY_NO_LATCH | `noc_*_i.ready` is HIGH and `noc_*_i.valid` is LOW | Ready may be HIGH before valid (legal). NI must not interpret a one-cycle ready as completing a transfer. | FAIL | (none) |
+| NOC_MST_WORMHOLE_LOCK | First flit of a packet has been injected on a `noc_*_o` link (`noc_req_o` for NMU AW/W/AR; `noc_rsp_o` for NSU B/R) and the packet's `last=1` flit has not yet been accepted | NMU/NSU MUST NOT inject any flit from a different packet on the same `noc_*_o` link until the in-flight packet's `last=1` flit is accepted by the receiving router. The wormhole-lock is per-packet: single-flit packets (AW, AR, B) release the lock immediately on the cycle they are accepted; multi-flit packets (W burst, R burst) hold the lock until their final beat (`wlast`/`rlast`, reflected in flit header `last=1`) is accepted. Implementation reference: FlooNoC `hw/floo_axi_chimney.sv` injection arbiter via `floo_wormhole_arbiter.sv` (`rr_arb_tree` with `LockIn=1`). Consequence for AXI4: AR injection is blocked while a corresponding W burst is in progress on `noc_req_o`. | FAIL | (none) |
 
 ### Flit format / header invariants
 
