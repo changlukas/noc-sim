@@ -2,45 +2,41 @@
 
 ## Overview
 
-This document specifies the Network Interface (`ni`) hardware IP for the noc-sim project. The `ni` block bridges an AXI4 master/subordinate pair to the NoC packet substrate (Req/Rsp dual physical link), performing protocol conversion in both directions: AXI requests are packed into flits and injected into the request network; flits arriving from the response network are unpacked back into AXI responses. Each `ni` instance contains two independently-enableable units, **NMU** (Network Master Unit, AXI-slave-side; originates NoC transactions) and **NSU** (Network Slave Unit, AXI-master-side; terminates NoC transactions). The naming convention follows AMD Versal style.
-<!-- source: 04_network_interface.md §1.1, §1.3 -->
-
-`ni` connects to a Router's LOCAL port and uses the **same port interface** as Router-to-Router links — `valid`/`ready`/`flit` triplets on Req and Rsp networks.
-<!-- source: 04_network_interface.md §1.2 -->
+Network Interface (NI) bridges an AXI4 manager / subordinate pair to the NoC packet substrate. The NI consists of two functional units — NMU (Network Manager Unit) on the AXI-master ingress side and NSU (Network Subordinate Unit) on the AXI-subordinate egress side — that can be independently enabled. The NI performs protocol conversion (AXI4 ↔ flit), QoS generation, end-to-end ECC, and reorder-buffered response handling. It is implemented in two equivalent forms: a synthesizable RTL implementation and a C++ behavior model BFM, behaviorally equivalent at the AXI and NoC pin boundaries.
 
 ## Features
 
-- AXI4 full protocol conversion, all five channels (AW/W/AR/B/R).
-- Configurable NMU-only / NSU-only / full instantiation via `NI_CFG.EN_MGR_PORT` and `NI_CFG.EN_SBR_PORT`.
-- Reorder Buffer (RoB) with three policies (`NormalRoB`, `SimpleRoB`, `NoRoB`) selectable per response channel; preserves AXI per-ID ordering.
-- End-to-end SECDED ECC over `wdata` and `rdata`. Source NI generates; destination NI checks. Routers are pass-through.
-- QoS Generator with four modes: `Bypass`, `Fixed`, `Limiter`, `Regulator`.
-- Address translation supports XY-routing direct decoding (`XY_ADDR_OFFSET_X` / `XY_ADDR_OFFSET_Y`) or System Address Map (SAM) lookup (`USE_ID_TABLE=1`).
-- Optional spill registers on AW/AR (`CUT_AX`) and response (`CUT_RSP`) paths to break timing.
-- Performance probes (Packet Probe and Transaction Probe) report bandwidth and latency histograms via CSR.
-<!-- source: 04_network_interface.md §1.4, §3.1-§3.5; 06_qos.md §3 -->
+- **AXI4 full protocol conversion** (AW / W / AR / B / R) with end-to-end ID tracking and per-ID in-order response release via Reorder Buffer (RoB).
+- **Wide flit physical channel** — single AXI4 message (header + data) transported in one flit cycle, eliminating serialization overhead.
+- **Configurable RoB modes** per response channel (Normal / Simple / NoRoB) trading off reorder support vs. resource cost.
+- **SECDED ECC end-to-end protection** — NMU generates ECC at flit injection, NSU validates at egress; routers transit unchanged.
+- **CSR-mapped QoS Generator** with four modes: Bypass (AXI awqos / arqos passthrough), Fixed, Limiter (bandwidth cap), Regulator (bandwidth floor with feedback-controlled urgency escalation).
+- **CSR-mapped Performance Probes**: Packet Probe (bandwidth statistics, configurable window), Transaction Probe (latency histogram with N-bin binning).
+- **Error and ECC monitoring CSRs** — ERR_STATUS (RW1C), ERR_COUNT, ECC_UNCORR_ERR_CNT, LAST_ERR_INFO.
+- **Dual clock domain** with built-in CDC — AXI side (`aclk_i`) and NoC fabric side (`noc_clk_i`) run independently asynchronous; NI internal async FIFOs handle pointer crossing.
+- **Configurable enable** — NMU-only / NSU-only / both, via `EN_MGR_PORT` / `EN_SBR_PORT` parameters.
 
 ## Description
 
-`ni` sits between a single AXI4 master/subordinate pair and a single Router LOCAL port. On the AXI side, the **manager port** (`axi_in_*`) accepts AW/W/AR transactions from a connected AXI master and returns B/R; the **subordinate port** (`axi_out_*`) drives an attached AXI slave (typically a local memory) with AW/W/AR and absorbs B/R. On the NoC side, two independent links, `noc_req` and `noc_rsp`, carry flits to/from the connected Router; both links use a `valid`/`ready`/`flit` handshake identical to Router-to-Router links.
+The NI is a bus-attached IP that lives at every NoC node where AXI4 traffic enters or exits the mesh. NMU receives AXI requests from a local AXI master, packs them into flits, generates QoS values, attaches ECC, and injects to the request network. NSU receives request flits from the network, unpacks them, drives AXI requests to a local AXI slave, captures the responses, packs them with ECC, and injects to the response network. NMU also handles the inverse path for incoming responses (RoB-mediated reordering and AXI B/R generation).
 
-Internally, NMU's pipeline is: AddrTrans → QoSGen → FlitPack (AW/W/AR) → ECC Gen (W) → InjectionBuffer → `noc_req_o` for outgoing requests; and `noc_rsp_i` → ECC Check (R) → FlitUnpack → RoB → AXI B/R for returning responses. NSU's pipeline mirrors the NMU but in the opposite role: `noc_req_i` → FlitUnpack → ReqInfoStore + W Reassembly → ECC Check (W) → AXI AW/W/AR to local memory; and AXI B/R from local memory → ECC Gen (R) → FlitPack → `noc_rsp_o`.
+Internal architecture distinguishes three sub-blocks per unit: a **driver** that owns per-channel state machines and registered outputs; a **monitor** that observes inbound activity and reconstructs transactions; and a **sequencer** that exposes the testbench-API surface for the C++ BFM and orchestrates internal flow control.
 
-A single `ni` is paired with a single Router; multiple `ni` instances on the same Router are distinguished by `port_id` (2 bits, 4 possible values) carried in flit headers.
-<!-- source: 04_network_interface.md §2; 02_flit.md §2.2.4 -->
+The NI is bus-attached on the configuration side via a dedicated AXI subordinate port (separate from the data-path AXI interfaces) for software access to the QoS/Probe/Error CSR file.
 
 ## Compatibility
 
-`ni` follows the AMD Versal NoC NMU/NSU split for naming. Sub-field widths (address, data, ID, user) follow the AXI4 specification. Pin-level integration is project-specific; downstream consumers must observe the configurable parameters in `interfaces.md`.
-
-`TODO(designer):` Compatibility table with specific industry register sets (e.g., AMBA NIC-400, Versal NoC NMU) is **not** claimed by the source documents. Either confirm and add concrete cross-references or drop this section.
-<!-- source: 04_network_interface.md §1.3 (Versal naming only); compatibility claim not in source -->
+The NI implements AXI4 (ARM IHI 0022) on the host side. It does not claim register-set compatibility with any specific commercial NoC product; the NMU/NSU naming and the QoS / Probe / Error register design are this IP's own conventions. The flit format is internal to this NoC and not interoperable with external networks.
 
 ## Further Reading
 
 - [Theory of Operation](./doc/theory_of_operation.md)
-- [Programmer's Guide](./doc/programmers_guide.md)
-- [Hardware Interfaces](./doc/interfaces.md)
+- [Signal Interface](./doc/signal_interface.md)
+- [Pin-Level Reset](./doc/pin_level_reset.md)
+- [Protocol Rules](./doc/protocol_rules.md)
+- [Channel Handshake & Dependencies](./doc/channel_handshake.md)
+- [Transaction API](./doc/transaction_api.md)
+- [Channel API](./doc/channel_api.md)
+- [Active vs Passive Mode](./doc/active_passive_mode.md)
 - [Registers](./doc/registers.md)
-- [Design Verification Plan](./dv/plan.md)
-- [Import Report](./IMPORT_REPORT.md)
+- [DV Plan](./dv/plan.md)

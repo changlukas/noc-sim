@@ -1,126 +1,117 @@
-# Design Verification Plan
+# DV Plan
 
 ## Verification scope
 
-In scope:
-- Functional correctness of NMU and NSU datapaths (AXI ↔ flit conversion in both directions).
-- Address translation: XY-direct decoding and SAM-table decoding.
-- Reorder Buffer per-ID ordering, all three RoB types (`NormalRoB`, `SimpleRoB`, `NoRoB`).
-- AXI burst handling, all burst types (FIXED, INCR, WRAP) and all burst lengths (`awlen ∈ 0..255`, but tests focus on representative subset).
-- ECC generate/check round-trip, single-bit correction, double-bit detection and SLVERR propagation.
-- QoS Generator behavior in all four modes (Bypass / Fixed / Limiter / Regulator).
-- Performance Probes: bandwidth and latency histogram correctness.
-- Backpressure: NMU InjectionBuffer-full, RoB-full, NSU local-AXI-not-ready propagation back to source AXI master.
+Verify the NI against:
+1. AXI4 protocol compliance (host side, both manager and subordinate ports + AXI4-Lite for CSR access).
+2. NoC flit protocol compliance (per protocol_rules.md `NOC_*` rules).
+3. Cross-protocol transformation correctness (AXI ↔ flit packing/unpacking, ECC end-to-end).
+4. RoB ordering invariants (per-AXI-ID).
+5. QoS Generator modes (Bypass / Fixed / Limiter / Regulator) functional behavior.
+6. Performance Probe accuracy (Packet bandwidth statistics, Transaction latency histogram).
+7. Error monitoring CSRs (saturating counters, ERR_STATUS write-1-to-clear, LAST_ERR_INFO atomic capture).
+8. Dual-clock-domain CDC correctness (no metastability, no data loss across aclk ↔ noc_clk).
+9. Reset behavior (per pin_level_reset.md, including partial-reset edge cases).
+10. Mode switch (ACTIVE / PASSIVE).
 
-Out of scope:
-- Full mesh routing correctness (verified at NoC system level).
-- Router internals and arbitration (separate spec).
-- Post-place-and-route timing closure.
-- Power-aware simulation (not enabled in current model).
-- Cross-NI ECC error correlation (each NI is verified standalone for ECC).
-- Multicast / reduction (rsvd_commtype + multicast header fields are reserved; behavior TBD).
-<!-- source: 09_verification.md §1, §3.1; 02_flit.md §7 (multicast OOS) -->
-
-## Testbench architecture
-
-`TODO(designer):` Source describes the **C++ behavior model** verification (`09_verification.md`) and an **RTL co-simulation** flow via DPI-C, but does not commit to a single testbench methodology (UVM, cocotb, plain SV) for RTL-level standalone DV of `ni`. Decide and document here. The choices visible in source:
-
-- C++ model unit tests use **GoogleTest**.
-- RTL co-simulation is described abstractly: SystemVerilog testbench + RTL Router/NI vs. C++ NocSystem via DPI-C, comparing per-transaction results.
-
-The expected RTL DV environment for `ni` standalone:
-
-- Methodology: `TODO(designer): UVM | cocotb | plain SV`. Recommend UVM 1.2 for industry alignment.
-- Top-level: `tb/tb_ni.sv`, instantiating `ni` DUT.
-- Agents: `axi_in_agent` (drives the manager port from a UVM AXI master agent), `axi_out_agent` (passive monitor + responder on the subordinate port to model local memory), `noc_req_agent` and `noc_rsp_agent` (drive/monitor flit links).
-- Reference model: a SystemVerilog wrapper around the C++ model (via DPI-C), or a re-implementation of the FlitPack/Unpack/RoB behavior in SVA-friendly form.
-- Scoreboard: per-transaction comparison (data + response code) per `09_verification.md §6.2` "match basis: per-transaction".
-<!-- source: 09_verification.md §2, §6.1, §6.2 -->
+DV strategy:
+- **Constrained-random testing** — **UVM 1.2** (industry standard; mature DV ecosystem; matches assumed in-house DV expertise). Master DUT stimulates AXI; NoC router stub provides flit endpoint; scoreboard cross-checks AXI handshakes against observed NoC flits. *Reviewer assumption: confirm or override (cocotb if Python-driven flow preferred; plain SV if UVM overhead unwanted).*
+- **Directed tests for configuration knobs** — verify each CSR write produces the documented wire-level effect.
+- **Mode-switch tests** — ACTIVE / PASSIVE transitions with and without in-flight transactions.
+- **Reset tests** — assert each reset mid-transaction at every channel state; assert both resets together; assert partial reset.
+- **CDC tests** — vary aclk / noc_clk frequency ratios across [0.1, 1, 10] to stress async FIFO depth.
+- **ABV (always-on SVA assertions)** — every FAIL-severity row in protocol_rules.md maps to one SVA `assert property`.
+- **FPV (formal property verification)** — RoB allocator state machine; ECC SECDED correctness (gen + check round-trip).
 
 ## Testpoints
 
-| ID | Feature reference | Testpoint description |
-|---|---|---|
-| TP-01 | Single-flit write (1 hop) | Drive a single 32-byte AXI write through NMU; verify it arrives at the destination NSU's local AXI port intact. (Mirrors IT-01 in 09_verification.md.) |
-| TP-02 | Multi-hop single-flit write | Drive a 32-byte write to a destination 3 hops away; verify integrity. (Mirrors IT-02.) |
-| TP-03 | Burst write (`awlen=7`, 256 B) | NMU packs 1×AW + 8×W flits with correct `last` bit on the final W; NSU reassembles into a single AXI burst. (Mirrors IT-03.) |
-| TP-04 | Single read (AR → R) | Drive AR; verify R returns with correct data and rresp. (Mirrors IT-04.) |
-| TP-05 | Burst read (`arlen=15`, 512 B) | Verify multi-flit R reassembly at NMU. (Mirrors IT-05.) |
-| TP-06 | Read-after-write to same address | Verify ordering through `ni` is preserved when same AXI ID is used. (Mirrors IT-08.) |
-| TP-07 | Maximum outstanding | Issue 32 simultaneous outstanding transactions; verify RoB does not drop or reorder beyond AXI per-ID rules. (Mirrors IT-09.) |
-| TP-08 | Multi-ID response reordering | Issue transactions with different `axi_id` returning out-of-order; verify per-ID release order via `NormalRoB`. (Mirrors IT-10.) |
-| TP-09 | ECC single-bit correction | Inject 1-bit error in a W flit at the link layer between NMU and NSU; verify NSU's ECC Check corrects silently and does **not** raise SLVERR. (Mirrors IT-12.) |
-| TP-10 | ECC double-bit detection | Inject 2-bit error in a W flit; verify NSU forwards the write but the resulting B flit carries `ecc_fail = 1`, AXI `bresp = SLVERR`, and `ECC_UNCORR_ERR_CNT` increments. (Mirrors IT-13.) |
-| TP-11 | RoB full backpressure | Saturate NMU with outstanding transactions; verify `awready`/`arready` deassert. |
-| TP-12 | InjectionBuffer full | Stall the connected Router on `noc_req_o`; verify NMU eventually backpressures the AXI side. |
-| TP-13 | NSU local-slave backpressure | Hold `axi_out_rsp_i.awready = 0`; verify NSU eventually backpressures NoC link via `noc_req_i.ready = 0`. |
-| TP-14 | XY address decoding | Issue writes whose addresses encode every legal `(x, y)` combination; verify `dst_id` in the produced flit. |
-| TP-15 | SAM table decoding | Configure `ROUTE_CFG.USE_ID_TABLE = 1` with `NUM_SAM_RULES > 0`; verify lookup correctness. |
-| TP-16 | QoS Bypass | `QOS_MODE = 0`; verify flit `qos = awqos / arqos` directly. |
-| TP-17 | QoS Fixed | `QOS_MODE = 1`; verify flit `qos = QOS_FIXED_VALUE`. |
-| TP-18 | QoS Limiter | `QOS_MODE = 2`; saturate the limiter, verify flit `qos` drops to `LOW_PRIORITY`. |
-| TP-19 | QoS Regulator urgency | `QOS_MODE = 3`; starve responses, verify urgency_level rises and flit `qos` increases up to saturation. |
-| TP-20 | Packet Probe correctness | Enable Packet Probe with a known traffic pattern; read `PKT_BYTE_COUNT` and `PKT_BANDWIDTH` and compare to expected. |
-| TP-21 | Transaction Probe histogram | Inject transactions with controlled latency; verify each falls into the correct latency bin per `TXN_THRESHOLD_*`. |
-| TP-22 | Reset asserts mid-AXI-transaction | `TODO(designer):` covers the gap noted in theory_of_operation.md §Resets. Verify slave-port outputs go to reset values within 1 `clk_i` cycle. |
-| TP-23 | Reset asserts mid-flit-injection | `TODO(designer):` likewise. Verify `noc_req_o.valid` deasserts; no in-flight flit is partially driven post-reset. |
-| TP-24 | Saturating error counters | Force `ECC_UNCORR_ERR_CNT` to maximum and beyond; verify saturation, no wrap. |
-| TP-25 | `LAST_ERR_INFO` population | After ECC error, verify `LAST_ERR_INFO` is populated with correct `err_axi_id` / `err_src_id` / `err_dst_id`. |
-| TP-26 | NMU-only / NSU-only configurations | Build with `EN_MGR_PORT = false` and `EN_SBR_PORT = true` (and vice versa); verify the disabled side's ports tie off cleanly and the enabled side functions. |
-<!-- source: 09_verification.md §3.1; 04_network_interface.md §3.2, §3.4, §5 -->
+Mapping README Features → testpoints (per stage gate D1.dv.testpoints requirement). Source noc-sim 09_verification.md provides additional testpoints; merged here.
 
-`TODO(designer):` Testpoint coverage of `noc_req_t`/`noc_rsp_t` flow control modes (Valid/Ready vs. Credit-Based) is **not** enumerated; if `ni` is built with Credit-Based config, an additional set of credit-tracking testpoints is required.
+| ID | README Feature | Testpoint description | Protocol rules exercised |
+|----|----------------|------------------------|--------------------------|
+| TP1 | AXI4 full protocol conversion | Master issues 1000 randomised single AXI writes to randomised addresses; NoC stub captures flits; verify flit content matches AXI request. | All AXI4 AW/W rules; NOC_FLIT_HDR_*; AXI4_SLV_XCH_W_AFTER_AW; AXI4_SLV_XCH_B_AFTER_AW_AND_W |
+| TP2 | AXI4 full protocol conversion | Same for AXI reads. | AXI4 AR/R rules; XCH_R_AFTER_AR; XCH_R_LAST_CONSISTENT |
+| TP3 | AXI4 burst handling | Burst writes (awlen ∈ {1, 7, 15}); verify N+1 W flits per burst, all carrying same axi_id; verify single B response with correct id. | AXI4_MST_AW_AWLEN_STABLE; NOC_FLIT_AW_W_ORDER |
+| TP4 | AXI4 burst handling | Burst reads; verify wormhole-locked R flit sequence; final beat carries RLAST=1. | AR/R rules; XCH_R_LAST_CONSISTENT |
+| TP5 | RoB Normal mode (NormalRoB) | Issue 32 outstanding reads with mixed axi_id; randomize NoC response order; verify per-id in-order release at AXI; verify cross-id reordering. | AXI4_MST_RoB_PER_ID_ORDER |
+| TP6 | RoB Simple mode (SimpleRoB) | Same with SimpleRoB; verify FIFO ordering across all txnIDs (different IDs serialised). | RoB_PER_ID_ORDER |
+| TP7 | RoB NoRoB mode | Single-outstanding; verify next request stalls until previous completes. | RoB_OUTSTANDING_LIMIT |
+| TP8 | SECDED ECC end-to-end | Inject 1-bit error in W flit at NMU output (`set_inject_ecc_error(W, SINGLE_BIT)`); verify NSU corrects silently; verify `ECC_UNCORR_ERR_CNT` does NOT increment; verify `ECC_CORR_ERR_CNT` (new register at 0x110 per ToO §ECC implementation) DOES increment. | NOC_ECC_W_GEN; NOC_ECC_W_CHECK |
+| TP9 | SECDED ECC end-to-end | Inject 2-bit error in W flit; verify NSU detects + propagates to AXI `bresp = SLVERR` + increments `ECC_UNCORR_ERR_CNT`. | NOC_ECC_W_CHECK; AXI4_SLV_B_BRESP_VALUES |
+| TP10 | SECDED ECC end-to-end | Inject 1-bit and 2-bit errors in R flit; verify NMU corrects/detects and propagates correctly. | NOC_ECC_R_CHECK |
+| TP11 | QoS Bypass mode | `QOS_MODE = 0`; verify flit header qos == AXI awqos / arqos directly. | NI_CFG_QOS_MODE_TRANSITION |
+| TP12 | QoS Fixed mode | `QOS_MODE = 1`, set QOS_FIXED_VALUE = 7; verify all flits have qos = 7 regardless of AXI awqos. | NI_CFG_QOS_MODE_TRANSITION |
+| TP13 | QoS Limiter mode | `QOS_MODE = 2`, configure BANDWIDTH_LIMIT and SATURATION_THRESHOLD; issue traffic at 2× the limit; verify qos drops to LOW_PRIORITY when threshold exceeded. | NI_CFG_BANDWIDTH_LIMIT_BOUND |
+| TP14 | QoS Regulator mode | `QOS_MODE = 3`, configure BANDWIDTH_BUDGET; observe response bandwidth slow → urgency rises → qos rises; observe response bandwidth high → urgency drops → qos drops. | NI_CFG_BANDWIDTH_BUDGET_BOUND |
+| TP15 | QoS Saturation | Regulator mode with BASE_QOS=12; force urgency to MAX; verify final qos clamped at 15 (not wrap). | (none specific) |
+| TP16 | Packet Probe | Configure `PKT_PROBE_EN`, `PKT_PROBE_MODE`, `PKT_WINDOW_SIZE`; issue known-bandwidth traffic; verify `PKT_BYTE_COUNT` and `PKT_BANDWIDTH` match expected. | NI_CFG_PROBE_EN_TRANSITION |
+| TP17 | Transaction Probe | Configure thresholds; issue traffic with various round-trip latencies; verify each TXN_BIN_*_COUNT receives expected number of transactions. | (none specific) |
+| TP18 | ERR_STATUS RW1C | Trigger ECC uncorrectable; verify `ERR_STATUS[0]` set; verify `ECC_UNCORR_ERR_CNT` increments; software writes 1 to ERR_STATUS[0]; verify both bit and counter cleared atomically. | NI_CFG_ERR_STATUS_RW1C |
+| TP19 | LAST_ERR_INFO sticky capture | Trigger error A; verify `LAST_ERR_INFO` captures A's err_axi_id/src/dst. Trigger error B without clearing; verify `LAST_ERR_INFO` still shows A (sticky semantics per `NI_CFG_LAST_ERR_INFO_CAPTURE` rule). Software writes 1 to `ERR_STATUS[0]`; trigger error C; verify `LAST_ERR_INFO` now shows C. | NI_CFG_LAST_ERR_INFO_CAPTURE; NI_CFG_ERR_STATUS_RW1C |
+| TP20 | CDC at fast aclk | Set aclk_freq = 2 × noc_clk_freq; issue burst traffic; verify no flit loss, no order corruption across CDC. | NI_CDC_AXI_TO_NOC_FIFO; NI_CDC_NOC_TO_AXI_FIFO |
+| TP21 | CDC at slow aclk | Set aclk_freq = 0.1 × noc_clk_freq; same. | Same |
+| TP22 | CDC at equal clocks | aclk_freq = noc_clk_freq; same; verify FIFOs degenerate to direct paths but still function. | Same |
+| TP23 | Reset during AXI AW phase | Master raises awvalid; arst_ni asserts before awready; verify NMU returns to IDLE; verify any cross-domain in-flight is cleaned up by NoC-side draining. | NI_RST_OUTPUTS_LOW_AXI |
+| TP24 | Reset during NoC injection | Mid-flit injection on `noc_req_o`; noc_rst_ni asserts; verify noc_req_o.valid drops to 0 same cycle. | NI_RST_OUTPUTS_LOW_NOC |
+| TP25 | Reset during multi-beat R burst | Master in-flight reading; noc_rst_ni asserts mid-burst; verify R beats stop on AXI side; verify the in-flight RoB entry's pending beats are dropped (RoB entry returned to FREE on noc_rst_ni release). On subsequent reset deassertion, master can re-issue the read. AXI side does NOT see rresp=SLVERR for partial-reset case — instead sees no further R beats and the master's transaction times out per master DUT's logic. | NI_RST_PARTIAL |
+| TP26 | Partial reset (only one of two resets) | Assert only `arst_ni`; verify NoC side continues operating but cross-domain transactions stall. | NI_RST_PARTIAL |
+| TP27 | Mode switch ACTIVE→PASSIVE | Issue traffic; mid-burst, switch to PASSIVE; verify all BFM-driven outputs transition to during-reset values within 1 cycle; verify in-flight transactions return MODE_SWITCHED_TO_PASSIVE. | NI_CFG_MODE_SWITCH |
+| TP28 | Mode switch PASSIVE→ACTIVE | Switch back; verify outputs return to active state; new traffic flows. | Same |
+| TP29 | NMU-only configuration | `EN_MGR_PORT=1, EN_SBR_PORT=0`; verify only NMU-related signals operate; NSU-related signals tied to inactive defaults. | (none specific) |
+| TP30 | NSU-only configuration | Mirror. | Same |
 
-## Functional coverage model
+### Additional integration testpoints (system-level)
 
-| Covergroup | Bins / crosses |
-|---|---|
-| `axi_channel_cov` | All five AXI channels (AW/W/AR/B/R) at least one transaction each. |
-| `routing_cov` | All five Router output directions (N/S/E/W/LOCAL) at least one routing decision. |
-| `rob_state_cov` | Each RoB entry visits FREE → ALLOCATED → RESPONSE_RECEIVED → READY_TO_RELEASE → FREE. |
-| `rob_type_cov` | Each `B_ROB_TYPE` and `R_ROB_TYPE` value exercised. |
-| `qos_mode_cov` | Each `QOS_MODE` value exercised; cross with traffic load. |
-| `qos_value_cov` | All 16 `qos` values present in transmitted flits. |
-| `burst_len_cov` | `awlen / arlen ∈ {0, 1, 7, 15, 255}`. |
-| `burst_type_cov` | Each `awburst / arburst` ∈ {FIXED, INCR, WRAP}. |
-| `ecc_cov` | No-error / 1-bit-error / 2-bit-error per channel; cross with W and R. |
-| `error_path_cov` | Each `ERR_STATUS` bit set at least once; saturation of `ERR_COUNT` and `ECC_UNCORR_ERR_CNT`. |
-| `flow_control_cov` | NMU InjectionBuffer fill-level; RoB occupancy; per-port credit (Credit-Based mode). |
-<!-- source: 09_verification.md §7.1, §7.2 -->
+| ID | Feature | Testpoint description | Protocol rules exercised |
+|----|---------|------------------------|--------------------------|
+| TP31 | End-to-end AXI4 over NoC, 2-NI loopback | NMU at node A, NSU at node B; AXI master at A issues writes; verify NSU at B drives correct writes to local AXI slave; reverse path tested with reads. | All AXI4 + NoC rules in combination |
+| TP32 | Wormhole-route deadlock prevention | Two simultaneous bursts contending on same router output; verify QoS arbitration prevents starvation; verify no deadlock under all permutation combinations. | NI_CFG_QOS_MODE_TRANSITION + Router-side rules (separate spec) |
+| TP33 | Cross-traffic during mode switch | Mid-test ACTIVE→PASSIVE on NI A while NI B still actively transacting; verify NI B's traffic unaffected; verify NI A's wires float. | CFG_MODE_SWITCH |
+| TP34 | NMU-only / NSU-only configurations | Build BFM with `EN_MGR_PORT=1, EN_SBR_PORT=0`; verify NSU signals tied to inactive defaults; mirror with NSU-only. Coverage of `D1.bfm.signal_interface` parameter constraints. | (configuration-only, no protocol rule directly) |
+| TP35 | Probe accuracy under sustained load | Configure PKT_PROBE_EN with various PKT_WINDOW_SIZE; issue traffic at known bandwidth; verify reported PKT_BANDWIDTH within ±5% of actual (target accuracy). | NI_CFG_PROBE_PKT_BYTE_COUNT |
+| TP36 | Long-tail latency capture | Configure TXN_PROBE thresholds (e.g., 10/100/1000/10000 cycles); inject long-tail-latency traffic; verify all 5 bins populated correctly. | NI_CFG_PROBE_TXN_LATENCY |
+| TP37 | RoB exhaustion / back-pressure | Issue MAX_TXNS+1 outstanding transactions in rapid succession; verify NMU asserts back-pressure on awready / arready until RoB slot frees; verify no transaction loss. | AXI4_MST_RoB_OUTSTANDING_LIMIT |
+| TP38 | RoB FREE entry allocation policy | Issue 5 transactions to RoB entries 0-4; complete entry 2 first; issue new transaction; verify it allocates to entry 2 (lowest-index-FREE-first per ToO §RoB allocator). | (none specific; ToO §RoB) |
+| TP39 | RoB tie-breaking on simultaneous READY | Issue 2 transactions same axi_id (back-to-back); arrange responses to arrive simultaneously; verify lower rob_idx releases first (per ToO §RoB tie-breaking). | AXI4_MST_RoB_PER_ID_ORDER |
+| TP40 | AR-during-W interleaving | Start a long W burst; mid-burst issue an AR; verify AR flit injected on noc_req_o between W flits; verify NSU correctly dispatches both. | NOC_FLIT_AW_W_ORDER + AR ordering per ToO |
 
-## Assertion-based verification (ABV)
+## Coverage model
 
-| Assertion | Property |
-|---|---|
-| `a_axi_handshake_in` | AXI in / out compliant: `valid` held until `ready` asserts; no `valid` retraction without handshake. |
-| `a_noc_handshake` | `noc_req_*` / `noc_rsp_*` handshake compliance: `valid` held until `ready`. |
-| `a_no_x_after_reset` | All output ports are non-X within 1 cycle after `rst_ni` deassertion. |
-| `a_rob_state_legal` | `rob_state_cov` only takes legal transitions per the per-entry FSM. |
-| `a_rob_no_double_alloc` | An `ALLOCATED` entry is not re-allocated until it transitions back to `FREE`. |
-| `a_per_id_order` | For any AXI ID, response release order matches request issue order in `NormalRoB`/`SimpleRoB` modes. |
-| `a_ecc_propagation` | A 2-bit error in a W flit always results in `bresp = SLVERR` on the downstream B response. |
-| `a_qos_inheritance_w` | All W flits in a burst carry the same `qos` as the heading AW flit. |
-| `a_qos_inheritance_rsp` | A response flit's `qos` matches the corresponding request's `qos`. |
-| `a_last_bit_correctness` | `last = 1` exactly on the final flit of every multi-flit packet (W with last beat; R with last beat); `last = 1` on every single-flit packet (AW, AR, B). |
-| `a_err_counter_saturating` | `ECC_UNCORR_ERR_CNT` does not wrap when at maximum. |
-<!-- source: 09_verification.md §7.1 (FSM coverage); 04_network_interface.md §5 FR-05, FR-06; 02_flit.md §2.2.5 -->
+Covergroups, each binned across the rules / scenarios it exercises:
 
-`TODO(designer):` Mark each ABV assertion as spec-level vs. RTL-implementation. Spec-level assertions belong here; RTL-implementation assertions (e.g., a specific FIFO pointer never wraps in this implementation) belong in the RTL repository.
+- **cg_axi_handshake_aw / w / b / ar / r** — bins across (VALID-before-READY, READY-before-VALID, simultaneous), (AWLEN ∈ {0, 1-7, 8-15, 16+}), (id ∈ {0..MAX_UNIQUE_IDS-1}).
+- **cg_noc_handshake_req_out / rsp_out / req_in / rsp_in** — bins across (valid-before-ready, ready-before-valid, simultaneous), (consecutive-back-to-back, intermittent).
+- **cg_rob_state_machine** — bins per RoB Entry State (FREE / ALLOCATED / RESPONSE_RECEIVED / READY_TO_RELEASE), per RoB type (Normal / Simple / NoRoB).
+- **cg_qos_modes** — bins across (Bypass, Fixed, Limiter at <threshold, Limiter ≥threshold, Regulator urgency=0, Regulator urgency mid, Regulator urgency=MAX).
+- **cg_qos_clamp** — Regulator BASE_QOS + urgency at boundary (clamp to 15) and SOCKET_QOS lift (≥SOCKET_QOS).
+- **cg_ecc** — bins across (no error, 1-bit corrected on W, 1-bit corrected on R, 2-bit uncorrected on W, 2-bit uncorrected on R).
+- **cg_probe_packet** — bins across modes (Combined, Read, Write) and window-overlap scenarios.
+- **cg_probe_txn** — bins across each latency bin coverage.
+- **cg_err_status** — bins across (none, ecc_uncorr only, timeout only, both, write-1-clear).
+- **cg_cdc_clock_ratio** — bins across aclk:noc_clk ratios (1:10, 1:2, 1:1, 2:1, 10:1).
+- **cg_reset_phase** — bins across (reset during AW, W, B, AR, R, idle), partial-reset variants.
+- **cg_mode_switch** — bins across (ACTIVE→PASSIVE during AXI traffic, ACTIVE→PASSIVE during NoC traffic, ACTIVE→PASSIVE idle, PASSIVE→ACTIVE).
+- **cg_protocol_rule_hits** — one cover-property per rule ID in protocol_rules.md. Final count: **~95 rule IDs** across all sections (5 RST + 3 CDC + 11 AW + 8 W + 7 B + 11 AR + 9 R + 5 XCH + 2 RoB + 3 NoC handshake + 4 NoC flit + 4 NoC ECC + 21 AXI4-Lite CSR + 9 CFG = ~95). One cover bin per rule.
 
-## Formal property verification (FPV)
+D3 coverage closure goal: 100% bin hits on every covergroup.
 
-`TODO(designer):` Source does not describe FPV for `ni`. Recommend FPV for the per-RoB-entry FSM (small state space; high payoff from proving "no entry stuck in ALLOCATED forever") and for the AXI-NoC channel mapping (`a_axi_ch_correct`: AW packs to `axi_ch=0`, W to 1, etc.). Decide and document.
+## ABV / FPV strategy
 
-## Security countermeasure testpoints
+**ABV** — every FAIL-severity row in protocol_rules.md gets one SVA `assert property` in the testbench. Final count: **~85 FAIL-severity assertions** + **~10 RECOMMEND cover-properties**. Total ABV library size: ~95 properties.
 
-Not applicable. `ni` has no security countermeasures (see `theory_of_operation.md` §Security countermeasures). SECDED ECC is data-integrity only.
+**FPV** — formal verification scope:
+- RoB allocator state machine (FREE → ALLOCATED → RESPONSE_RECEIVED → READY_TO_RELEASE → FREE) — verify no deadlock, no entry stuck, per-id ordering.
+- ECC SECDED Hsiao gen + check round-trip — formally verify single-bit correction for all single-bit error patterns; double-bit detection for representative patterns (full enumeration is infeasible at 256-bit data, sampled).
+- CDC async FIFO — verify no data loss / corruption / pointer divergence across all clock-ratio extremes.
+- Reset entry sequencing — verify the wire-level reset values and post-reset transitions match pin_level_reset.md formally.
 
-## Stages and exit criteria
+**Security role**: NI does NOT participate in security-critical paths (access control, attestation, key management). Sec_cm FPV is **not required**. AXI awprot/arprot are sampled but not enforced; protection-attribute checking is delegated to downstream slaves or upstream IP. *Reviewer assumption: confirm — if a future revision adds security gating (e.g., NMU enforces awprot[1]=0 for non-secure transactions), revisit and add sec_cm FPV.*
 
-| Stage | Status | Exit criterion |
-|---|---|---|
-| V0 | reached | This DV plan drafted (this document, post-import). |
-| V1 | not started | TP-01..TP-26 all pass on a smoke build; coverage model coded; ABV all passing. |
-| V2 | not started | 100% testpoint pass; ≥ 90% functional coverage; ≥ 95% code coverage; all ABV passing. |
-| V3 | not started | 100% functional coverage; ≥ 99% code coverage; FPV decisions implemented; signoff review. |
-<!-- source: 09_verification.md §7.1 thresholds (≥80% line, ≥70% branch); per-stage thresholds adapted from wctmr example -->
+## Out of scope
+
+- AXI4 atomic operations (ATOPs) — explicitly out of scope per ToO §ATOPs scope. ATOP transactions terminate with `bresp=SLVERR`; not exercised by DV beyond a single negative testpoint (TP_NEG_ATOP: send ATOP write, verify SLVERR + counter increment).
+- AXI5 features (CHI-derived, cache-coherent).
+- Multi-NI integration (cross-node ordering across the mesh) — handled at system-level DV, not at this NI's unit DV.
+- Router DV — separate spec.
+- System-level deadlock testing — see system DV.
+- Power / clock-gating verification — separate concern.

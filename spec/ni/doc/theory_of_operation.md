@@ -1,195 +1,249 @@
 # Theory of Operation
 
-## Block Diagram
+## Block diagram
 
 ```mermaid
 flowchart TB
-    subgraph TOP[ni]
-        direction TB
-        subgraph NMU[NMU - AXI Slave / NoC Originator]
-            direction TB
-            ADDRT[AddrTrans]
-            QOSG[QoSGen]
-            FPACK_REQ[FlitPack AW/W/AR]
-            ECCGEN_W[ECC Gen W]
-            INJBUF[InjectionBuffer]
-            FUNPACK_RSP[FlitUnpack B/R]
-            ECCCHK_R[ECC Check R]
-            ROB[Reorder Buffer]
-            ADDRT --> QOSG --> FPACK_REQ --> ECCGEN_W --> INJBUF
-            FUNPACK_RSP --> ECCCHK_R --> ROB
-        end
-        subgraph NSU[NSU - AXI Master / NoC Terminator]
-            direction TB
-            FUNPACK_REQ[FlitUnpack AW/W/AR]
-            REQSTORE[ReqInfoStore]
-            WREASM[W Reassembly]
-            ECCCHK_W[ECC Check W]
-            FPACK_RSP[FlitPack B/R]
-            ECCGEN_R[ECC Gen R]
-            FUNPACK_REQ --> REQSTORE
-            FUNPACK_REQ --> WREASM
-            WREASM --> ECCCHK_W
-            FPACK_RSP --> ECCGEN_R
-        end
+    subgraph TB[Testbench]
+        TBAPI[Transaction API + Channel API + CSR access]
     end
-    AXIM[axi_in_req_i / axi_in_rsp_o] --> ADDRT
-    ROB --> AXIM
-    INJBUF --> NOC_REQ_O[noc_req_o]
-    NOC_RSP_I[noc_rsp_i] --> FUNPACK_RSP
-    NOC_REQ_I[noc_req_i] --> FUNPACK_REQ
-    ECCGEN_R --> NOC_RSP_O[noc_rsp_o]
-    REQSTORE --> AXIS[axi_out_req_o / axi_out_rsp_i]
-    AXIS --> FPACK_RSP
+    subgraph BFM[ni BFM]
+        SEQ[Sequencer<br>API dispatch + RoB + outstanding-txn tracker]
+        DRV_AXI[AXI Driver<br>per-channel state machines<br>aclk domain]
+        DRV_NOC[NoC Driver<br>per-link state machines<br>noc_clk domain]
+        MON_AXI[AXI Monitor<br>aclk domain]
+        MON_NOC[NoC Monitor<br>noc_clk domain]
+        CDC[Async FIFO<br>aclk ↔ noc_clk]
+        CFG[Configuration store<br>QoS / Probes / Errors / BFM knobs]
+        QOSGEN[QoS Generator<br>4 modes — Bypass/Fixed/Limiter/Regulator]
+        PROBE[Performance Probes<br>Packet / Transaction]
+        ECC[SECDED ECC<br>Gen / Check]
+        ROB[RoB<br>per-AXI-ID order]
+    end
+    subgraph DUT[Surrounding fabric]
+        AXIMST[AXI master DUT]
+        AXISLV[AXI slave DUT]
+        ROUTER[Router fabric]
+    end
+    TBAPI --> SEQ
+    SEQ --> DRV_AXI
+    SEQ --> DRV_NOC
+    SEQ --> CFG
+    SEQ --> ROB
+    CFG --> QOSGEN
+    CFG --> PROBE
+    DRV_AXI <--> CDC
+    DRV_NOC <--> CDC
+    QOSGEN --> DRV_NOC
+    ECC --> DRV_NOC
+    DRV_AXI -->|drives| AXIMST
+    AXIMST -->|drives| MON_AXI
+    DRV_AXI -->|drives| AXISLV
+    AXISLV -->|drives| MON_AXI
+    DRV_NOC -->|drives| ROUTER
+    ROUTER -->|drives| MON_NOC
+    MON_AXI --> SEQ
+    MON_NOC --> SEQ
+    PROBE --> CFG
 ```
 
-`ni` has three top-level regions visible from the AXI/NoC boundaries:
+## BFM internal architecture
 
-- **NMU (Network Master Unit)** — accepts AXI requests from a connected master, packs them into request flits with NoC headers, and drives `noc_req_o`. On the response side it consumes flits from `noc_rsp_i`, reorders them through the RoB, and emits AXI B/R back to the master.
-- **NSU (Network Slave Unit)** — accepts request flits from `noc_req_i`, reassembles AXI bursts (W channel) and reconstructs request headers, and drives an attached AXI slave on `axi_out_*`. On the response side it packs the slave's B/R replies into flits and emits them on `noc_rsp_o`.
-- **Shared parameters & control** — `id_i` and `route_table_i` (used during routing decisions) are common to both units.
+This section is **always required** in protocol-bfm mode.
 
-NMU and NSU can be enabled independently via `NI_CFG.EN_MGR_PORT` / `NI_CFG.EN_SBR_PORT`. A typical "endpoint" has both enabled.
-<!-- source: 04_network_interface.md §2 -->
+### Driver
 
-## Datapath
+The BFM has **two driver instances** running in different clock domains:
 
-The end-to-end datapath, traced one direction at a time:
+- **AXI Driver** (in `aclk_i` domain): owns per-channel state machines for AW/W/B/AR/R on both manager port (`axi_in_*`) and subordinate port (`axi_out_*`). Plus AXI4-Lite state machine for the CSR port. Fully registered outputs.
+- **NoC Driver** (in `noc_clk_i` domain): owns per-link state machines for `noc_req_o`, `noc_req_i.ready`, `noc_rsp_o`, `noc_rsp_i.ready`. Fully registered outputs.
 
-### NMU request path (AXI master → NoC)
+Both drivers are disabled when `bfm_mode == PASSIVE`; outputs follow `pin_level_reset.md` during-reset values.
 
-1. AXI request arrives on `axi_in_req_i` (one of AW/W/AR channels).
-2. **AddrTrans** consults `id_i` and either the XY-offset decoder (when `ROUTE_CFG.USE_ID_TABLE = 0`) or the SAM table (when `USE_ID_TABLE = 1`) to compute `dst_id` and `local_addr`. With XY-direct decoding and default offsets `XY_ADDR_OFFSET_X = 32` / `XY_ADDR_OFFSET_Y = 36`, `dst_x = addr[35:32]` and `dst_y = addr[39:36]`; the remainder `addr[31:0]` becomes the local-side address presented to the destination NSU.
-3. **QoSGen** computes the header `qos` value according to `QOS_MODE` (Bypass / Fixed / Limiter / Regulator). For W flits the value is **inherited** from the corresponding AW; QoSGen does not run again per beat.
-4. **FlitPack** assembles a flit per the bit allocation in `02_flit.md`. AW and AR are single-flit packets (`last = 1`). W is multi-flit: one flit per AXI beat; only the final beat sets `last = 1`. The header `rob_idx` is allocated by RoB before injection.
-5. **ECC Gen** computes a 32-bit SECDED ECC over `wdata` (per 64-bit granule, 8 ECC bits each → 4 × 8 = 32). The ECC is placed in the `wecc` payload field. Headers and metadata are not protected — header integrity is the responsibility of the physical link layer.
-6. **InjectionBuffer** absorbs handshake delay between FlitPack and the connected Router. Depth is `NMU_BUFFER_DEPTH` (configurable; default 2 in the C++ model).
-7. The flit is driven onto `noc_req_o` (a `valid`/`ready`/`flit` triplet).
+### Monitor
 
-### NMU response path (NoC → AXI master)
+Two monitor instances, one per clock domain. Same activity in active and passive modes.
 
-1. Flits arrive on `noc_rsp_i`. The slave-port-style handshake is again `valid`/`ready`/`flit`.
-2. **FlitUnpack** decomposes the response payload (B or R) per `02_flit.md` §3.3 / §3.4.
-3. **ECC Check** validates `recc` against `rdata` per granule. Single-bit errors are corrected silently (logged in `ECC_UNCORR_ERR_CNT` is **not** incremented; per-granule correctable counts are not exposed in the current CSR map). Two-bit-uncorrectable errors set `ecc_fail = 1` for B responses (carried in `bresp = SLVERR`) and propagate `rresp = SLVERR` for R responses, also incrementing `ECC_UNCORR_ERR_CNT`.
-4. **RoB** locates the entry corresponding to `rob_idx` in the flit header. R responses accumulate beats until the flit with `last = 1` arrives. The entry transitions to `READY_TO_RELEASE`.
-5. AXI per-ID ordering: the RoB releases entries to the AXI master only when all earlier-allocated entries with the same `axi_id` have already been released. Different `axi_id`s may release in any order.
+- **AXI Monitor**: samples all 5 channels of both AXI ports + CSR port. Reconstructs full AXI transactions. Reports violations per `protocol_rules.md` `AXI4_*` rules.
+- **NoC Monitor**: samples both NoC links in both directions. Reconstructs full flit packets (header + payload). Validates ECC fields. Reports violations per `NOC_*` rules.
 
-### NSU request path (NoC → AXI slave)
+### Sequencer
 
-1. Flits arrive on `noc_req_i`.
-2. **FlitUnpack** decomposes AW/W/AR flits.
-3. **ReqInfoStore** records the request header (`rob_idx`, `src_id`, `qos`) keyed by the originating AXI ID; it is consulted later to construct the matching response.
-4. For W bursts, **W Reassembly** accumulates beats keyed by AXI ID until the flit with `last = 1` arrives.
-5. **ECC Check** validates `wecc`. On uncorrectable error the request is still forwarded to the local AXI slave with the original data, but the eventual B response carries `ecc_fail = 1` and `bresp = SLVERR`.
-6. The completed AXI request is driven onto `axi_out_req_o`. The connected slave returns its response on `axi_out_rsp_i`.
+Single sequencer instance (logically domain-spanning). Translates Transaction API calls into AXI Driver + NoC Driver activity, coordinated through:
 
-### NSU response path (AXI slave → NoC)
+- **Outstanding-transaction tracker**: per-AXI-ID; bounded by `MAX_TXNS` × `MAX_TXNS_PER_ID`.
+- **RoB** (Reorder Buffer): see §RoB sub-block below.
+- **CSR file** (in aclk domain): software-visible registers per `registers.md`. CSR writes to QoS / Probe / Error fields update the configuration store; reads return current state.
+- **CDC orchestration**: cross-domain transactions (AXI → NoC → AXI) are tracked via correlated tracker entries spanning both domains; sequencer manages the lifecycle across the async FIFOs.
 
-1. AXI B/R from the local slave is captured.
-2. **FlitPack** wraps it into an Rsp-network flit, retrieving `dst_id ← src_id_of_request`, `port_id ← original_port_id`, `qos ← original_qos`, and `rob_idx ← original_rob_idx` from `ReqInfoStore`.
-3. **ECC Gen** computes `recc` over `rdata` for R responses; B responses do not carry ECC payload (only the `ecc_fail` flag, which captures the *upstream* W check).
-4. The flit is driven onto `noc_rsp_o`.
-<!-- source: 04_network_interface.md §2.2, §5 (FR-01..FR-07); 02_flit.md §3 -->
+### Configuration store
 
-## Control / FSM
+Per-domain config state; both software-writable (via CSR) and testbench-API-writable (via `set_*` knobs):
 
-`ni` does not have a single top-level FSM. Control is distributed across sub-modules. The one stateful, observable FSM is the **per-RoB-entry state machine**:
+| Field | Domain | Write source | Reset (wire) | Reset (state API) |
+|-------|--------|--------------|--------------|-------------------|
+| `QOS_MODE` (Bypass / Fixed / Limiter / Regulator) | aclk | CSR | preserved (CSR file resets to defaults at `arst_ni`) | preserved |
+| `BANDWIDTH_LIMIT`, `SATURATION_THRESHOLD`, `LOW_PRIORITY` | aclk | CSR | reset to default | preserved |
+| `BANDWIDTH_BUDGET`, `BASE_QOS`, `URGENCY_STEP`, `SOCKET_QOS_EN`, `SOCKET_QOS` | aclk | CSR | reset to default | preserved |
+| `PKT_PROBE_EN`, `PKT_PROBE_MODE`, `PKT_WINDOW_SIZE` | aclk | CSR | reset | preserved |
+| `TXN_PROBE_EN`, `TXN_THRESHOLD_*` | aclk | CSR | reset | preserved |
+| `ERR_STATUS` (RW1C), `ERR_COUNT`, `ECC_UNCORR_ERR_CNT`, `LAST_ERR_INFO` | aclk | hardware writes; CSR write-1-to-clear by software | reset | preserved |
+| `bfm_mode` (ACTIVE/PASSIVE) | testbench-only | `set_bfm_mode` | preserved | preserved |
+| `set_response_delay_axi`, `set_response_delay_noc` | testbench-only | knob | preserved | reset to (0, 0) |
+| ECC error injection one-shot, response fault one-shot | testbench-only | knob | reset | reset |
 
-States:
-- `FREE`              — entry available for allocation.
-- `ALLOCATED`         — entry assigned to an outstanding request; AW or AR has been emitted.
-- `RESPONSE_RECEIVED` — at least one response flit has arrived; for R, beats are still accumulating.
-- `READY_TO_RELEASE`  — all beats of the response are present; awaiting per-ID-order release to AXI.
+### Implementation-specific algorithms
+
+#### QoS Generator
+
+Per source-doc 06_qos.md §2 (4 modes):
+
+- **Bypass**: `flit.hdr.qos = AXI awqos / arqos`
+- **Fixed**: `flit.hdr.qos = QOS_FIXED_VALUE`
+- **Limiter**: bandwidth_counter increments per request bytes, decrements per cycle by `BANDWIDTH_LIMIT`; when counter > `SATURATION_THRESHOLD`, qos becomes `LOW_PRIORITY`. Saturating arithmetic.
+- **Regulator**: feedback loop on observed response bandwidth; bandwidth_counter accumulates response_bytes − `BANDWIDTH_BUDGET` per cycle; urgency_level adjusts per `URGENCY_STEP` per `BASE_QOS` register field; final qos = `clamp(BASE_QOS + urgency_level, SOCKET_QOS, 15)`.
+
+QoS computed at AW/AR flit injection; W flit qos inherits from corresponding AW; response flit qos inherits from request (NSU's ReqInfoStore preserves it).
+
+#### RoB allocator
+
+Per source-doc 04_network_interface.md §FR-05. State machine: `FREE → ALLOCATED → RESPONSE_RECEIVED → READY_TO_RELEASE → FREE`. Per-AXI-ID release order enforced by linked-list of rob_idx within each ID's outstanding queue.
+
+**RoB allocator policy when multiple FREE entries are available**: lowest-index-first allocation. Each NMU has a static priority encoder over its `MAX_TXNS`-entry RoB array; the lowest-numbered FREE entry is assigned to the next incoming AW or AR. Rationale: deterministic, matches typical ARM-style RoB implementations, simplifies coverage analysis. *Reviewer assumption: please confirm or override.*
+
+**Tie-breaking when two RoB entries become READY_TO_RELEASE in the same cycle on the same `axi_id`**: release in `rob_idx` order (lower rob_idx releases first, reflecting the issue order from the per-AXI-ID linked list). The per-AXI-ID linked list is the canonical ordering source — when two entries on the same axi_id chain are simultaneously eligible, the one allocated first (lower rob_idx) wins. *Reviewer assumption: this matches standard AXI4 per-ID ordering semantics; please confirm.*
+
+**RoB behavior when `rob_req = 0` in the flit header (i.e., master indicates it doesn't need RoB)**: NMU still allocates a tracker entry (to back-pressure on RoB-full), but releases responses immediately on receive without waiting for in-order release. Equivalent to "fast-path" / NoRoB-effective semantics for that transaction. *Reviewer assumption: confirm vs alternative (skip allocation entirely; degenerate stall).*
+
+#### CDC (async FIFO)
+
+NMU AXI ingress → NoC injection: aclk-domain producer, noc_clk-domain consumer. Gray-counter pointer + 2FF synchronizer. Default depth: 16 entries (sized to absorb 2× the maximum expected aclk-cycle round-trip at the slowest clock-ratio combination, plus 2 entries for synchroniser pipeline depth). *Reviewer assumption: 16 is conservative; tune down if area-critical.*
+
+NMU NoC ingress → AXI egress: mirror direction.
+
+NSU has analogous FIFOs in the inverse data flow.
+
+#### ECC
+
+Per source-doc §FR-06: SECDED Hsiao code, 8 ECC bits per 64-bit data granule, 4 granules per 256-bit DATA_WIDTH = 32-bit total ECC. NMU generates on W injection; NSU validates on W reception (writes `wecc[31:0]` field). NSU generates on R injection; NMU validates on R reception.
+
+**Single-bit (correctable) errors**: NSU/NMU silently correct the granule and propagate corrected data downstream. A separate counter `ECC_CORR_ERR_CNT` (NEW; not in noc-sim source 06_qos.md §4.1, must be added) tracks corrected error events. The existing `ECC_UNCORR_ERR_CNT` tracks **only** double-bit (uncorrectable) events. *Reviewer assumption: ECC_CORR_ERR_CNT register at offset 0x110 (next free after LAST_ERR_INFO at 0x10C), saturating, RW1C clear via ERR_STATUS write-1 to a new bit position [2]. Confirm or relocate offset.*
+
+**Multi-beat R response with one ECC error**: per-beat reporting. Only the affected beat carries `rresp=SLVERR` (per `AXI4_SLV_R_RRESP_ECC_FAIL` rule); other beats of the same burst have `rresp=OKAY`. This preserves throughput on partially-corrupted bursts and matches AXI4 per-beat resp semantics. *Reviewer assumption: matches AXI4 spec §A4.5; confirm.*
+
+**ECC granule definition**: 64-bit data granule. For DATA_WIDTH=256, four granules. For DATA_WIDTH=512, eight granules. For DATA_WIDTH=128, two granules. For DATA_WIDTH=64, one granule. For DATA_WIDTH=32, the granule definition does not naturally fit; the BFM (and RTL) use a single 32-bit granule with appropriately-sized SECDED ECC (typically 7 bits for SEC, additional for DED). *Reviewer assumption: DATA_WIDTH=32 case may be excluded from initial deployment to avoid edge-case complexity.*
+
+### Reset entry sequencing
+
+1. Either (or both) of `arst_ni` / `noc_rst_ni` asserts asynchronously. All BFM outputs in the affected domain follow `pin_level_reset.md` during-reset values.
+2. While the relevant reset is low: trackers in that domain dropped; pending `set_response_delay` countdowns cancelled; one-shot fault flags cleared; observation lists NOT cleared.
+3. CDC FIFOs in the asserted domain hold reset values; FIFO read on the un-asserted side sees empty / FIFO write sees not-ready.
+4. Reset deasserts → state machines remain IDLE; outputs transition to `pin_level_reset.md` after-reset values.
+5. Cross-domain partial reset behavior: see `pin_level_reset.md` §Reset entry sequencing item 4.
+
+### Performance commitments (BFM behavior model)
+
+- **Throughput**: 1 AXI transaction per cycle (best case, no QoS regulation, no RoB back-pressure, no CDC stall).
+- **Latency**: AXI AW handshake → noc_req_o injection: 1 cycle (`CUT_AX=0`) or 2 cycles (`CUT_AX=1`). NoC `noc_rsp_i` reception → AXI B handshake: same. Plus CDC traversal: ~3-4 cycles per direction depending on FIFO depth and clock ratio.
+- **Resource model**: BFM tracks up to `MAX_TXNS` outstanding transactions; RoB depths per `B_ROB_SIZE` / `R_ROB_SIZE`.
+
+## RTL internal architecture
+
+`MODE.md` declares `has-rtl-counterpart: yes` — this NI has a paired RTL implementation, behaviorally equivalent at the AXI4 and NoC pin boundaries.
+
+### RTL block structure
+
+The RTL implementation follows the same external functional decomposition as the BFM (NMU + NSU + sub-modules per source-doc §2.2), but with synthesizable hardware modules instead of behavioral state machines:
 
 ```mermaid
-stateDiagram-v2
-    [*] --> FREE
-    FREE --> ALLOCATED: AW/AR injected to noc_req_o
-    ALLOCATED --> RESPONSE_RECEIVED: first B or R flit arrives
-    RESPONSE_RECEIVED --> READY_TO_RELEASE: last beat (R: last=1; B: single flit)
-    READY_TO_RELEASE --> FREE: per-ID order satisfied; entry released to AXI
+flowchart TB
+    subgraph NMU_RTL[NMU RTL]
+        ATX[AddrTrans<br>combinational lookup]
+        QGEN[QoSGen<br>per-mode logic]
+        FPK[FlitPack AW/W/AR<br>combinational + register]
+        EGEN[ECC Gen]
+        ROB_RTL[RoB Storage<br>flop array, MAX_TXNS entries]
+        FUP[FlitUnpack B/R]
+        ECHK[ECC Check]
+        IBF[InjectionBuffer<br>FIFO]
+        CDC_F1[Async FIFO<br>aclk → noc_clk]
+        CDC_F2[Async FIFO<br>noc_clk → aclk]
+    end
+    subgraph NSU_RTL[NSU RTL]
+        FUP_S[FlitUnpack AW/W/AR]
+        RIS[ReqInfoStore<br>flop array]
+        WRA[W Reassembly<br>FIFO buffer]
+        ECHK_S[ECC Check W]
+        FPK_S[FlitPack B/R]
+        EGEN_S[ECC Gen R]
+        CDC_F3[Async FIFO<br>noc_clk → aclk]
+        CDC_F4[Async FIFO<br>aclk → noc_clk]
+    end
 ```
 
-Transitions:
+Sub-modules:
+- **AddrTrans (NMU)**: combinational; AXI awaddr / araddr → (dst_id, local_addr) per ROUTE_ALGO and USE_ID_TABLE config.
+- **QoSGen (NMU)**: per-mode (Bypass / Fixed / Limiter / Regulator). Stateful for Limiter / Regulator (bandwidth_counter, urgency_level).
+- **FlitPack / FlitUnpack**: combinational logic + 1 pipeline register; `CUT_AX` / `CUT_RSP` parameters add spill register.
+- **RoB Storage (NMU)**: flop-based array of `MAX_TXNS` entries, each carrying state, axi_id, rob_idx, response data accumulator. Per-AXI-ID linked-list tracking.
+- **Async FIFOs**: gray-counter pointer + 2FF synchronizer; depth synthesis-time parameter.
+- **InjectionBuffer (NMU)**: small FIFO (`NMU_BUFFER_DEPTH` from `NocConfig`, default 2 in BFM). RTL uses the same default (2 entries) per BFM-RTL behavioral equivalence; *Reviewer assumption: confirm if RTL choice differs.*
+- **ECC Gen / Check**: combinational; SECDED Hsiao per 64-bit granule.
 
-| From | To | Condition |
-|---|---|---|
-| FREE | ALLOCATED | NMU emits an AW or AR flit; RoB allocator picks this index. |
-| ALLOCATED | RESPONSE_RECEIVED | Inbound B or R flit with this `rob_idx` arrives. |
-| RESPONSE_RECEIVED | READY_TO_RELEASE | The flit with `last = 1` arrives (R), or the single B flit arrives. |
-| READY_TO_RELEASE | FREE | All earlier-allocated RoB entries with the same `axi_id` have already been released. |
+### RTL pipeline / timing
 
-Reset state of every entry: `FREE`.
+- AXI handshake → flit injection: 1-2 cycles (`CUT_AX` parameter).
+- NoC flit reception → AXI handshake: 1-2 cycles (`CUT_RSP` parameter).
+- CDC traversal: 3-4 cycles each direction.
+- RoB entry lifecycle: 1 cycle ALLOCATED → traffic round trip → 1 cycle to release.
 
-`TODO(designer):` The source documents describe per-entry states but **do not** specify (a) the allocator policy when multiple entries are simultaneously `FREE`, (b) tie-breaking when two entries become `READY_TO_RELEASE` in the same cycle on the same `axi_id`, or (c) RoB behavior when `rob_req = 0` — does the entry skip allocation entirely, or take a degenerate "stall" path? Resolve before D1.
-<!-- source: 04_network_interface.md §5 FR-05; 02_flit.md §5 -->
+Fixed timing (no runtime configurability beyond `CUT_AX` / `CUT_RSP` synthesis parameters). The BFM's `set_response_delay_*` knobs are testbench-only and have no RTL equivalent.
 
-`TODO(designer):` There is no documented top-level FSM coordinating NMU/NSU enable/disable, drain on disable, or quiescence detection. If a software-visible quiesce/drain mechanism is intended (typical for hot-swap / DFS scenarios — referenced in `09_verification.md` IT/co-sim test 6), it must be specified here and an `IDLE`-style top-level FSM added.
+### RTL reset behavior
 
-## Resets
+On `arst_ni` assertion:
+- All AXI-domain registered outputs reset to `pin_level_reset.md` during-reset values.
+- AXI in-flight tracker, RoB allocator state reset.
+- AXI-domain configuration registers (CSR file) reset to defaults per registers.md (e.g., `QOS_MODE = 0` Bypass).
+- CDC FIFO write-pointer (aclk side) reset; read-pointer on noc_clk side persists until `noc_rst_ni` asserts.
 
-`TODO(designer):` The source documents do **not** enumerate reset signals or post-reset state for `ni`. The following must be defined before D1:
+On `noc_rst_ni` assertion: mirror behavior.
 
-- Reset signal name(s) and active level(s).
-- Whether reset is synchronous or asynchronous to `clk_i`.
-- Post-reset state of every register listed in `registers.md` (best inferred default: 0x00000000, but must be confirmed).
-- Post-reset state of NMU/NSU (presumably IDLE; presumably no flits in flight; in particular, behavior of the Reorder Buffer entries — all `FREE` — and InjectionBuffer — empty — must be stated).
-- Post-reset state of `bandwidth_counter` and `urgency_level` (QoS Regulator).
-- Reset behavior of the InjectionBuffer FIFO (drained or preserved). For correctness we strongly suspect it must be drained.
-- Behavior if `rst_ni` asserts mid-AXI-transaction or mid-flit-injection.
+Cross-domain partial reset → CDC FIFO is in inconsistent state; integrator must ensure both resets eventually deassert in the same power-on epoch.
 
-## Clock domains and CDC
+### RTL-vs-BFM behavioral equivalence
 
-`TODO(designer):` The source documents do not explicitly enumerate `ni`'s clock domains. The implicit assumption (given that AXI side and NoC side share `clk_i` in 01_overview's defaults) is single-clock-domain. This must be confirmed before D1: if the AXI side and the Router LOCAL port can run at different frequencies, the `ni` boundary becomes a CDC point and synchronizers must be specified.
-
-## Power domains
-
-`TODO(designer):` Source documents do not describe power domains. If `ni` participates in any retention, isolation, or always-on scheme, document here. Otherwise add a single sentence confirming single-power-domain operation.
-
-## Error and fault handling
-
-`ni` detects and reports the following errors:
-
-| Condition | Trigger | NMU/NSU reaction | Software-visible effect |
-|---|---|---|---|
-| W-channel ECC uncorrectable | NSU ECC Check on inbound W detects 2-bit error in a granule | Forward write to local AXI slave with original data; remember error for response | B flit `ecc_fail = 1`, AXI `bresp = SLVERR`, `ECC_UNCORR_ERR_CNT++` (saturating), `ERR_STATUS.ecc_uncorr_err = 1` |
-| W-channel ECC correctable | NSU ECC Check on inbound W detects 1-bit error | Correct in-place, forward corrected data | None observable from AXI side (CSR counter for correctable errors not currently exposed) |
-| R-channel ECC uncorrectable | NMU ECC Check on inbound R detects 2-bit error | Surface as SLVERR on AXI rresp | AXI `rresp = SLVERR`, `ECC_UNCORR_ERR_CNT++` (saturating), `ERR_STATUS.ecc_uncorr_err = 1` |
-| R-channel ECC correctable | NMU ECC Check on inbound R detects 1-bit error | Correct in-place, deliver corrected data | None observable from AXI side |
-| Timeout | `TODO(designer):` source declares `ERR_STATUS.timeout_err` (bit 1) and `LAST_ERR_INFO`, but the **trigger condition** (e.g., outstanding transaction not completing within N cycles) is unspecified | `TODO(designer):` reaction unspecified | `ERR_STATUS.timeout_err = 1`, `LAST_ERR_INFO` updated |
-| RoB full | `NMU_BUFFER_DEPTH` insufficient or all `2^ROB_IDX_WIDTH` entries `ALLOCATED` | Deassert AXI `awready` / `arready` | Backpressure on AXI master |
-<!-- source: 04_network_interface.md §5 FR-05, FR-06; 06_qos.md §4.2, §4.4; 02_flit.md §3.6 -->
-
-`TODO(designer):` The source does not specify how a single uncorrectable ECC error is reflected in **multi-beat R responses** — does the entire burst's `rresp` go SLVERR (preferred for AXI compliance), or only the affected beat? Resolve before D1.
-
-`TODO(designer):` No state is documented as "stuck requires `rst_ni`". Either confirm explicitly (recommended: add a sentence "no error condition latches the block; all errors are per-transaction") or enumerate any latching cases.
-
-## Performance
-
-| Path | Latency | Notes |
-|---|---|---|
-| AXI AW → `noc_req_o` | `CUT_AX ? 2 : 1` cycle | Pack + optional spill register. |
-| AXI W → `noc_req_o` | 1 cycle | Pack via injection buffer. |
-| `noc_rsp_i` → AXI B | `CUT_RSP ? 2 : 1` cycle | Unpack + RoB release. |
-
-Sustained injection rate is up to 1 flit/cycle per link. Backpressure sources:
-- NMU: InjectionBuffer full, or RoB has no `FREE` entry.
-- NSU: connected AXI slave deasserts `awready` / `arready`.
-
-Burst efficiency (flit overhead per AXI transaction):
-
-| Transaction | Flits |
+| BFM feature | RTL counterpart |
 |---|---|
-| Single write (`awlen=0`) | 2 (1×AW + 1×W) |
-| Burst write (`awlen=15`) | 17 (1×AW + 16×W) |
-| Single read request | 1 (1×AR) |
-| Burst read response (`arlen=15`) | 16 (16×R) |
-| Single write response | 1 (1×B) |
-<!-- source: 04_network_interface.md §6 -->
+| `set_response_delay_axi` / `set_response_delay_noc` | **Test-only.** RTL has fixed pipeline timing (`CUT_AX` / `CUT_RSP` synthesis params only). BFM knob exists for stress-testing master DUT response-latency tolerance. |
+| `set_inject_ecc_error(channel, kind)` | **Test-only.** RTL only generates ECC errors when input data is genuinely corrupted (single-event upset, etc.). BFM knob exists for stress-testing downstream ECC-handling paths. |
+| `set_response_fault(channel, SLVERR/DECERR)` | **Test-only.** RTL only generates SLVERR/DECERR on real conditions: ECC uncorrectable (W or R), AXI 4KB boundary crossing, unmapped address, RoB exhaustion timeout. |
+| `bfm_mode = ACTIVE / PASSIVE` | **Test-only.** RTL is always active; PASSIVE is a verification convenience only. |
+| `apply_axi_*` / `expect_axi_*` / `expect_noc_*` | **Test-only.** RTL is the DUT (in some scenarios) or the AXI responder (in others); it has no method API. |
+| `get_observed_*` lists | **Test-only.** RTL has no observation buffers; observation happens via the BFM (in passive mode) or external scoreboards. |
+| CSR-mapped QoS / Probe / Error registers | **Identical between BFM and RTL.** Software accesses the same CSR memory map (per `registers.md`). The BFM models the same CSR file; RTL implements it as actual flop-based registers. |
+| ECC generation / validation | **Identical at the wire level.** Same SECDED Hsiao code; same per-granule layout. |
+| RoB ordering | **Identical at the wire level.** Same per-AXI-ID order release; same back-pressure on `awready` / `arready` when full. |
 
-## Security countermeasures
+### RTL implementation notes
 
-`ni` is **not** on a security-critical path; SECDED ECC is for **data integrity**, not confidentiality or attack resistance. ECC is end-to-end (source NI generate → Router pass-through → destination NI check) and protects only `wdata` and `rdata`. Header fields, including `dst_id`, are **not** protected by `ni`-level mechanisms; header integrity must be guaranteed by the physical link layer (wire parity / CRC) per `02_flit.md` §7.
+- Synthesis target: ASIC 7nm process; target frequency 1.2 GHz on `noc_clk_i` and 800 MHz on `aclk_i`. *Reviewer assumption: representative target; adjust for actual deployment.*
+- RoB Storage: flop-based at MAX_TXNS=32 (default); for larger MAX_TXNS, integrator should evaluate SRAM macro.
+- CDC FIFO depth: parameter `CDC_FIFO_DEPTH`, default 16 entries.
+- Lint exemption: `WIDTH_TRUNC` on AXI awaddr / araddr upper bits where the routing extracts only X_WIDTH+Y_WIDTH bits for dst_id (intentional). No other exemptions expected.
 
-`TODO(designer):` If `ni` is later used in a security-critical role (e.g., crossing trust boundaries within a confidential-compute SoC), per-asset countermeasure analysis must be added.
-<!-- source: 02_flit.md §3.6, §7 -->
+## AR-during-W ordering
+
+When NMU has a W burst in flight on `noc_req_o`, may it inject an AR flit between W beats?
+
+**Decision**: Yes. AR flits are single-cycle and may interleave with W burst beats on the same `noc_req_o` link. The router fabric does not assume W-burst contiguity at the NMU output; W-burst integrity is reconstructed at NSU's W-reassembly buffer using the flit `axi_ch=1` field plus per-NMU sequencing. AR flits carry `axi_ch=2` and are routed independently.
+
+**Rationale**: separating AR from W at injection avoids head-of-line blocking when a slow remote slave back-pressures the W burst. The cost is slight increase in NSU complexity (W reassembly must tolerate interleaved AR observation), but this is implementation-internal and bounded.
+
+*Reviewer assumption: confirm vs alternative (AR injection blocked until W burst completes — simpler at NSU but introduces HoL blocking).*
+
+## ATOPs scope
+
+AXI4 atomic operations (ATOPs) — single-token CAS / SWAP / LOAD-STORE — are **out of scope** for this NI revision. The `awatop` field is sampled and recorded for monitor mode but the BFM and RTL both terminate ATOPs with `bresp=SLVERR` and a single B response (no ATOP read-response generation).
+
+*Reviewer assumption: matches noc-sim §3 parameter list which omits ATOP_SUPPORT. Confirm or upgrade to ATOP_SUPPORT=1 path (would add ~3 weeks of design + DV).*

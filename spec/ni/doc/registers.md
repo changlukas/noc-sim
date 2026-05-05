@@ -1,299 +1,127 @@
 # Registers
 
-`TODO(designer):` Reserved-bit policy is **not stated** in the source. Recommended default: "Reserved fields read as zero. Writes to reserved fields are ignored. Software should write reserved fields as zero to remain forward-compatible." Confirm and adopt before D1.
+NI exposes a software-visible CSR file via the dedicated AXI4-Lite subordinate port (`csr_*`). All CSRs are 32-bit-aligned. Access policies:
 
-`TODO(designer):` The CSR memory map is documented in `06_qos.md` as a NoC-system / NI register map. The source does not state which AXI bus exposes these registers, the address window size, or the access widths permitted. Sub-word access policy and unmapped-offset policy must also be defined. The conventional choice is "32-bit aligned, sub-word returns SLVERR; offsets outside the documented range return SLVERR."
+- **Sub-word access**: not supported. CSR writes with `csr_wstrb != 0xF` (any byte deasserted) trigger `csr_bresp = SLVERR` and the write is dropped. Reads ignore byte strobes (full 32-bit word returned).
+- **Unmapped offset**: any `csr_awaddr` or `csr_araddr` that doesn't match a register in §Register map below triggers `csr_bresp = DECERR` (writes) or `csr_rresp = DECERR` (reads). Unmapped reads return `csr_rdata = 0x0`.
+- **Misaligned access**: `csr_awaddr[1:0] != 0` or `csr_araddr[1:0] != 0` triggers `SLVERR`.
+
+CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-conflict-fix); see provenance comments inline.
+
+## Reserved-bit policy
+
+- **Writes**: bits in the Reserved column of any register layout are ignored — software writes to those bit positions have no effect on hardware state.
+- **Reads**: Reserved bits return 0.
+- **RW1C bits**: bits not in the §ERR_STATUS layout (i.e., the upper 30 bits of ERR_STATUS) are Reserved and follow the standard reserved-bit policy above (write-ignored, read-zero).
+- **Forward compatibility**: software should not assume Reserved bits will remain 0 in future revisions. Always mask reads of Reserved bits to 0 before logical comparison.
 
 ## Register map
 
-| Offset | Name | Access | Reset | Description |
-|---|---|---|---|---|
-| 0x000 | `QOS_MODE` | RW | `TODO(designer)` | QoS mode select. See Theory of Operation §Datapath / NMU. |
-| 0x004 | `QOS_FIXED_VALUE` | RW | `TODO(designer)` | Fixed-mode qos value. |
-| 0x008 | `BANDWIDTH_LIMIT` | RW | `TODO(designer)` | Limiter bandwidth cap (1/256 bytes/cycle). |
-| 0x00C | `SATURATION_THRESHOLD` | RW | `TODO(designer)` | Limiter saturation threshold. |
-| 0x010 | `LOW_PRIORITY` | RW | `TODO(designer)` | Limiter low-priority qos value when threshold exceeded. |
-| 0x014 | `BANDWIDTH_BUDGET` | RW | `TODO(designer)` | Regulator bandwidth budget (1/256 bytes/cycle). |
-| 0x018 | `BASE_QOS` | RW | `TODO(designer)` | Regulator base qos (urgency = 0). |
-| 0x01C | `SOCKET_QOS_EN` | RW | `TODO(designer)` | Socket-QoS-floor enable. |
-| 0x020 | `SOCKET_QOS` | RW | `TODO(designer)` | Socket QoS floor value. |
-| 0x040 | `PKT_PROBE_EN` | RW | `TODO(designer)` | Packet Probe enable. |
-| 0x044 | `PKT_PROBE_MODE` | RW | `TODO(designer)` | 0 = Combined, 1 = Read, 2 = Write. |
-| 0x048 | `PKT_WINDOW_SIZE` | RW | `TODO(designer)` | Statistic window (cycles). |
-| 0x04C | `PKT_BYTE_COUNT` | RO | 0x0 | Bytes transferred (read-only counter). |
-| 0x050 | `PKT_BANDWIDTH` | RO | 0x0 | Computed bandwidth result. |
-| 0x060 | `TXN_PROBE_EN` | RW | `TODO(designer)` | Transaction Probe enable. |
-| 0x064 | `TXN_THRESHOLD_0` | RW | `TODO(designer)` | Latency bin boundary 0 (cycles). |
-| 0x068 | `TXN_THRESHOLD_1` | RW | `TODO(designer)` | Bin boundary 1. |
-| 0x06C | `TXN_THRESHOLD_2` | RW | `TODO(designer)` | Bin boundary 2. |
-| 0x070 | `TXN_THRESHOLD_3` | RW | `TODO(designer)` | Bin boundary 3. |
-| 0x080 | `TXN_BIN_0_COUNT` | RO | 0x0 | Bin 0 count. |
-| 0x084 | `TXN_BIN_1_COUNT` | RO | 0x0 | Bin 1 count. |
-| 0x088 | `TXN_BIN_2_COUNT` | RO | 0x0 | Bin 2 count. |
-| 0x08C | `TXN_BIN_3_COUNT` | RO | 0x0 | Bin 3 count. |
-| 0x090 | `TXN_BIN_4_COUNT` | RO | 0x0 | Bin 4 count. |
-| 0x094 | `TXN_MIN_LATENCY` | RO | 0x0 | Minimum observed latency. |
-| 0x098 | `TXN_MAX_LATENCY` | RO | 0x0 | Maximum observed latency. |
-| 0x09C | `TXN_TOTAL_COUNT` | RO | 0x0 | Total transactions counted. |
-| 0x100 | `ERR_STATUS` | RO | 0x0 | Error status flags. |
-| 0x104 | `ERR_COUNT` | RO | 0x0 | Total error count (saturating). |
-| 0x108 | `ECC_UNCORR_ERR_CNT` | RO | 0x0 | ECC uncorrectable error count (saturating). |
-| 0x10C | `LAST_ERR_INFO` | RO | 0x0 | Most-recent error context (AXI ID + src/dst Node ID). |
-<!-- source: 06_qos.md §4.1 -->
+| Offset | Register | Access | Reset | Description |
+|--------|----------|--------|-------|-------------|
+| **QoS Generator** |||||
+| 0x000 | `QOS_MODE` | RW | 0x0 (Bypass) | QoS 模式選擇 (0=Bypass, 1=Fixed, 2=Limiter, 3=Regulator). See §QOS_MODE. |
+| 0x004 | `QOS_FIXED_VALUE` | RW | 0x0 | Fixed mode qos 值. See §QOS_FIXED_VALUE. |
+| 0x008 | `BANDWIDTH_LIMIT` | RW | 0x0 | Limiter 頻寬限制 (1/256 bytes/cycle). |
+| 0x00C | `SATURATION_THRESHOLD` | RW | 0x0 | Limiter 飽和閾值 (bytes). |
+| 0x010 | `LOW_PRIORITY` | RW | 0x0 | Limiter 超標時 qos. |
+| 0x014 | `BANDWIDTH_BUDGET` | RW | 0x0 | Regulator 頻寬預算 (1/256 bytes/cycle). |
+| 0x018 | `BASE_QOS` | RW | 0x0 | Regulator 基礎 qos + URGENCY_STEP combined. See §BASE_QOS for field layout. <!-- source: 06_qos.md §4.1 + §4.5 (post-fix) --> |
+| 0x01C | `SOCKET_QOS_EN` | RW | 0x0 | Regulator Socket QoS 啟用. |
+| 0x020 | `SOCKET_QOS` | RW | 0x0 | Regulator Socket QoS 下限. |
+| **Packet Probe** |||||
+| 0x040 | `PKT_PROBE_EN` | RW | 0x0 | 啟用 Packet Probe. |
+| 0x044 | `PKT_PROBE_MODE` | RW | 0x0 (Combined) | 統計模式 (0=Combined, 1=Read, 2=Write). |
+| 0x048 | `PKT_WINDOW_SIZE` | RW | 0x0 | 統計視窗 (cycles). |
+| 0x04C | `PKT_BYTE_COUNT` | RO | 0x0 | 傳輸 bytes 累計 (saturating). |
+| 0x050 | `PKT_BANDWIDTH` | RO | 0x0 | 計算的頻寬 (per current window). |
+| **Transaction Probe** |||||
+| 0x060 | `TXN_PROBE_EN` | RW | 0x0 | 啟用 Transaction Probe. |
+| 0x064 | `TXN_THRESHOLD_0` | RW | 0x0 | 延遲閾值 0 (cycles). |
+| 0x068 | `TXN_THRESHOLD_1` | RW | 0x0 | 延遲閾值 1. |
+| 0x06C | `TXN_THRESHOLD_2` | RW | 0x0 | 延遲閾值 2. |
+| 0x070 | `TXN_THRESHOLD_3` | RW | 0x0 | 延遲閾值 3. |
+| 0x080 | `TXN_BIN_0_COUNT` | RO | 0x0 | Bin 0 計數 (saturating). |
+| 0x084 | `TXN_BIN_1_COUNT` | RO | 0x0 | Bin 1 計數. |
+| 0x088 | `TXN_BIN_2_COUNT` | RO | 0x0 | Bin 2 計數. |
+| 0x08C | `TXN_BIN_3_COUNT` | RO | 0x0 | Bin 3 計數. |
+| 0x090 | `TXN_BIN_4_COUNT` | RO | 0x0 | Bin 4 計數. |
+| 0x094 | `TXN_MIN_LATENCY` | RO | 0xFFFF | 最小延遲 (16-bit; initialised to all-1s sentinel value; first observed transaction-latency overwrites; subsequent observations write only if smaller). Cleared back to 0xFFFF via `TXN_PROBE_EN` 1→0→1 transition. |
+| 0x098 | `TXN_MAX_LATENCY` | RO | 0x0 | 最大延遲. |
+| 0x09C | `TXN_TOTAL_COUNT` | RO | 0x0 | 總 transaction 數 (saturating). |
+| **Error Status** |||||
+| 0x100 | `ERR_STATUS` | RW1C | 0x0 | 錯誤狀態 — write 1 to clear bit and the associated saturating counter. See §ERR_STATUS. <!-- source: 06_qos.md §4.1, post-fix RW1C --> |
+| 0x104 | `ERR_COUNT` | RO | 0x0 | 錯誤計數 (`ERR_COUNTER_WIDTH` bits, saturating). Cleared via `ERR_STATUS[1]` write-1 (timeout_err). |
+| 0x108 | `ECC_UNCORR_ERR_CNT` | RO | 0x0 | ECC uncorrectable 錯誤計數 (saturating). Cleared via `ERR_STATUS[0]` write-1 (ecc_uncorr_err). |
+| 0x10C | `LAST_ERR_INFO` | RO | 0x0 | 最近錯誤資訊 (sticky semantics; see §LAST_ERR_INFO for field layout). |
+| 0x110 | `ECC_CORR_ERR_CNT` | RO | 0x0 | ECC corrected (single-bit) 錯誤計數 (saturating). Tracks 1-bit corrections from W or R flit reception. Cleared via `ERR_STATUS[2]` write-1 (ecc_corr_err). *New in this NI revision; not in noc-sim 06_qos.md §4.1 originally.* |
+
+## §BASE_QOS Register (0x018) Field Layout
+
+<!-- source: 06_qos.md §4.5 (post-fix) -->
+
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `BASE_QOS` | [3:0] | 4 | Regulator mode 基礎 QoS 值 (urgency_level=0 時使用，0~15). See ToO §QoSGen. | 0x0 |
+| `URGENCY_STEP` | [5:4] | 2 | Urgency 每次調整的步進值 (1~3；軟體寫 0 時硬體視同 1). See ToO §QoSGen Regulator mode. | 0x0 |
+| Reserved | [31:6] | 26 | — | 0x0 |
+
+## §QOS_MODE Register (0x000) Field Layout
+
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `QOS_MODE` | [1:0] | 2 | 0=Bypass, 1=Fixed, 2=Limiter, 3=Regulator | 0x0 |
+| Reserved | [31:2] | 30 | — | 0x0 |
+
+## §QOS_FIXED_VALUE Register (0x004) Field Layout
+
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `QOS_FIXED_VALUE` | [3:0] | 4 | Fixed mode 輸出 qos 值 (0~15) | 0x0 |
+| Reserved | [31:4] | 28 | — | 0x0 |
+
+## §ERR_STATUS Register (0x100) Field Layout
+
+<!-- source: 06_qos.md §4.2 -->
+
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `ecc_uncorr_err` | [0] | 1 | ECC uncorrectable 錯誤發生; write 1 clears bit + `ECC_UNCORR_ERR_CNT`. | 0x0 |
+| `timeout_err` | [1] | 1 | Timeout 錯誤發生; write 1 clears bit + `ERR_COUNT`. | 0x0 |
+| `ecc_corr_err` | [2] | 1 | ECC correctable (1-bit) 錯誤發生; write 1 clears bit + `ECC_CORR_ERR_CNT`. *New bit in this NI revision.* | 0x0 |
+| Reserved | [7:3] | 5 | — | 0x0 |
+| Reserved | [31:8] | 24 | — | 0x0 |
+
+## §LAST_ERR_INFO Register (0x10C) Field Layout
 
-`TODO(designer):` Register access width — the source assumes 32-bit registers but does not state this. Confirm and add to the section preface.
-
-`TODO(designer):` All `RW` reset values are listed as `TODO`. Conventional defaults are 0x00000000, but `QOS_MODE` in particular may sensibly default to 0 (Bypass) — confirm.
-
-## Register details
-
-### QOS_MODE
-
-- Offset: 0x000
-- Width: `TODO(designer): confirm 32`
-- Access: RW
-- Reset: `TODO(designer)`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [1:0] | mode | RW | `TODO` | 0 = Bypass (use AXI awqos/arqos directly), 1 = Fixed, 2 = Limiter, 3 = Regulator. See Theory of Operation §Datapath / NMU. |
-| [31:2] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §2.2 -->
-
-### QOS_FIXED_VALUE
-
-- Offset: 0x004 — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [3:0] | value | RW | `TODO` | qos value driven into the flit header when `QOS_MODE = Fixed`. |
-| [31:4] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §2.2 -->
-
-### BANDWIDTH_LIMIT
-
-- Offset: 0x008 — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [15:0] | limit | RW | `TODO` | Limiter bandwidth cap, units 1/256 bytes/cycle. See Theory of Operation §Datapath / NMU. |
-| [31:16] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §2.3 -->
-
-### SATURATION_THRESHOLD
-
-- Offset: 0x00C — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [15:0] | threshold | RW | `TODO` | Limiter saturation threshold (bytes). |
-| [31:16] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §2.3 -->
-
-### LOW_PRIORITY
-
-- Offset: 0x010 — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [3:0] | value | RW | `TODO` | qos value when Limiter detects over-budget. |
-| [31:4] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §2.3 -->
-
-### BANDWIDTH_BUDGET
-
-- Offset: 0x014 — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [15:0] | budget | RW | `TODO` | Regulator target bandwidth, 1/256 bytes/cycle. |
-| [31:16] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §2.4.6 -->
-
-### BASE_QOS
-
-- Offset: 0x018 — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [3:0] | base_qos | RW | `TODO` | Regulator base qos, used when urgency = 0. |
-| [5:4] | urgency_step | RW | `TODO` | Urgency step (1..3). `TODO(designer):` source declares 2 bits but limits values to 1..3 — confirm whether 0 is reserved. |
-| [31:6] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §2.4.6 -->
-
-`TODO(designer):` `URGENCY_STEP` (2-bit) is declared as a separate register row in the source but no offset is given. Best guess: same register as `BASE_QOS`, occupying bits [5:4]. **This is an inferred consolidation; please confirm**.
-
-### SOCKET_QOS_EN
-
-- Offset: 0x01C — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [0] | enable | RW | `TODO` | Enable Socket-QoS floor. |
-| [31:1] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §2.4.6 -->
-
-### SOCKET_QOS
-
-- Offset: 0x020 — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [3:0] | floor | RW | `TODO` | Socket QoS floor value (qos lower bound). |
-| [31:4] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §2.4.6 -->
-
-### PKT_PROBE_EN
-
-- Offset: 0x040 — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [0] | enable | RW | `TODO` | Enable Packet Probe. |
-| [31:1] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §3.2 -->
-
-### PKT_PROBE_MODE
-
-- Offset: 0x044 — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [1:0] | mode | RW | `TODO` | 0 = Combined, 1 = Read-only, 2 = Write-only. |
-| [31:2] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §3.2 -->
-
-### PKT_WINDOW_SIZE
-
-- Offset: 0x048 — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [15:0] | cycles | RW | `TODO` | Statistic window size (cycles). |
-| [31:16] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §3.2 -->
-
-### PKT_BYTE_COUNT
-
-- Offset: 0x04C — Width: 32 — Access: RO — Reset: 0x00000000
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [31:0] | count | RO | 0x0 | Bytes transferred in the most recent window. |
-<!-- source: 06_qos.md §3.2 -->
-
-`TODO(designer):` Counter overflow / clear-on-read / window-rollover semantics are not specified for `PKT_BYTE_COUNT` and `PKT_BANDWIDTH`. Specify before D1.
-
-### PKT_BANDWIDTH
-
-- Offset: 0x050 — Width: 32 — Access: RO — Reset: 0x00000000
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [31:0] | bw | RO | 0x0 | Computed bandwidth (units `TODO(designer): bytes/cycle? or bytes/window?`). |
-<!-- source: 06_qos.md §3.2 -->
-
-### TXN_PROBE_EN
-
-- Offset: 0x060 — Width: `TODO` — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [0] | enable | RW | `TODO` | Enable Transaction Probe. |
-| [31:1] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §3.3 -->
-
-### TXN_THRESHOLD_0..3
-
-- Offsets: 0x064, 0x068, 0x06C, 0x070 — Width: 16 (declared) — Access: RW — Reset: `TODO`
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [15:0] | cycles | RW | `TODO` | Latency bin boundary, in cycles. Bin 0: latency < THRESHOLD_0; Bin N: latency ≥ THRESHOLD_{N-1}. |
-| [31:16] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §3.3 -->
-
-### TXN_BIN_0_COUNT..4_COUNT
-
-- Offsets: 0x080, 0x084, 0x088, 0x08C, 0x090 — Width: 32 — Access: RO — Reset: 0x00000000
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [31:0] | count | RO | 0x0 | Number of transactions whose latency fell into this bin. |
-<!-- source: 06_qos.md §3.3 -->
-
-`TODO(designer):` Saturation behavior of bin counters is unspecified. Recommend they be saturating to `2^32 - 1` like the error counters.
-
-### TXN_MIN_LATENCY / TXN_MAX_LATENCY
-
-- Offsets: 0x094, 0x098 — Width: 16 — Access: RO — Reset: 0x0000
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [15:0] | latency | RO | 0x0 | Minimum / maximum observed latency. `TODO(designer):` initial reset value semantics — does MIN start at `0xFFFF`? |
-| [31:16] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §3.3 -->
-
-### TXN_TOTAL_COUNT
-
-- Offset: 0x09C — Width: 32 — Access: RO — Reset: 0x00000000
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [31:0] | count | RO | 0x0 | Total transactions counted. |
-<!-- source: 06_qos.md §3.3 -->
-
-### ERR_STATUS
-
-- Offset: 0x100 — Width: `TODO(designer): 32 likely` — Access: RO — Reset: 0x00000000
-
-`TODO(designer):` Source declares this RO, but the clear mechanism in `06_qos.md §4.4` says counters clear on "write 1 to ERR_STATUS[0]". An RO register cannot be written. **There is a contradiction.** Most likely the access is W1C (write-1-to-clear). Resolve: either change the access to RW1C, or specify a separate ERR_CLEAR register, or remove the clear-via-write-1 sentence.
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [0] | ecc_uncorr_err | `TODO(designer): RW1C?` | 0x0 | Set to 1 when at least one ECC uncorrectable error has been observed since last clear. |
-| [1] | timeout_err | `TODO(designer): RW1C?` | 0x0 | Set to 1 when a timeout occurs. **Trigger condition `TODO(designer)`**. |
-| [7:2] | — | RO | 0x0 | Reserved. |
-| [31:8] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §4.2, §4.4 -->
-
-### ERR_COUNT
-
-- Offset: 0x104 — Width: `ERR_COUNTER_WIDTH` (default 16) — Access: RO — Reset: 0x0000
-
-`TODO(designer):` Hardware width is configurable (default 16) but the register is documented at offset 0x104 with no further width statement; if the register is always presented as 32 bits with the upper bits reserved, state that explicitly.
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [`ERR_COUNTER_WIDTH-1`:0] | count | RO | 0x0 | Saturating count of total errors observed. Cleared by writing 1 to `ERR_STATUS.ecc_uncorr_err` (per source §4.4 — see contradiction note above). |
-| [31:`ERR_COUNTER_WIDTH`] | — | RO | 0x0 | Reserved (when register is presented as 32 bits). |
-<!-- source: 06_qos.md §4.4 -->
-
-### ECC_UNCORR_ERR_CNT
-
-- Offset: 0x108 — Width: `ERR_COUNTER_WIDTH` (default 16) — Access: RO — Reset: 0x0000
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [`ERR_COUNTER_WIDTH-1`:0] | count | RO | 0x0 | Saturating count of ECC uncorrectable errors. |
-| [31:`ERR_COUNTER_WIDTH`] | — | RO | 0x0 | Reserved. |
-<!-- source: 06_qos.md §4.4 -->
-
-### LAST_ERR_INFO
-
-- Offset: 0x10C — Width: `TODO(designer): 32 likely` — Access: RO — Reset: 0x00000000
-
-| Bits | Field | Access | Reset | Description |
-|---|---|---|---|---|
-| [`AXI_ID_WIDTH-1`:0] (default [7:0]) | err_axi_id | RO | 0x0 | AXI ID of the offending transaction. |
-| [`AXI_ID_WIDTH+X+Y-1`:`AXI_ID_WIDTH`] (default [15:8]) | err_src_id | RO | 0x0 | Source Node ID. |
-| [`AXI_ID_WIDTH+2(X+Y)-1`:`AXI_ID_WIDTH+X+Y`] (default [23:16]) | err_dst_id | RO | 0x0 | Destination Node ID. |
-| [31:24] | — | RO | 0x0 | Reserved (default configuration). |
 <!-- source: 06_qos.md §4.3 -->
 
-`TODO(designer):` `LAST_ERR_INFO` updates on every error or only on the first since last clear? Source does not state. Define before D1.
+Field widths derived from defaults: `AXI_ID_WIDTH=8`, `X_WIDTH+Y_WIDTH=8`. For non-default configurations: register layout adjusts at compile time. If `AXI_ID_WIDTH=16`, `err_axi_id` occupies [15:0], `err_src_id` occupies [23:16], `err_dst_id` occupies [31:24], no Reserved bits. If total width exceeds 32 bits, register splits into LAST_ERR_INFO_LO (0x10C) + LAST_ERR_INFO_HI (0x110); see §Compile-time-conditional registers below.
 
-## Notes pending designer resolution
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `err_axi_id` | [7:0] | `AXI_ID_WIDTH` | 錯誤 transaction 的 AXI ID. | 0x0 |
+| `err_src_id` | [15:8] | `X_WIDTH + Y_WIDTH` | 錯誤來源 node ID. | 0x0 |
+| `err_dst_id` | [23:16] | `X_WIDTH + Y_WIDTH` | 錯誤目標 node ID. | 0x0 |
+| Reserved | [31:24] | 8 | — | 0x0 |
 
-- INTR_STATE / INTR_ENABLE / INTR_TEST are **not** present, consistent with `interfaces.md` §Interrupts (no top-level interrupt outputs). If interrupts are added later, follow the OpenTitan triplet convention.
-- The CSR register file's bus protocol is not specified. Most likely it is exposed via the AXI manager port at a reserved address window — `TODO(designer): confirm`.
+**Update semantics** (resolved per ToO §ECC and protocol_rules.md `NI_CFG_LAST_ERR_INFO_CAPTURE`): **sticky** — first error since last clear is captured; subsequent errors do not overwrite until software clears via `ERR_STATUS` RW1C write. Rationale: prevents losing the original triggering error while system processes subsequent cascaded errors. Test in dv/plan TP19. *Reviewer assumption: confirm vs alternative (overwrite — last error wins).*
+
+## Counter saturation behavior
+
+<!-- source: 06_qos.md §4.4 -->
+
+All error counters and bin counters use **saturating arithmetic**: increment up to `2^W - 1`, then hold; no wrap-around. Clear mechanisms:
+
+| Counter group | Clear mechanism |
+|---|---|
+| Error counters (`ERR_COUNT`, `ECC_UNCORR_ERR_CNT`, `ECC_CORR_ERR_CNT`) | Software writes 1 to corresponding `ERR_STATUS[N]` bit; counter clears atomically with the bit |
+| Packet Probe counters (`PKT_BYTE_COUNT`, `PKT_BANDWIDTH`) | Software writes `PKT_PROBE_EN = 0` then `PKT_PROBE_EN = 1`; on the 0→1 transition, counters reset to 0. *Reviewer assumption: this mechanism not in noc-sim 06_qos.md §3 originally; introduced here for testability.* |
+| Transaction Probe counters (`TXN_BIN_*_COUNT`, `TXN_TOTAL_COUNT`) | Same — `TXN_PROBE_EN` 1→0→1 transition resets all bin counters and TXN_TOTAL_COUNT to 0 |
+| Latency extremes (`TXN_MIN_LATENCY`, `TXN_MAX_LATENCY`) | Same — `TXN_PROBE_EN` 1→0→1 resets MIN to 0xFFFF and MAX to 0x0 |
+
+## Cross-reference to behavior
+
+For QoS Generator behavior, see [Theory of Operation §QoSGen](./theory_of_operation.md#qos-generator).
+For ECC error counter triggering, see [Theory of Operation §ECC](./theory_of_operation.md#ecc).
+For Probe counter update timing, see protocol_rules.md `NI_CFG_PROBE_PKT_BYTE_COUNT` and `NI_CFG_PROBE_TXN_LATENCY` for cycle-level update specification.
