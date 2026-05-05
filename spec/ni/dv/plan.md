@@ -36,7 +36,7 @@ Mapping README Features → testpoints (per stage gate D1.dv.testpoints requirem
 | TP5 | RoB Normal mode (NormalRoB) | Issue 32 outstanding reads with mixed axi_id; randomize NoC response order; verify per-id in-order release at AXI; verify cross-id reordering. | AXI4_MST_RoB_PER_ID_ORDER |
 | TP6 | RoB Simple mode (SimpleRoB) | Same with SimpleRoB; verify FIFO ordering across all txnIDs (different IDs serialised). | RoB_PER_ID_ORDER |
 | TP7 | RoB NoRoB mode | Single-outstanding; verify next request stalls until previous completes. | RoB_OUTSTANDING_LIMIT |
-| TP8 | SECDED ECC end-to-end | Inject 1-bit error in W flit at NMU output (`set_inject_ecc_error(W, SINGLE_BIT)`); verify NSU corrects silently; verify `ECC_UNCORR_ERR_CNT` does NOT increment; verify `ECC_CORR_ERR_CNT` (new register at 0x110 per ToO §ECC implementation) DOES increment. | NOC_ECC_W_GEN; NOC_ECC_W_CHECK |
+| TP8 | SECDED ECC end-to-end | Inject 1-bit error in W flit at NMU output (`set_inject_ecc_error(W, SINGLE_BIT)`); verify NSU corrects silently and propagates corrected data; verify `ECC_UNCORR_ERR_CNT` does NOT increment; verify no CSR-visible side effect (single-bit corrections are intentionally not counted per ToO §ECC). | NOC_ECC_W_GEN; NOC_ECC_W_CHECK |
 | TP9 | SECDED ECC end-to-end | Inject 2-bit error in W flit; verify NSU detects + propagates to AXI `bresp = SLVERR` + increments `ECC_UNCORR_ERR_CNT`. | NOC_ECC_W_CHECK; AXI4_SLV_B_BRESP_VALUES |
 | TP10 | SECDED ECC end-to-end | Inject 1-bit and 2-bit errors in R flit; verify NMU corrects/detects and propagates correctly. | NOC_ECC_R_CHECK |
 | TP11 | QoS Bypass mode | `QOS_MODE = 0`; verify flit header qos == AXI awqos / arqos directly. | NI_CFG_QOS_MODE_TRANSITION |

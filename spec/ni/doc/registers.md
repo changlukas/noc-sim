@@ -54,7 +54,6 @@ CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-con
 | 0x104 | `ERR_COUNT` | RO | 0x0 | 錯誤計數 (`ERR_COUNTER_WIDTH` bits, saturating). Cleared via `ERR_STATUS[1]` write-1 (timeout_err). |
 | 0x108 | `ECC_UNCORR_ERR_CNT` | RO | 0x0 | ECC uncorrectable 錯誤計數 (saturating). Cleared via `ERR_STATUS[0]` write-1 (ecc_uncorr_err). |
 | 0x10C | `LAST_ERR_INFO` | RO | 0x0 | 最近錯誤資訊 (sticky semantics; see §LAST_ERR_INFO for field layout). |
-| 0x110 | `ECC_CORR_ERR_CNT` | RO | 0x0 | ECC corrected (single-bit) 錯誤計數 (saturating). Tracks 1-bit corrections from W or R flit reception. Cleared via `ERR_STATUS[2]` write-1 (ecc_corr_err). *New in this NI revision; not in noc-sim 06_qos.md §4.1 originally.* |
 
 ## §BASE_QOS Register (0x018) Field Layout
 
@@ -88,9 +87,7 @@ CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-con
 |-------|-----|-------|-------------|-------|
 | `ecc_uncorr_err` | [0] | 1 | ECC uncorrectable 錯誤發生; write 1 clears bit + `ECC_UNCORR_ERR_CNT`. | 0x0 |
 | `timeout_err` | [1] | 1 | Timeout 錯誤發生; write 1 clears bit + `ERR_COUNT`. | 0x0 |
-| `ecc_corr_err` | [2] | 1 | ECC correctable (1-bit) 錯誤發生; write 1 clears bit + `ECC_CORR_ERR_CNT`. *New bit in this NI revision.* | 0x0 |
-| Reserved | [7:3] | 5 | — | 0x0 |
-| Reserved | [31:8] | 24 | — | 0x0 |
+| Reserved | [31:2] | 30 | — | 0x0 |
 
 ## §LAST_ERR_INFO Register (0x10C) Field Layout
 
@@ -115,7 +112,7 @@ All error counters and bin counters use **saturating arithmetic**: increment up 
 
 | Counter group | Clear mechanism |
 |---|---|
-| Error counters (`ERR_COUNT`, `ECC_UNCORR_ERR_CNT`, `ECC_CORR_ERR_CNT`) | Software writes 1 to corresponding `ERR_STATUS[N]` bit; counter clears atomically with the bit |
+| Error counters (`ERR_COUNT`, `ECC_UNCORR_ERR_CNT`) | Software writes 1 to corresponding `ERR_STATUS[N]` bit; counter clears atomically with the bit |
 | Packet Probe counters (`PKT_BYTE_COUNT`, `PKT_BANDWIDTH`) | Software writes `PKT_PROBE_EN = 0` then `PKT_PROBE_EN = 1`; on the 0→1 transition, counters reset to 0. *Reviewer assumption: this mechanism not in noc-sim 06_qos.md §3 originally; introduced here for testability.* |
 | Transaction Probe counters (`TXN_BIN_*_COUNT`, `TXN_TOTAL_COUNT`) | Same — `TXN_PROBE_EN` 1→0→1 transition resets all bin counters and TXN_TOTAL_COUNT to 0 |
 | Latency extremes (`TXN_MIN_LATENCY`, `TXN_MAX_LATENCY`) | Same — `TXN_PROBE_EN` 1→0→1 resets MIN to 0xFFFF and MAX to 0x0 |
