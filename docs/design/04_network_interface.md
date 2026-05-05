@@ -17,7 +17,7 @@ NI 透過 Router 的 Eject port 連接，使用與 Router-Router **完全相同*
 
 > NI / Router 完整 block diagram 見 [Router 規格 §1.2](03_router.md)。
 
-### 1.3 命名慣例（AMD Versal 風格）
+### 1.3 命名慣例
 
 | 名稱 | AXI 側角色 | 網路側角色 |
 |------|-----------|-----------|
@@ -161,6 +161,35 @@ NI 使用 config struct 組織參數，由上層 instantiation 時傳入。
 ---
 
 ## 4. Interface Specification
+
+### 4.0 Clocks and Resets
+
+NI 採用 **雙 clock domain** 設計，AXI 側與 NoC 側獨立非同步。NI 內部含 async FIFO 處理跨 domain 同步（NMU AXI ingress → NoC injection、NoC ejection → NMU AXI egress；NSU 反向對稱）。
+
+**Clock signals:**
+
+| Signal | Direction | Domain | Description |
+|--------|-----------|--------|-------------|
+| `aclk_i` | input | AXI side | AXI 介面 clock。所有 AXI port 訊號（`axi_in_*`、`axi_out_*`）以 `aclk_i` rising edge sample。Frequency 由外接 IP（CXL / PCIe controller / DDR controller / 其他 host IP）決定。 |
+| `noc_clk_i` | input | NoC side | NoC fabric clock。所有 NoC port 訊號（`noc_req_*`、`noc_rsp_*`）以 `noc_clk_i` rising edge sample。Frequency 通常為固定的 mesh 系統 clock。 |
+
+**Reset signals:**
+
+| Signal | Direction | Domain | Active | Sync | Description |
+|--------|-----------|--------|--------|------|-------------|
+| `arst_ni` | input | AXI side | LOW | async assertion / sync deassertion to `aclk_i` | AXI 側 active-low reset |
+| `noc_rst_ni` | input | NoC side | LOW | async assertion / sync deassertion to `noc_clk_i` | NoC 側 active-low reset |
+
+**Frequency relationship**: `aclk_i` 與 `noc_clk_i` 為獨立非同步 clock，比例任意。常見配置：
+- `aclk_i` ≪ `noc_clk_i`（host IP 慢於 NoC，例如 CXL controller 250 MHz vs NoC 1 GHz）
+- `aclk_i` = `noc_clk_i`（同 die、同 clock plan；NI 內部 async FIFO 仍存在但 degenerate 為直通）
+- `aclk_i` ≫ `noc_clk_i`（罕見，但合法）
+
+**Reset relationship**: 兩個 reset 可獨立或同步觸發。整個 NI 進入安全狀態需兩 reset 都觀察到 deasserted。`arst_ni` 與 `noc_rst_ni` 不同時 deassert 會讓 NI 處於部分 reset 狀態（其中一邊可運作、另一邊不能）—— 整合者需確保兩 reset 至少在系統上電時序中達成最終一致。
+
+**CDC implementation**: NI 內部 async FIFO 採 gray-counter pointer + 2FF synchronizer。FIFO depth 計算方式：max(aclk_i, noc_clk_i) × max round-trip latency × safety factor。具體實作見 NI 內部 sub-module 文件。
+
+**Control inputs (`id_i`, `route_table_i`)**: 視為 strap-style 配置，於 `noc_rst_ni` deassert 後保持穩定；硬體 sample 於 `noc_clk_i` domain。Runtime 修改 `route_table_i` 不被支援（如需 reconfigurability，應透過 CSR 提供，並由軟體保證 quiesce 後修改）。
 
 ### 4.1 AXI Side Ports
 
