@@ -181,7 +181,7 @@ After reset, source-credit counters initialise to 0 per VC. Both ends must compl
 - Credit exchange begins only after both ends raise their respective `*_credit_init_ready_*` signals (bidirectional handshake).
 - Once exchange begins, credit counters are seeded with `INPUT_BUFFER_DEPTH / NUM_VC` per VC (where `INPUT_BUFFER_DEPTH` is the receiver's per-link buffer depth, a router-side parameter the integrator must communicate).
 - Credit return latency is `CREDIT_DELAY` cycles (router-side parameter, default 1).
-- Credit starvation (no credit return for `CREDIT_TIMEOUT` cycles, default 10000) triggers `ERR_STATUS[1]` `timeout_err` per `protocol_rules.md` `NI_CFG_ERR_STATUS_RW1C`.
+- Credit starvation (no credit return for `CREDIT_TIMEOUT` cycles, default 10000) is treated as one of the trigger sources of the outstanding-transaction-timeout path: the affected NMU/NSU drives `bresp/rresp = SLVERR` for any in-flight transaction whose response is now permanently blocked by lack of credits, increments `ERR_COUNT`, and sets `ERR_STATUS[1] timeout_err` (per `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR` + `NI_CFG_ERR_STATUS_RW1C`). Counter pairing therefore stays consistent: bit 1 ↔ `ERR_COUNT`. Software disambiguates credit-starvation from other timeout causes (slave never responds, route_par drop, fabric loss) via `LAST_ERR_INFO` plus the per-class counters.
 
 **Behaviour in `VALID_READY` mode (default):**
 
@@ -222,9 +222,17 @@ A dedicated AXI4-Lite subordinate port for software access to NMU/NSU CSR file. 
 | `port_id_i` | input | PORT_ID_WIDTH (default 2) | §Sideband row 2 | This NI's local-port index at its attached router (0..3 for default 4-LOCAL-port router). Strap-style. Sampled in noc_clk domain. Used by NMU to populate request flit `port_id` (per `protocol_rules.md` `NOC_FLIT_HDR_PORT_ID_VALID`). Used by NSU to identify response routing back to originating NMU's port. Modifying after `noc_rst_ni` deassertion is undefined. |
 | `route_table_i` | input | NUM_SAM_RULES × sizeof(sam_rule_t) | §Sideband row 3 | Routing table. Only valid when `USE_ID_TABLE=1`. Strap-style. Modifying after `noc_rst_ni` deassertion is undefined. For runtime route reconfiguration use the CSR path with quiesce-then-modify discipline. |
 
+### Interrupt output
+
+Single level-sensitive interrupt output, asserted when any unmasked `ERR_STATUS` bit is set (per `registers.md` §`IRQ_ENABLE` and `protocol_rules.md` `NI_IRQ_LEVEL`). Software ISR reads `ERR_STATUS` to identify which event class fired and `LAST_ERR_INFO` for offending-transaction context.
+
+| Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
+|--------|-----------|-------|--------|-------------|-------------|-------|
+| `irq_o` | output | 1 | H | pos aclk | §IRQ row 1 | `aclk_i` domain. Combinational over latched `ERR_STATUS` AND `IRQ_ENABLE`. Deasserts when software RW1C clears all set+enabled `ERR_STATUS` bits. NoC-domain error sources (route_par drop, flit_ecc uncorrectable) reach `ERR_STATUS` via the existing CSR-file CDC sync path; no separate interrupt CDC. |
+
 ### Optional AXI parity sideband — present only when `ENABLE_AXI_PARITY = true`
 
-Per AMD §Data Integrity, AXI-side data and address parity is an **optional integrator-enabled** integrity layer at the host/slave AXI boundaries. Independent of the always-on whole-flit `flit_ecc` and `route_par` inside the NoC fabric. When `ENABLE_AXI_PARITY = false` (default), these signals are absent.
+Per AMD §Data Integrity, AXI-side data and address parity is an integrator-tunable integrity layer at the host/slave AXI boundaries. Independent of the always-on whole-flit `flit_ecc` and `route_par` inside the NoC fabric. Default `ENABLE_AXI_PARITY = true` — these signals are present (matches AMD pg313's "Packet domain parity ... is always enabled" stance). Integrators MAY set `false` at instantiation to omit the sideband if AXI-side parity is not required by the deployment; in that case all `axi_*_par_*` signals are absent from the wire list.
 
 Coverage:
 - 1-bit even parity per byte of data (data parity)
@@ -249,10 +257,11 @@ Coverage:
 
 **Behaviour:**
 
-- NMU verifies `axi_*_i_par_i` on each AW/AR/W handshake. Mismatch triggers fatal error logged to `ERR_STATUS` parity-error bits (per D13 grouped error logging).
+- NMU verifies `axi_*_i_par_i` on each AW/AR/W handshake. Mismatch logged to `ERR_STATUS[3] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_MST_PARITY_CHECK`); the transaction proceeds — no SLVERR injection at AXI boundary. Software observes via CSR / IRQ.
 - NSU generates `axi_*_o_par_o` from regenerated WSTRB-aligned data after upsize/downsize.
-- NSU verifies `axi_rdata_par_i` from local slave. Mismatch triggers `rresp=SLVERR` on the affected R beat plus error log entry.
+- NSU verifies `axi_rdata_par_i` from local slave. Mismatch logged to `ERR_STATUS[3] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_SLV_PARITY_CHECK`); the R beat is forwarded to AXI master with `rresp=OKAY`. Same observability path.
 - Parity is verified at AXI boundary only. The protected AXI signal is propagated through NMU/NSU intermediates without re-checking. Once data is on the NoC, `flit_ecc` (whole-flit SECDED) takes over.
+- Rationale for "log-only, no SLVERR": parity at AXI boundary detects local-wire / local-slave corruption, not fabric corruption. Per the (B)-philosophy ECC scheme (see ToO §ECC), the NI does not synthesise AXI rresp values from its own integrity checks — error visibility goes through CSR + IRQ, leaving the AXI rresp channel reserved for end-to-end (HBM/DDR-style) and timeout-driven SLVERR cases.
 
 ## Protocol clock and reset
 
@@ -310,13 +319,13 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `MAX_BURST_LEN` | int | 16 | 1 ≤ x ≤ 256 | Maximum AXI burst length the NMU/NSU supports per transaction. Bounds the NSU W-reassembly buffer depth. Tests issuing `len + 1 > MAX_BURST_LEN` violate `apply_burst_write` precondition (per `transaction_api.md`); BFM returns `BURST_LEN_EXCEEDS_MAX`. |
 | `ECC_GRANULE_WIDTH` | retired | — | — | (v0.3.0) Per-granule SECDED scheme retired in v0.4.0 in favour of whole-flit SECDED via `FLIT_ECC_WIDTH`. |
 | `ECC_PER_GRANULE_WIDTH` | retired | — | — | (v0.3.0) Per-granule ECC width parameter retired with the per-granule scheme. |
-| `ECC_FAIL_WIDTH` | retired | — | — | (v0.3.0) `ecc_fail` B-payload field dropped in v0.4.0. NSU now signals uncorrectable ECC via `bresp=SLVERR` in-band plus `ERR_STATUS` CSR ECC-class bit. |
+| `ECC_FAIL_WIDTH` | retired | — | — | (v0.3.0) `ecc_fail` B-payload field dropped in v0.4.0. The NoC fabric no longer signals uncorrectable ECC via AXI rresp/bresp; visibility is via `ERR_STATUS[0] ecc_uncorr_err` + `ECC_UNCORR_ERR_CNT` + `irq_o` (per `protocol_rules.md` `NOC_FLIT_HDR_FLIT_ECC_CHECK`). The corrupted flit is forwarded as-is. |
 | `ECC_WIDTH` | retired | — | — | (v0.3.0) Total per-granule ECC width replaced by parameter `FLIT_ECC_WIDTH` (whole-flit SECDED syndrome). |
 | `MAX_RO_TXNS_PER_ID` | int | 32 | 1 ≤ x ≤ MAX_TXNS_PER_ID | NormalRoB status-table FIFO depth per AXI ID (FlooNoC `MaxRoTxnsPerId`). Bounds simultaneous outstanding transactions per ID that **require reordering** (i.e., go to different destinations). Default 32 matches FlooNoC default. |
 | `ONLY_METADATA_B` | bool | true | — | B-RoB skips data-SRAM (B response is metadata-only: bid + bresp + buser). Saves significant area. R-RoB is always SRAM-backed (rdata is bulk data). FlooNoC `OnlyMetaData` parameter. |
 | `NSU_R_BUFFER_DEPTH` | int | 16 | 1 ≤ x ≤ 64 | NSU read response buffer depth (entries × R flit). Smooths AXI-slave-to-NoC R injection back-pressure. Per AMD §NSU "Read responses are buffered before forwarding to minimize bubbles". Independent of MetaBuffer (which stores request headers). |
 | `EXCLUSIVE_MONITOR_DEPTH` | int | 8 | 1 ≤ x ≤ MAX_TXNS | NSU Exclusive Monitor capacity (per-axi_id reservation slots). Per AMD §NSU AXI exclusive access handling. Limits concurrent exclusive-access reservations. |
-| `ENABLE_AXI_PARITY` | bool | false | — | Enable optional AXI-side byte parity (data: 1 bit/byte) and address parity (1 bit). Per AMD §Data Integrity. When true: `axi_*_par_*` sideband signals are present. Independent of NoC-fabric flit-level ECC (`flit_ecc`/`route_par`). This is end-of-pipe AXI integrity only. |
+| `ENABLE_AXI_PARITY` | bool | true | — | Enable AXI-side byte parity (data: 1 bit/byte) and address parity (1 bit). Per AMD §Data Integrity (default-on matches AMD's "Packet domain parity ... is always enabled" stance). When true: `axi_*_par_*` sideband signals are present. When false: omitted. Independent of NoC-fabric flit-level ECC (`flit_ecc` / `route_par`). This is end-of-pipe AXI integrity only. |
 
 ## Optional features in / out of scope
 

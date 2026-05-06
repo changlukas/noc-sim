@@ -45,7 +45,10 @@ flowchart TB
     MON_AXI --> SEQ
     MON_NOC --> SEQ
     PROBE --> CFG
+    CFG -->|irq_o, level-sensitive,<br>OR over ERR_STATUS & IRQ_ENABLE| TB
 ```
+
+The `CFG → TB` edge labelled `irq_o` represents the level-sensitive interrupt output asserted when any unmasked `ERR_STATUS` bit is set. Software ISR in the testbench reads `ERR_STATUS` to disambiguate the event class and `LAST_ERR_INFO` for the offending-transaction context. Per `protocol_rules.md` `NI_IRQ_LEVEL`.
 
 ## BFM internal architecture
 
@@ -128,14 +131,17 @@ Single sequencer instance (logically domain-spanning). Translates Transaction AP
 
 Per-domain config state; both software-writable (via CSR) and testbench-API-writable (via `set_*` knobs):
 
+"Reset (wire)" column = behaviour on `arst_ni` assertion. "Reset (state API)" column = behaviour on `reset_state()` BFM API call (does NOT toggle wire reset). Where the two columns disagree, that's intentional — wire reset is hardware-driven; `reset_state()` is a BFM-only convenience for inter-test isolation.
+
 | Field | Domain | Write source | Reset (wire) | Reset (state API) |
 |-------|--------|--------------|--------------|-------------------|
-| `QOS_MODE` (Bypass / Fixed / Limiter / Regulator) | aclk | CSR | preserved (CSR file resets to defaults at `arst_ni`) | preserved |
+| `QOS_MODE` (Bypass / Fixed / Limiter / Regulator) | aclk | CSR | reset to default (Bypass) | preserved |
 | `BANDWIDTH_LIMIT`, `SATURATION_THRESHOLD`, `LOW_PRIORITY` | aclk | CSR | reset to default | preserved |
 | `BANDWIDTH_BUDGET`, `BASE_QOS`, `URGENCY_STEP`, `SOCKET_QOS_EN`, `SOCKET_QOS` | aclk | CSR | reset to default | preserved |
-| `PKT_PROBE_EN`, `PKT_PROBE_MODE`, `PKT_WINDOW_SIZE` | aclk | CSR | reset | preserved |
-| `TXN_PROBE_EN`, `TXN_THRESHOLD_*` | aclk | CSR | reset | preserved |
-| `ERR_STATUS` (RW1C), `ERR_COUNT`, `ECC_UNCORR_ERR_CNT`, `LAST_ERR_INFO` | aclk | hardware writes; CSR write-1-to-clear by software | reset | preserved |
+| `PKT_PROBE_EN`, `PKT_PROBE_MODE`, `PKT_WINDOW_SIZE` | aclk | CSR | reset to default (0) | preserved |
+| `TXN_PROBE_EN`, `TXN_THRESHOLD_*` | aclk | CSR | reset to default (0) | preserved |
+| `ERR_STATUS[3:0]` (RW1C), `ERR_COUNT`, `ECC_UNCORR_ERR_CNT`, `ECC_CORR_ERR_CNT`, `ROUTE_PAR_ERR_CNT`, `AXI_PARITY_ERR_CNT`, `LAST_ERR_INFO` | aclk | hardware writes; CSR write-1-to-clear by software (counters auto-clear with their paired `ERR_STATUS` bit; `ECC_CORR_ERR_CNT` has no clear path — saturating cumulative) | reset to 0 | preserved |
+| `IRQ_ENABLE[3:0]` | aclk | CSR | reset to 0 (all masked) | preserved |
 | `bfm_mode` (ACTIVE/PASSIVE) | testbench-only | `set_bfm_mode` | preserved | preserved |
 | `set_response_delay_axi`, `set_response_delay_noc` | testbench-only | knob | preserved | reset to (0, 0) |
 | ECC error injection one-shot, response fault one-shot | testbench-only | knob | reset | reset |
@@ -157,7 +163,7 @@ local_addr  = awaddr[XY_ADDR_OFFSET_X - 1 : 0]   // bits below the X offset
 
 For default parameters (`X_WIDTH=4`, `Y_WIDTH=4`, `XY_ADDR_OFFSET_X=32`, `XY_ADDR_OFFSET_Y=36`): `dst_x = awaddr[35:32]`, `dst_y = awaddr[39:36]`, `local_addr = awaddr[31:0]`.
 
-If extracted `(dst_x, dst_y)` falls outside `[0, MESH_COLS) × [0, MESH_ROWS)`, NMU asserts a protocol violation per `protocol_rules.md` `NOC_FLIT_HDR_DST_ID_VALID` (allocator returns SLVERR-on-completion).
+If extracted `(dst_x, dst_y)` falls outside `[0, MESH_COLS) × [0, MESH_ROWS)`, NMU asserts a protocol violation per `protocol_rules.md` `NOC_FLIT_HDR_DST_ID_VALID`. The flit is not injected; the originating RoB entry remains pending and ultimately surfaces an AXI SLVERR via the outstanding-transaction timeout path (per `AXI4_MST_TIMEOUT_SLVERR`). This avoids a separate immediate-SLVERR mechanism — the timeout path is the single AXI-rresp-generating contract for all fabric-side fault categories.
 
 **SourceRouting** + **IDRouting** (alternatives selectable via `ROUTE_ALGO`): use a SAM (System Address Map) table indexed by `route_table_i` strap signal.
 
@@ -206,11 +212,29 @@ The B and R RoBs are independent because B is metadata-only (`bid` + `bresp` + `
 **`prev_dest` adaptive bypass** (NormalRoB only): when a new request arrives with the same `axi_id` as the most recent prior outstanding request to the **same destination NSU** (`dst_id` equal), and the prior request has not yet returned, NormalRoB enters a fast-path where:
 
 - The new request's RoB entry chains directly to the prior entry's tail.
-- On response arrival, both entries are released without re-checking the per-ID linked list — the FIFO ordering is guaranteed by same-source-same-dest in-order delivery on the NoC (per `NOC_*_INORDER_PER_VC` rule) and by SLV-side ordering.
+- On response arrival, both entries are released without re-checking the per-ID linked list — the FIFO ordering is guaranteed by same-source-same-dest in-order delivery on the NoC (per `NOC_FLIT_INORDER_PER_VC` rule) and by SLV-side ordering.
 
 When `prev_dest` differs (cross-destination same-`axi_id`), the standard linked-list allocation applies — entries from the new destination cannot bypass; they wait until prior-destination entries release. This avoids R-channel re-ordering across destinations on the same `axi_id`, which AXI4 prohibits.
 
 Rationale for adaptive bypass: same-destination same-ID is the common case (CPU re-fetches from same memory region); cross-destination same-ID is rare (only if the master uses a pathological ID assignment). Adaptive bypass cuts the common-case release-decision path from ~3 cycles (linked-list walk) to ~1 cycle.
+
+#### Outstanding-transaction timeout
+
+Each NMU RoB entry carries a per-entry timeout counter, incremented on every `aclk_i` cycle the entry remains in `ALLOCATED` state without its response arriving. When the counter reaches `TXN_TIMEOUT` cycles (default 10 000 `aclk_i` cycles; integrator-tunable via the same-named parameter), the entry's response path is forcefully resolved:
+
+- For a write transaction: NMU drives `bresp = SLVERR` to the AXI master and increments `ERR_COUNT`.
+- For a read transaction: NMU drives `rresp = SLVERR` on the affected beat (further beats in the same burst, if any, are not generated; AXI master observes the burst as terminated early via this single SLVERR beat).
+- In both cases: `ERR_STATUS[1] timeout_err` is set; `LAST_ERR_INFO` captures `(err_axi_id, err_src_id, err_dst_id)` if no prior un-cleared error is sticky; `irq_o` asserts if `IRQ_ENABLE[1]` is set; the RoB entry is released (returned to `FREE`).
+
+This timeout is the **sole AXI-rresp-generating mechanism** on the NoC error path. It covers three operational scenarios that are otherwise indistinguishable to the NMU at the wire level:
+
+- Slave never responds (downstream NSU stuck or attached AXI slave unresponsive).
+- Flit lost in fabric (fabric-internal hardware fault not caught by ECC; rare but possible).
+- Flit dropped by `route_par` mismatch at a router or sink (per `NOC_FLIT_HDR_ROUTE_PAR_CHECK` — the drop-then-timeout chain is how route_par failures eventually manifest as observable AXI errors).
+
+Software disambiguates the cause by reading `ROUTE_PAR_ERR_CNT`, `ECC_UNCORR_ERR_CNT`, and `LAST_ERR_INFO` in the ISR. Formalised in `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR`.
+
+`TXN_TIMEOUT` value selection guidance: 10 000 `aclk_i` cycles at 1 GHz = 10 µs, which is a comfortable upper bound for typical NoC-traversal + slave-response latency (microseconds) while remaining short enough that a hung path returns an error within a software-noticeable window. Integrators with longer expected latencies (e.g., off-chip DRAM with refresh storms) should raise this; integrators wanting tighter SLA on hung-detection should lower it.
 
 #### RoB area-reduction techniques
 
@@ -327,19 +351,22 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 
 **Single-bit (correctable) errors**:
 
-- The receiving NI silently corrects the bit, increments `ECC_CORR_ERR_CNT` (CSR; per-NI), and propagates corrected data downstream (to AXI master via R, or to AXI slave via W).
-- No protocol-level signalling — AXI consumer sees correct data with `OKAY` resp.
+- The receiving NI silently corrects the bit, increments `ECC_CORR_ERR_CNT` (saturating, no clear path; pure informational counter per `registers.md`), and propagates corrected data downstream (to AXI master via R, or to AXI slave via W).
+- No protocol-level signalling — AXI consumer sees correct data with `OKAY` resp. Software polls `ECC_CORR_ERR_CNT` for health monitoring; no IRQ source.
 
 **Double-bit (uncorrectable) errors**:
 
-- The receiving NI cannot correct. Increments `ECC_UNCORR_ERR_CNT` (CSR; per-NI). Propagates a SLVERR response to the AXI consumer (`AXI4_SLV_R_RRESP_ECC_FAIL` for read-side, `AXI4_SLV_B_BRESP_ECC_FAIL` for write-side).
-- For a multi-beat R burst with one corrupted beat: per-beat `rresp=SLVERR` reporting (only the affected beat carries SLVERR; other beats remain `OKAY`). Matches AXI4 §A4.5 per-beat resp semantics.
+- The receiving NI **cannot correct, but does NOT synthesise an AXI rresp value from this check** — the corrupted flit is forwarded to the AXI consumer as-is with `bresp=OKAY` / `rresp=OKAY`. This is consistent with the (B)-philosophy decision that fabric-level ECC checks are observation-only at the AXI boundary; AXI rresp is reserved for end-to-end (HBM/DDR-style) and timeout-driven SLVERR. Visibility goes through CSR + IRQ.
+- The NI increments `ECC_UNCORR_ERR_CNT` (saturating, cleared via `ERR_STATUS[0]` RW1C), sets `ERR_STATUS[0] ecc_uncorr_err`, captures `LAST_ERR_INFO` if no prior un-cleared error is sticky, and asserts `irq_o` if `IRQ_ENABLE[0]` is set. Formalised in `protocol_rules.md` `NOC_FLIT_HDR_FLIT_ECC_CHECK`.
+- The downstream consumer (AXI master for R, AXI slave for W) sees data which is provably corrupted by the time it lands; the application-layer integrity (HBM/DDR ECC at endpoint, software CRC, etc.) is the recovery mechanism. The NoC fabric's job is detect-and-record, not synthesise-AXI-error.
+
+**Why this design rather than fabric-driven SLVERR?** Aligns with AMD pg313 §Data Integrity stance: NoC switches do not check ECC mid-flight, and uncorrectable detection at endpoints raises a fatal interrupt rather than altering the AXI rresp channel. Forwarding the corrupted flit also preserves "end-to-end ECC" semantics in the strict sense — the destination endpoint (HBM/DDR) sees the actual bits the fabric delivered, allowing endpoint-layer ECC to make its own determination. Substituting SLVERR or dropping would prevent endpoint ECC from running on the data path it was designed for.
 
 **Routing-fault errors (`route_par` mismatch)**:
 
-- A router or NI sink detecting a `route_par` mismatch drops the flit (does not forward) and reports the error to the topology controller (out-of-scope mechanism).
-- The originating NMU eventually times out on the missing response (governed by `RoB exhaustion timeout` per §RoB allocator) and returns SLVERR to the AXI master.
-- Rationale: a flit with corrupted routing fields cannot be safely forwarded — silent misrouting would deliver wrong data to the wrong slave.
+- A router output port or NI sink detecting a `route_par` mismatch MUST drop the flit (per `protocol_rules.md` `NOC_FLIT_HDR_ROUTE_PAR_CHECK`). Forwarding a flit whose routing fields are corrupted would risk misrouting (delivery to the wrong NSU, with secondary side effects on the wrong AXI slave) — drop is the safer choice.
+- The drop event increments `ROUTE_PAR_ERR_CNT`, sets `ERR_STATUS[2] route_par_err`, captures `LAST_ERR_INFO` if no prior un-cleared error is sticky, and asserts `irq_o` if `IRQ_ENABLE[2]` is set.
+- The originating NMU's outstanding-transaction tracker eventually times out (default 10 000 `aclk_i` cycles) and signals SLVERR back to the AXI master via `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR`. This timeout-driven SLVERR is decoupled from the fabric ECC mechanism — the same path also handles slave-never-responds and other flit-loss scenarios. Software disambiguates the cause via `LAST_ERR_INFO` + counters.
 
 **Why two layers, not one whole-flit SECDED applied per-hop?** Per-hop SECDED would require every router to decode + re-encode 408 bits, adding ~1 cycle per hop and ~10× the gate count of `route_par` parity. The two-layer scheme matches AMD pg313 NPS guidance: routing-critical fields get cheap per-hop check, full payload integrity is end-to-end.
 
@@ -459,7 +486,7 @@ Cross-domain partial reset → CDC FIFO is in inconsistent state; integrator mus
 |---|---|
 | `set_response_delay_axi` / `set_response_delay_noc` | **Test-only.** RTL has fixed pipeline timing (`CUT_AX` / `CUT_RSP` synthesis params only). BFM knob exists for stress-testing master DUT response-latency tolerance. |
 | `set_inject_ecc_error(channel, kind)` | **Test-only.** RTL only generates ECC errors when input data is genuinely corrupted (single-event upset, etc.). BFM knob exists for stress-testing downstream ECC-handling paths. |
-| `set_response_fault(channel, SLVERR/DECERR)` | **Test-only.** RTL only generates SLVERR/DECERR on real conditions: ECC uncorrectable (W or R), AXI 4KB boundary crossing, unmapped address, RoB exhaustion timeout. |
+| `set_response_fault(channel, SLVERR/DECERR)` | **Test-only.** RTL only generates SLVERR/DECERR on real conditions: outstanding-transaction timeout (per `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR` — covers slave-never-responds, fabric flit loss, route_par-induced drop), AXI 4KB boundary crossing (`AXI4_SLV_AW_BURST_4KB_BOUNDARY` / `AXI4_SLV_AR_BURST_4KB_BOUNDARY`), unmapped address (`AXI4LITE_SLV_UNMAPPED_DECERR` for CSR access; SAM no-match for data-path), Exclusive monitor overflow (`AXI4_EXCLUSIVE_MONITOR_OVERFLOW`). **flit_ecc uncorrectable does NOT generate SLVERR** — the corrupted flit is forwarded with `bresp/rresp=OKAY` and the error surfaces only via CSR + IRQ (per (B)-philosophy ECC scheme; see §ECC §"Double-bit (uncorrectable) errors"). |
 | `bfm_mode = ACTIVE / PASSIVE` | **Test-only.** RTL is always active; PASSIVE is a verification convenience only. |
 | `apply_axi_*` / `expect_axi_*` / `expect_noc_*` | **Test-only.** RTL is the DUT (in some scenarios) or the AXI responder (in others); it has no method API. |
 | `get_observed_*` lists | **Test-only.** RTL has no observation buffers; observation happens via the BFM (in passive mode) or external scoreboards. |

@@ -87,7 +87,7 @@ Transaction API covers ~95% of typical tests (single-master single-slave, RoB or
 
 **Return value:**
 - `OK`: write completed; bresp=OKAY.
-- `SLVERR`: bresp=SLVERR (e.g., 4KB boundary violation, ECC uncorrectable propagated, configured fault).
+- `SLVERR`: bresp=SLVERR (e.g., 4KB boundary violation, outstanding-transaction timeout per `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR`, Exclusive monitor overflow, configured fault). Note: flit_ecc uncorrectable does NOT cause SLVERR — the corrupted flit is forwarded with `bresp=OKAY` and the error is observable only via CSR (`ECC_UNCORR_ERR_CNT`, `ERR_STATUS[0]`) plus `irq_o`; see ToO §ECC for the (B)-philosophy rationale.
 - `DECERR`: bresp=DECERR.
 - `RESET_DURING_TRANSACTION`: arst_ni or noc_rst_ni asserted before completion.
 - `MODE_SWITCHED_TO_PASSIVE`: bfm_mode set to PASSIVE during call.

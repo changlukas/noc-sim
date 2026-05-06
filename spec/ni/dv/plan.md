@@ -9,10 +9,13 @@ Verify the NI against:
 4. RoB ordering invariants (per-AXI-ID).
 5. QoS Generator modes (Bypass / Fixed / Limiter / Regulator) functional behavior.
 6. Performance Probe accuracy (Packet bandwidth statistics, Transaction latency histogram).
-7. Error monitoring CSRs (saturating counters, ERR_STATUS write-1-to-clear, LAST_ERR_INFO atomic capture).
-8. Dual-clock-domain CDC correctness (no metastability, no data loss across aclk ↔ noc_clk).
-9. Reset behavior (per pin_level_reset.md, including partial-reset edge cases).
-10. Mode switch (ACTIVE / PASSIVE).
+7. Error monitoring CSRs (saturating counters, ERR_STATUS write-1-to-clear across 4 event classes, LAST_ERR_INFO sticky capture).
+8. Interrupt mechanism (`irq_o` level-sensitive, IRQ_ENABLE masking, RW1C deassertion, per `protocol_rules.md NI_IRQ_LEVEL`).
+9. AXI host-side parity (data + address) check, log-only behaviour (no AXI rresp synthesis).
+10. NMU outstanding-transaction timeout → `bresp/rresp = SLVERR` (per `AXI4_MST_TIMEOUT_SLVERR`).
+11. Dual-clock-domain CDC correctness (no metastability, no data loss across aclk ↔ noc_clk).
+12. Reset behavior (per pin_level_reset.md, including partial-reset edge cases).
+13. Mode switch (ACTIVE / PASSIVE).
 
 DV strategy:
 - **Constrained-random testing** — **UVM 1.2** (industry standard; mature DV ecosystem; matches assumed in-house DV expertise). Master DUT stimulates AXI; NoC router stub provides flit endpoint; scoreboard cross-checks AXI handshakes against observed NoC flits. *Reviewer assumption: confirm or override (cocotb if Python-driven flow preferred; plain SV if UVM overhead unwanted).*
@@ -36,9 +39,9 @@ Mapping README Features → testpoints (per stage gate D1.dv.testpoints requirem
 | TP5 | RoB Normal mode (NormalRoB) | Issue 32 outstanding reads with mixed axi_id; randomize NoC response order; verify per-id in-order release at AXI; verify cross-id reordering. | AXI4_MST_RoB_PER_ID_ORDER |
 | TP6 | RoB Simple mode (SimpleRoB) | Same with SimpleRoB; verify FIFO ordering across all txnIDs (different IDs serialised). | RoB_PER_ID_ORDER |
 | TP7 | RoB NoRoB mode | Single-outstanding; verify next request stalls until previous completes. | RoB_OUTSTANDING_LIMIT |
-| TP8 | SECDED ECC end-to-end | Inject 1-bit error in W flit at NMU output (`set_inject_ecc_error(W, SINGLE_BIT)`); verify NSU corrects silently and propagates corrected data; verify `ECC_UNCORR_ERR_CNT` does NOT increment; verify no CSR-visible side effect (single-bit corrections are intentionally not counted per ToO §ECC). | NOC_ECC_W_GEN; NOC_ECC_W_CHECK |
-| TP9 | SECDED ECC end-to-end | Inject 2-bit error in W flit; verify NSU detects + propagates to AXI `bresp = SLVERR` + increments `ECC_UNCORR_ERR_CNT`. | NOC_ECC_W_CHECK; AXI4_SLV_B_BRESP_VALUES |
-| TP10 | SECDED ECC end-to-end | Inject 1-bit and 2-bit errors in R flit; verify NMU corrects/detects and propagates correctly. | NOC_ECC_R_CHECK |
+| TP8 | flit_ecc single-bit corrected on W | Inject 1-bit error in W flit at NMU egress (`set_inject_ecc_error(W, SINGLE_BIT)`); verify NSU sink corrects silently, increments `ECC_CORR_ERR_CNT` (saturating, no clear path), forwards corrected data to local AXI slave with `bresp=OKAY`; verify `ECC_UNCORR_ERR_CNT`, `ERR_STATUS[0]`, `LAST_ERR_INFO`, `irq_o` all unchanged. | NOC_FLIT_HDR_FLIT_ECC_GEN; NOC_FLIT_HDR_FLIT_ECC_CHECK |
+| TP9 | flit_ecc double-bit forwarded with logging on W | Inject 2-bit error in W flit at NMU egress (`set_inject_ecc_error(W, DOUBLE_BIT)`); verify NSU sink detects, forwards the corrupted flit to local AXI slave **with `bresp=OKAY`** (NoC fabric does NOT synthesise SLVERR from this check), increments `ECC_UNCORR_ERR_CNT`, sets `ERR_STATUS[0] ecc_uncorr_err`, captures `LAST_ERR_INFO` if first sticky, asserts `irq_o` if `IRQ_ENABLE[0]=1`. RW1C-clear ERR_STATUS[0] then verify counter and bit clear together; verify `irq_o` deasserts when last set+enabled bit clears. | NOC_FLIT_HDR_FLIT_ECC_CHECK; NI_CFG_ERR_STATUS_RW1C; NI_IRQ_LEVEL |
+| TP10 | flit_ecc single-bit corrected + double-bit forwarded on R | Mirror of TP8/TP9 on R direction (`set_inject_ecc_error(R, SINGLE_BIT)` and `set_inject_ecc_error(R, DOUBLE_BIT)`). NMU sink corrects single-bit silently + ECC_CORR_ERR_CNT++; double-bit forwarded to AXI master with `rresp=OKAY` + ECC_UNCORR_ERR_CNT++ + ERR_STATUS[0] + LAST_ERR_INFO + irq_o (if enabled). For multi-beat R bursts: only the affected beat carries the corrupted data; other beats are unaffected and rresp=OKAY across the whole burst. | NOC_FLIT_HDR_FLIT_ECC_CHECK; NI_CFG_ERR_STATUS_RW1C; NI_IRQ_LEVEL |
 | TP11 | QoS Bypass mode | `QOS_MODE = 0`; verify flit header qos == AXI awqos / arqos directly. | NI_CFG_QOS_MODE_TRANSITION |
 | TP12 | QoS Fixed mode | `QOS_MODE = 1`, set QOS_FIXED_VALUE = 7; verify all flits have qos = 7 regardless of AXI awqos. | NI_CFG_QOS_MODE_TRANSITION |
 | TP13 | QoS Limiter mode | `QOS_MODE = 2`, configure BANDWIDTH_LIMIT and SATURATION_THRESHOLD; issue traffic at 2× the limit; verify qos drops to LOW_PRIORITY when threshold exceeded. | NI_CFG_BANDWIDTH_LIMIT_BOUND |
@@ -46,8 +49,8 @@ Mapping README Features → testpoints (per stage gate D1.dv.testpoints requirem
 | TP15 | QoS Saturation | Regulator mode with BASE_QOS=12; force urgency to MAX; verify final qos clamped at 15 (not wrap). | (none specific) |
 | TP16 | Packet Probe | Configure `PKT_PROBE_EN`, `PKT_PROBE_MODE`, `PKT_WINDOW_SIZE`; issue known-bandwidth traffic; verify `PKT_BYTE_COUNT` and `PKT_BANDWIDTH` match expected. | NI_CFG_PROBE_EN_TRANSITION |
 | TP17 | Transaction Probe | Configure thresholds; issue traffic with various round-trip latencies; verify each TXN_BIN_*_COUNT receives expected number of transactions. | (none specific) |
-| TP18 | ERR_STATUS RW1C | Trigger ECC uncorrectable; verify `ERR_STATUS[0]` set; verify `ECC_UNCORR_ERR_CNT` increments; software writes 1 to ERR_STATUS[0]; verify both bit and counter cleared atomically. | NI_CFG_ERR_STATUS_RW1C |
-| TP19 | LAST_ERR_INFO sticky capture | Trigger error A; verify `LAST_ERR_INFO` captures A's err_axi_id/src/dst. Trigger error B without clearing; verify `LAST_ERR_INFO` still shows A (sticky semantics per `NI_CFG_LAST_ERR_INFO_CAPTURE` rule). Software writes 1 to `ERR_STATUS[0]`; trigger error C; verify `LAST_ERR_INFO` now shows C. | NI_CFG_LAST_ERR_INFO_CAPTURE; NI_CFG_ERR_STATUS_RW1C |
+| TP18 | ERR_STATUS RW1C across all 4 bits | For each i ∈ {0..3}: trigger the corresponding event class (ECC double-bit on W → bit 0; force NMU outstanding-tracker timeout → bit 1; inject route_par mismatch on a request flit → bit 2; corrupt `axi_wdata_par_i` on an AW handshake → bit 3). Verify `ERR_STATUS[i]` is set, the paired counter increments (ECC_UNCORR_ERR_CNT, ERR_COUNT, ROUTE_PAR_ERR_CNT, AXI_PARITY_ERR_CNT respectively). Software writes 1 to `ERR_STATUS[i]`; verify bit and counter cleared atomically; verify other ERR_STATUS bits + counters are unaffected. | NI_CFG_ERR_STATUS_RW1C |
+| TP19 | LAST_ERR_INFO sticky capture across 4 event classes | Trigger error A from event class X (e.g., ECC uncorr); verify `LAST_ERR_INFO` captures A's err_axi_id/src/dst. Trigger error B from event class Y ≠ X (e.g., AXI parity) without clearing; verify `LAST_ERR_INFO` still shows A (sticky regardless of class). Software writes 1 to the corresponding `ERR_STATUS[X]`; trigger error C from any class; verify `LAST_ERR_INFO` now shows C. Repeat with all (X, Y) pairs from {0..3} × {0..3}. | NI_CFG_LAST_ERR_INFO_CAPTURE; NI_CFG_ERR_STATUS_RW1C |
 | TP20 | CDC at fast aclk | Set aclk_freq = 2 × noc_clk_freq; issue burst traffic; verify no flit loss, no order corruption across CDC. | NI_CDC_AXI_TO_NOC_FIFO; NI_CDC_NOC_TO_AXI_FIFO |
 | TP21 | CDC at slow aclk | Set aclk_freq = 0.1 × noc_clk_freq; same. | Same |
 | TP22 | CDC at equal clocks | aclk_freq = noc_clk_freq; same; verify FIFOs degenerate to direct paths but still function. | Same |
@@ -74,6 +77,9 @@ Mapping README Features → testpoints (per stage gate D1.dv.testpoints requirem
 | TP38 | RoB FREE entry allocation policy | Issue 5 transactions to RoB entries 0-4; complete entry 2 first; issue new transaction; verify it allocates to entry 2 (lowest-index-FREE-first per ToO §RoB allocator). | (none specific; ToO §RoB) |
 | TP39 | RoB tie-breaking on simultaneous READY | Issue 2 transactions same axi_id (back-to-back); arrange responses to arrive simultaneously; verify lower rob_idx releases first (per ToO §RoB tie-breaking). | AXI4_MST_RoB_PER_ID_ORDER |
 | TP40 | AR-during-W interleaving | Start a long W burst; mid-burst issue an AR; verify AR flit injected on noc_req_o between W flits; verify NSU correctly dispatches both. | NOC_FLIT_AW_W_ORDER + AR ordering per ToO |
+| TP41 | route_par drop + NMU timeout SLVERR chain | Inject a single-bit corruption into a request flit's `route_par`-protected fields (`src_id` / `dst_id` / `port_id`) on `noc_req_o` egress (e.g., via stub router); verify the receiving router or NSU sink drops the flit, increments `ROUTE_PAR_ERR_CNT`, sets `ERR_STATUS[2]`, captures `LAST_ERR_INFO` (if first sticky). Set `IRQ_ENABLE[2]=1` and verify `irq_o` asserts; verify NMU outstanding-tracker times out at `TXN_TIMEOUT` (default 10 000 cycles), drives `bresp/rresp = SLVERR` to AXI master, increments `ERR_COUNT`, sets `ERR_STATUS[1]`. Note: both bits [1] and [2] sticky-capture into `LAST_ERR_INFO` competing — first to fire wins, second is suppressed; documented in TP19. | NOC_FLIT_HDR_ROUTE_PAR_GEN; NOC_FLIT_HDR_ROUTE_PAR_CHECK; AXI4_MST_TIMEOUT_SLVERR |
+| TP42 | IRQ assert/deassert + IRQ_ENABLE mask + RW1C interaction | (a) With `IRQ_ENABLE = 0x0`, trigger each of the 4 ERR_STATUS event classes; verify `irq_o` stays LOW even though ERR_STATUS bits set and counters increment (mask works). (b) With `IRQ_ENABLE = 0xF`, trigger one event class at a time; verify `irq_o` rises on the event cycle (after CSR-CDC sync delay where applicable) and falls on the cycle the matching `ERR_STATUS[i]` is RW1C-cleared. (c) With multiple ERR_STATUS bits set + multiple IRQ_ENABLE bits set, verify `irq_o` stays HIGH until ALL set+enabled bits are cleared; verify partial clear keeps `irq_o` HIGH. (d) Edge case: set ERR_STATUS bit, then set the matching IRQ_ENABLE bit; verify `irq_o` asserts on the IRQ_ENABLE write cycle (level-sensitive, no edge requirement). | NI_IRQ_LEVEL; NI_CFG_ERR_STATUS_RW1C |
+| TP43 | AXI host-side parity error logging (data + addr, both directions) | (a) NMU side: with `ENABLE_AXI_PARITY=true` (default), drive `axi_awvalid_i=1` with corrupted `axi_awaddr_par_i` (parity flipped); verify NMU logs `ERR_STATUS[3]`, `AXI_PARITY_ERR_CNT++`, `LAST_ERR_INFO` capture, and the AW transaction proceeds (no SLVERR injected at AXI boundary). Repeat for `axi_araddr_par_i` and `axi_wdata_par_i[byte]`. (b) NSU side: drive `axi_rvalid_i=1` from local slave with corrupted `axi_rdata_par_i[byte]`; verify NSU logs the same way and forwards the R beat to the originating AXI master with `rresp=OKAY` (no SLVERR). (c) Cross-check: set `ENABLE_AXI_PARITY=false` at instantiation; verify the parity wires are absent and TP43 a/b cannot be exercised (parameter sanity test). | AXI4_MST_PARITY_CHECK; AXI4_SLV_PARITY_CHECK |
 
 ## Coverage model
 
@@ -84,24 +90,30 @@ Covergroups, each binned across the rules / scenarios it exercises:
 - **cg_rob_state_machine** — bins per RoB Entry State (FREE / ALLOCATED / RESPONSE_RECEIVED / READY_TO_RELEASE), per RoB type (Normal / Simple / NoRoB).
 - **cg_qos_modes** — bins across (Bypass, Fixed, Limiter at <threshold, Limiter ≥threshold, Regulator urgency=0, Regulator urgency mid, Regulator urgency=MAX).
 - **cg_qos_clamp** — Regulator BASE_QOS + urgency at boundary (clamp to 15) and SOCKET_QOS lift (≥SOCKET_QOS).
-- **cg_ecc** — bins across (no error, 1-bit corrected on W, 1-bit corrected on R, 2-bit uncorrected on W, 2-bit uncorrected on R).
+- **cg_ecc** — bins across (no error, 1-bit corrected on W, 1-bit corrected on R, 2-bit forwarded-with-log on W, 2-bit forwarded-with-log on R, route_par drop on request flit, route_par drop on response flit). Note: 2-bit cases verify forward+log behaviour (NoC fabric does NOT synthesise SLVERR per `NOC_FLIT_HDR_FLIT_ECC_CHECK`).
+- **cg_axi_parity** — bins across (no error, NMU-side awaddr parity error, NMU-side araddr parity error, NMU-side wdata-byte parity error, NSU-side rdata-byte parity error). All paths log to `ERR_STATUS[3]` + `AXI_PARITY_ERR_CNT`; AXI rresp/bresp unchanged.
 - **cg_probe_packet** — bins across modes (Combined, Read, Write) and window-overlap scenarios.
 - **cg_probe_txn** — bins across each latency bin coverage.
-- **cg_err_status** — bins across (none, ecc_uncorr only, timeout only, both, write-1-clear).
+- **cg_err_status** — bins across (none, single class set [each of 4], two-class combinations, all-4 set, partial-clear-via-RW1C, full-clear-via-RW1C).
+- **cg_irq** — bins across (mask-all-no-irq, single-bit-set-with-enable-asserts-irq [each of 4], multi-bit-set-with-partial-mask, irq-deassert-on-last-clear, irq-rise-on-`IRQ_ENABLE`-write [late mask enable]).
+- **cg_timeout** — bins across (slave-never-responds, route_par-induced timeout, fabric-loss-simulated timeout). Each must converge to `AXI4_MST_TIMEOUT_SLVERR` behaviour.
 - **cg_cdc_clock_ratio** — bins across aclk:noc_clk ratios (1:10, 1:2, 1:1, 2:1, 10:1).
 - **cg_reset_phase** — bins across (reset during AW, W, B, AR, R, idle), partial-reset variants.
 - **cg_mode_switch** — bins across (ACTIVE→PASSIVE during AXI traffic, ACTIVE→PASSIVE during NoC traffic, ACTIVE→PASSIVE idle, PASSIVE→ACTIVE).
-- **cg_protocol_rule_hits** — one cover-property per rule ID in protocol_rules.md. Final count: **~95 rule IDs** across all sections (5 RST + 3 CDC + 11 AW + 8 W + 7 B + 11 AR + 9 R + 5 XCH + 2 RoB + 3 NoC handshake + 4 NoC flit + 4 NoC ECC + 21 AXI4-Lite CSR + 9 CFG = ~95). One cover bin per rule.
+- **cg_protocol_rule_hits** — one cover-property per rule ID in protocol_rules.md. Final count: **~136 rule IDs** post-A3 (across all sections). One cover bin per rule. Detailed count: 5 RST + 3 CDC + 11 AW + 7 W + 6 B + 10 AR + 9 R + 4 XCH + 5 RoB + 3 Exclusive + 1 Timeout + 2 AXI parity + 4 NoC handshake (incl. credit) + 14 NoC flit + 4 ECC + 4 VC + 2 Width-conv + 21 AXI4-Lite CSR + 14 CFG + 1 IRQ ≈ 130. (Approximate — the canonical count is `grep -c '^| AXI4\\|^| NOC\\|^| NI\\|^| AXI4LITE' protocol_rules.md`.)
 
 D3 coverage closure goal: 100% bin hits on every covergroup.
 
 ## ABV / FPV strategy
 
-**ABV** — every FAIL-severity row in protocol_rules.md gets one SVA `assert property` in the testbench. Final count: **~85 FAIL-severity assertions** + **~10 RECOMMEND cover-properties**. Total ABV library size: ~95 properties.
+**ABV** — every FAIL-severity row in protocol_rules.md gets one SVA `assert property` in the testbench. Post-A3 count: **~125 FAIL-severity assertions** + **~10 RECOMMEND cover-properties** (RECOMMEND family includes `NOC_VC_PARTITION`, `NOC_VC_ARBITER_HYBRID_RW_QOS`, `AXI4_MST_AW_AWCACHE_STABLE`, `AXI4_MST_AR_ARCACHE_STABLE`, `AXI4LITE_SLV_RO_WRITE_IGNORED`, `NI_RST_PARTIAL`, `NOC_FLIT_HDR_RSVD_IGNORE_RX`, plus a few CFG knob rules). Total ABV library size: ~135 properties.
 
 **FPV** — formal verification scope:
 - RoB allocator state machine (FREE → ALLOCATED → RESPONSE_RECEIVED → READY_TO_RELEASE → FREE) — verify no deadlock, no entry stuck, per-id ordering.
-- ECC SECDED Hsiao gen + check round-trip — formally verify single-bit correction for all single-bit error patterns; double-bit detection for representative patterns (full enumeration is infeasible at 256-bit data, sampled).
+- Outstanding-transaction timeout — verify every allocated entry eventually either receives its response or hits `TXN_TIMEOUT` and emits `AXI4_MST_TIMEOUT_SLVERR`; no silent stuck.
+- flit_ecc SECDED Hamming gen + check round-trip — formally verify single-bit correction for all single-bit error patterns; double-bit detection for representative patterns (full enumeration is infeasible at 408-bit flit, sampled). Verify the (B)-philosophy invariant: when SECDED reports double-bit, the flit is forwarded **without** modification of the AXI rresp/bresp value.
+- route_par parity — formally verify XOR-reduction over `{src_id, dst_id, port_id}` and the drop-on-mismatch behaviour.
+- IRQ assertion function — formally verify `irq_o = OR_i(ERR_STATUS[i] & IRQ_ENABLE[i])` is purely combinational (no glitches under simultaneous bit transitions, no deadlock between RW1C clear and re-assert).
 - CDC async FIFO — verify no data loss / corruption / pointer divergence across all clock-ratio extremes.
 - Reset entry sequencing — verify the wire-level reset values and post-reset transitions match pin_level_reset.md formally.
 

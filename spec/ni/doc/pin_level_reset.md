@@ -169,6 +169,12 @@ All `valid`/`ready`/`flit` are per-VC arrays of width `NUM_VC` (default 1).
 | port_id_i | as driven by integrator | strap-style, expected stable; selects router LOCAL port index |
 | route_table_i | as driven by integrator | strap-style, expected stable when USE_ID_TABLE=1 |
 
+### Interrupt output — AXI domain (arst_ni)
+
+| Signal | Value during reset | Notes |
+|--------|--------------------|-------|
+| irq_o | 0 | Held LOW while `arst_ni` is asserted. Internal `ERR_STATUS` and `IRQ_ENABLE` registers are reset to 0x0 at the same time, so the function `irq_o = OR(ERR_STATUS[i] & IRQ_ENABLE[i])` evaluates to 0 by construction. |
+
 ### NoC credit signals — NoC domain (noc_rst_ni); present only when `FLOW_CONTROL = CREDIT_BASED`
 
 Per-VC credit return signals:
@@ -207,7 +213,7 @@ Conditional presence:
 | W_OUT | axi_wdata_par_o[DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
 | R_OUT | axi_rdata_par_i[DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SBR_PORT=1`. |
 
-When `ENABLE_AXI_PARITY = false` (default), all parity signals are absent regardless of `EN_MGR_PORT` / `EN_SBR_PORT`.
+Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list (matches AMD pg313 §Data Integrity default-on stance). Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MGR_PORT` / `EN_SBR_PORT`.
 
 ## After reset (first clock edge with respective reset deasserted)
 
@@ -219,6 +225,7 @@ For wires driven by the BFM, the first-cycle-after-reset value is generally the 
 | axi_bready_o / axi_rready_o | 1 (still always-ready) | Held |
 | All BFM-driven `*valid_o` outputs (manager-port responses `axi_bvalid_o`, `axi_rvalid_o`; subordinate-port requests `axi_awvalid_o`, `axi_wvalid_o`, `axi_arvalid_o`; NoC `noc_req_valid_o`, `noc_rsp_valid_o`; CSR `csr_bvalid_o`, `csr_rvalid_o`) | 0 | Asserts only when a transaction is ready to drive |
 | `noc_req_ready_o` / `noc_rsp_ready_o` | 0 → returns to 1 when NSU/NMU receive-buffer slot available | Default-on |
+| `irq_o` | 0 (held) | Stays LOW until any unmasked `ERR_STATUS` bit asserts. Asserts on the same `aclk_i` edge the OR-function `OR(ERR_STATUS[i] & IRQ_ENABLE[i])` evaluates to 1; deasserts on the cycle software RW1C clears the last set+enabled bit. |
 
 For wires driven by external DUTs ("as driven by DUT" entries above), values during the after-reset window are externally controlled.
 
@@ -246,4 +253,4 @@ Internal async FIFOs at the AXI ↔ NoC boundary use the following reset semanti
 - Write-side pointer resets on the writer's domain reset.
 - Read-side pointer resets on the reader's domain reset.
 - Empty signal asserts on read side when both pointers are at 0 (post-reset baseline).
-- Cross-domain partial reset can leave the FIFO in an inconsistent state where one pointer is 0 and the other is not. The FIFO must self-recover when both resets eventually align — `flush_on_full_reset` mechanism. TODO(designer): confirm RTL implements `flush_on_full_reset` identically to BFM (no issue yet — behavioral equivalence will be verified during D2 RTL-vs-BFM cross-check per stage_gates.md D2.bfm.self_check; BFM model assumes yes).
+- Cross-domain partial reset can leave the FIFO in an inconsistent state where one pointer is 0 and the other is not. The FIFO must self-recover when both resets eventually align — `flush_on_full_reset` mechanism. RTL implementation MUST be behaviourally equivalent to the BFM here (same flush trigger, same post-flush pointer state); equivalence is enforced at D2 cross-check per `stage_gates.md` `D2.bfm.self_check`.
