@@ -42,7 +42,7 @@ flowchart LR
 
 NMU and NSU each register all VALID and READY outputs. No combinational path between an inbound VALID and the same NI's outbound READY. WREADY is held LOW only until the corresponding AW phase completes; WREADY is **not** chained on BREADY — NMU does not gate WREADY on BREADY observation.
 
-The NMU's RoB enforces single-outstanding-per-AXI-ID semantics on the master side; NSU enforces ordering on the slave side via ReqInfoStore. See `theory_of_operation.md` §RoB.
+The NMU's RoB enforces single-outstanding-per-AXI-ID semantics on the master side; NSU enforces ordering on the slave side via MetaBuffer. See `theory_of_operation.md` §RoB.
 
 ### Read transaction (AR → R)
 
@@ -81,9 +81,9 @@ flowchart LR
 
 #### Textual dependency list
 
-- `noc_req_o.valid` rises → must remain HIGH until `noc_req_o.ready` (back-from-router) is observed HIGH (= flit accepted).
-- `noc_req_o.flit_data[FLIT_WIDTH-1:0]` must be stable while `valid` is HIGH (per `NOC_MST_FLIT_STABLE` rule).
-- `noc_req_o.ready` and `noc_req_o.valid` are independent — router may have ready HIGH continuously; NI may have valid HIGH continuously.
+- `noc_req_valid_o` rises → must remain HIGH until `noc_req_ready_i` (back-from-router) is observed HIGH (= flit accepted).
+- `noc_req_flit_o[FLIT_WIDTH-1:0]` must be stable while `valid` is HIGH (per `NOC_MST_FLIT_STABLE` rule).
+- `noc_req_ready_i` and `noc_req_valid_o` are independent — router may have ready HIGH continuously; NI may have valid HIGH continuously.
 
 ### Response link (noc_rsp_*)
 
@@ -113,19 +113,19 @@ flowchart LR
 
 ### NSU forward path: NoC request flit → AXI request
 
-- NoC `noc_req_i` AW flit reception → reconstructs AW phase → drives `axi_out_req_o.aw*` and `axi_out_req_o.awvalid` per AXI4 channel rules.
-- NoC `noc_req_i` W flit reception → adds beat to W reassembly buffer → when last beat received, drives W phase to `axi_out_req_o.w*`.
+- NoC `noc_req_i` AW flit reception → reconstructs AW phase → drives `axi_req_o.aw*` and `axi_req_o.awvalid` per AXI4 channel rules.
+- NoC `noc_req_i` W flit reception → adds beat to W reassembly buffer → when last beat received, drives W phase to `axi_req_o.w*`.
 - Ordering: AW flit must arrive before any matching W flit (FIFO-natural at injection); NSU enforces W-after-AW via XCH rule.
 
 ### NMU return path: NoC response flit → AXI response
 
-- NoC `noc_rsp_i` B flit reception → updates RoB entry → per-AXI-ID order release → drives `axi_in_rsp_o.b*` and `bvalid`.
-- NoC `noc_rsp_i` R flit reception → accumulates rdata beats; final beat (RLAST in flit) → RoB release → drives `axi_in_rsp_o.r*` per beat.
+- NoC `noc_rsp_i` B flit reception → updates RoB entry → per-AXI-ID order release → drives `axi_rsp_o.b*` and `bvalid`.
+- NoC `noc_rsp_i` R flit reception → accumulates rdata beats; final beat (RLAST in flit) → RoB release → drives `axi_rsp_o.r*` per beat.
 
 ### NSU return path: AXI response → NoC response flit
 
-- `axi_out_rsp_i.bvalid` handshake → ECC generated (B has no data; ECC field unused) → `noc_rsp_o` B flit injection. NSU populates `qos` from `ReqInfoStore`.
-- `axi_out_rsp_i.rvalid` handshake (per beat) → ECC generated over `rdata` → R flit injected per beat → final beat carries `rlast=1` flag in flit header.
+- `axi_rsp_i.bvalid` handshake → ECC generated (B has no data; ECC field unused) → `noc_rsp_o` B flit injection. NSU populates `qos` from `MetaBuffer`.
+- `axi_rsp_i.rvalid` handshake (per beat) → ECC generated over `rdata` → R flit injected per beat → final beat carries `rlast=1` flag in flit header.
 
 ## Out-of-order completion
 

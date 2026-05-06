@@ -42,14 +42,14 @@ Rule IDs and sub-section headings in this document use **abstract channel tokens
 | `noc_*_i.valid` / `noc_*_i.ready` patterns | `REQ_IN` and `RSP_IN` (BFM-observed NoC inputs) |
 | `CSR_AW` / `CSR_W` / `CSR_B` / `CSR_AR` / `CSR_R` (in §CSR sub-section headings) | one-to-one with signal_interface tokens; no aliasing needed |
 
-A rule with role `SLV` referencing `AW` applies at the BFM's slave-side AXI port (`axi_in_*` for NMU's manager port acting as slave to local AXI master, `axi_out_*` for NSU's subordinate port). A rule with role `MST` referencing `AW` applies at the BFM's master-side AXI port. NoC `<PROTO>_MST_*` rules apply to BFM-driven NoC outputs (`REQ_OUT` and `RSP_OUT`); `<PROTO>_SLV_*` rules apply to BFM-observed NoC inputs (`REQ_IN` and `RSP_IN`).
+A rule with role `SLV` referencing `AW` applies at the BFM's slave-side AXI port (`axi_*_i` for NMU's manager port acting as slave to local AXI master, `axi_*_o` for NSU's subordinate port). A rule with role `MST` referencing `AW` applies at the BFM's master-side AXI port. NoC `<PROTO>_MST_*` rules apply to BFM-driven NoC outputs (`REQ_OUT` and `RSP_OUT`); `<PROTO>_SLV_*` rules apply to BFM-observed NoC inputs (`REQ_IN` and `RSP_IN`).
 
 ## Reset rules
 
 | ID | Condition | Required behavior | Severity | ARM SVA equivalent |
 |----|-----------|-------------------|----------|--------------------|
-| NI_RST_OUTPUTS_LOW_AXI | `arst_ni` is asserted | All NI-driven AXI outputs (axi_in_rsp_o.*valid, axi_out_req_o.*valid) must be at their during-reset values per pin_level_reset.md. | FAIL | (none) |
-| NI_RST_OUTPUTS_LOW_NOC | `noc_rst_ni` is asserted | All NI-driven NoC outputs (noc_req_o.valid, noc_rsp_o.valid) and ready-back signals (noc_req_i.ready, noc_rsp_i.ready) must be 0. | FAIL | (none) |
+| NI_RST_OUTPUTS_LOW_AXI | `arst_ni` is asserted | All NI-driven AXI outputs (axi_rsp_o.*valid, axi_req_o.*valid) must be at their during-reset values per pin_level_reset.md. | FAIL | (none) |
+| NI_RST_OUTPUTS_LOW_NOC | `noc_rst_ni` is asserted | All NI-driven NoC outputs (noc_req_valid_o, noc_rsp_valid_o) and ready-back signals (noc_req_ready_o, noc_rsp_ready_o) must be 0. | FAIL | (none) |
 | NI_RST_DURATION_AXI | `arst_ni` pulse begins | Held LOW for ≥ 16 `aclk_i` cycles. Shorter pulses leave the AXI side in undefined state. | FAIL | (none) |
 | NI_RST_DURATION_NOC | `noc_rst_ni` pulse begins | Held LOW for ≥ 16 `noc_clk_i` cycles. | FAIL | (none) |
 | NI_RST_PARTIAL | One reset asserted, the other not | NI may operate in partial state; cross-domain in-flight transactions will not complete. Integrator should ensure the two resets reach a consistent state by power-on completion. | RECOMMEND | (none) |
@@ -64,7 +64,7 @@ A rule with role `SLV` referencing `AW` applies at the BFM's slave-side AXI port
 
 ## AXI4 host-side rules
 
-(Apply to both `axi_in_*` AXI manager port and `axi_out_*` AXI subordinate port unless noted.)
+(Apply to both `axi_*_i` AXI manager port and `axi_*_o` AXI subordinate port unless noted.)
 
 ### AW channel
 
@@ -152,6 +152,9 @@ A rule with role `SLV` referencing `AW` applies at the BFM's slave-side AXI port
 |----|-----------|-------------------|----------|--------------------|
 | AXI4_MST_RoB_PER_ID_ORDER | Multiple outstanding transactions with same AWID/ARID | Responses for transactions with the same ID must be released in issue order. NMU RoB enforces. Different IDs may complete out of order. | FAIL | (none) |
 | AXI4_MST_RoB_OUTSTANDING_LIMIT | New transaction issued while NMU RoB is full | NMU back-pressures by deasserting `awready` / `arready` until a slot frees. | FAIL | (none) |
+| AXI4_SLV_R_INTERLEAVE_CROSS_ID | Multiple outstanding R bursts with different `arid` simultaneously in flight at the NMU | NMU MAY interleave R-flit packets from different `arid`s on `axi_r*_o` at packet boundary granularity (one full burst at a time per packet). Within the same `arid`, beats MUST be contiguous and in burst order (per AXI4 §A5.3); inter-burst interleaving on the same `arid` is forbidden. NMU implementation note: header `last` from `noc_rsp_i` flit demarcates packet boundaries for the wormhole-locked path. | FAIL | (none) |
+| AXI4_SLV_NSU_AW_BURST_WRAP_REPLAY | NSU receives AW + W flits with `awburst == WRAP` | NSU MUST replay per-beat addresses on `axi_awaddr_o` per AXI4 §A3.4.1 wrap formula: each beat's address wraps within the burst's wrap boundary (`(awaddr & ~((awlen+1) << awsize)) | ((awaddr + i × (1 << awsize)) & ((awlen+1) << awsize))`). Wrap boundary by AXI4 construction stays within 4KB. | FAIL | (none) |
+| AXI4_SLV_NSU_AW_BURST_FIXED_REPLAY | NSU receives AW + W flits with `awburst == FIXED` | NSU MUST replay the same `awaddr` on every beat of `axi_awaddr_o`; address does NOT increment between beats. | FAIL | (none) |
 
 ## NoC flit-side rules
 
@@ -169,8 +172,19 @@ A rule with role `SLV` referencing `AW` applies at the BFM's slave-side AXI port
 | ID | Condition | Required behavior | Severity | ARM SVA equivalent |
 |----|-----------|-------------------|----------|--------------------|
 | NOC_FLIT_HDR_QOS_4BIT | Any flit injected | Header `qos` field is 4 bits ([3:0] of the QOS_WIDTH-bit slot). Generated by QoS Generator (NMU) or copied from request (NSU response). | FAIL | (none) |
-| NOC_FLIT_HDR_DST_ID_VALID | Request flit injected | `dst_id` must reference an existing node in the mesh (XY coordinates within mesh bounds, or SAM rule match if `USE_ID_TABLE=1`). | FAIL | (none) |
+| NOC_FLIT_HDR_AWAR_PAYLOAD_NO_QOS | AW or AR flit injected | AW/AR flit payload does NOT carry a separate `qos` copy; the flit header `qos` field is the unique source. NSU MUST NOT look for qos in payload; consumers (router arbiter, NSU) read header `qos` only. | FAIL | (none) |
+| NOC_FLIT_HDR_DST_ID_VALID | Request flit injected | `dst_id` must reference an existing node in the mesh — either XY coordinates within `MESH_COLS × MESH_ROWS` bounds, or a `dst_id` produced by SAM table lookup when `USE_ID_TABLE=1`. Out-of-bounds `dst_id` is an NMU bug. | FAIL | (none) |
 | NOC_FLIT_HDR_ROB_IDX_UNIQUE | Multiple flits in flight from same NMU | `rob_idx` of all in-flight requests must be unique within the NMU; duplicate is RoB allocator bug. | FAIL | (none) |
+| NOC_FLIT_HDR_SRC_ID_VALID | Any flit injected on `noc_req_o` (NMU) or `noc_rsp_o` (NSU) | `src_id` field equals the injecting NI's own `id_i` strap value (XY coordinate of this NI's node). The router fabric uses `src_id` for response-path routing back from NSU to originating NMU. | FAIL | (none) |
+| NOC_FLIT_HDR_PORT_ID_VALID | Any request flit injected by NMU | `port_id` field equals the destination router's local-port index for this NI's destination, supplied via the strap-style sideband signal `port_id_i` (or via SAM table when `USE_ID_TABLE=1`). For response flits injected by NSU, `port_id` is copied from the originating request's `port_id` (preserved in NSU's `MetaBuffer`). | FAIL | (none) |
+| NOC_FLIT_HDR_AXI_CH_VALUES | Any flit injected | Header `axi_ch` field carries the AXI channel enum: `AW=0`, `W=1`, `AR=2`, `B=3`, `R=4`. Request flits (`AW`/`W`/`AR`) MUST be injected on `noc_req_o`; response flits (`B`/`R`) MUST be injected on `noc_rsp_o`. Routers use `axi_ch` to route flits to the matching physical NoC channel. | FAIL | (none) |
+| NOC_FLIT_HDR_LAST_CONSISTENT | Any flit injected | Header `last` bit indicates packet boundary: single-flit packets (AW, AR, B) MUST have `last=1` always; multi-flit packets (W burst, R burst) MUST have `last=0` on every flit except the final beat, on which `last=1`. For W flits, header `last` MUST equal AXI `wlast` of the corresponding W beat; for R flits, header `last` MUST equal AXI `rlast` of the corresponding R beat. Wormhole arbiter behaviour (per `NOC_MST_WORMHOLE_LOCK`) depends on this bit. | FAIL | (none) |
+| NOC_FLIT_HDR_ROB_REQ_GEN | NMU injects request flit (AW or AR) | Header `rob_req` bit indicates whether the NMU expects per-AXI-ID-ordered response release: `rob_req=1` allocates a RoB entry and waits for in-order release; `rob_req=0` is fast-path (NSU response is delivered to AXI as soon as received, bypassing RoB ordering). When `rob_req=0`, header `rob_idx` is don't-care. | FAIL | (none) |
+| NOC_FLIT_HDR_RSVD_ZERO_TX | NMU/NSU injects any flit on `noc_*_o` | Reserved header fields (`rsvd_commtype`, `multicast`, `rsvd_mc_status`, and the rsvd MSB of `vc_id` in valid/ready mode) MUST be zero on transmission. Reserved fields are placeholders for future extensions. | FAIL | (none) |
+| NOC_FLIT_HDR_RSVD_IGNORE_RX | NMU/NSU receives any flit on `noc_*_i` | Reserved header fields received from a future-revision peer MUST be ignored — non-zero values in reserved bit positions MUST NOT be interpreted as protocol violations or trigger error counters. This preserves forward compatibility with future header extensions. | RECOMMEND | (none) |
+| NOC_FLIT_RSP_QOS_INHERIT | NSU injects B or R response flit | Response flit header `qos` field equals the corresponding original request flit's header `qos` (preserved in NSU's `MetaBuffer` per request). NSU MUST NOT regenerate qos via QoS Generator; QoS computation occurs only on AW/AR injection at NMU. | FAIL | (none) |
+| NOC_FLIT_RSP_PORT_ID_INHERIT | NSU injects B or R response flit | Response flit header `port_id` equals the corresponding original request flit's `port_id` (preserved in NSU's `MetaBuffer`). This routes the response back to the correct router LOCAL port at the originating NMU's node. | FAIL | (none) |
+| NOC_FLIT_B_ECC_FAIL_GEN | NSU injects B response flit | When the corresponding W burst contained an uncorrectable ECC error (detected via `NOC_ECC_W_CHECK`), NSU MUST set B-flit payload field `ecc_fail=1` and B-flit header propagates `bresp=SLVERR` via `NOC_FLIT_RSP_ECC_FAIL_BRESP`. When no W ECC error occurred, NSU sets `ecc_fail=0`. The `ecc_fail` field is internal to the NoC payload; AXI master DUT observes the error solely through `bresp=SLVERR`. | FAIL | (none) |
 | NOC_FLIT_AW_W_ORDER | AW flit and corresponding W flits | NMU injects AW flit before any of its corresponding W flits onto `noc_req_o`. (W burst is independent wormhole; ordering at NMU output port is FIFO-natural.) | FAIL | (none) |
 
 ### ECC
@@ -190,39 +204,39 @@ The CSR access port is AXI4-Lite subordinate. AXI4-Lite is a subset of AXI4: sin
 
 | ID | Condition | Required behavior | Severity | ARM SVA equivalent |
 |----|-----------|-------------------|----------|--------------------|
-| AXI4LITE_SLV_AW_AWVALID_STABLE | csr_awvalid rises HIGH | csr_awvalid must remain HIGH until csr_awready observed HIGH. | FAIL | AXI4LITE_ERRM_AWVALID_STABLE (unverified) |
-| AXI4LITE_SLV_AW_AWADDR_STABLE | csr_awvalid is HIGH | csr_awaddr must not change. | FAIL | AXI4LITE_ERRM_AWADDR_STABLE (unverified) |
-| AXI4LITE_SLV_AW_AWPROT_STABLE | csr_awvalid is HIGH | csr_awprot must not change. | FAIL | AXI4LITE_ERRM_AWPROT_STABLE (unverified) |
-| AXI4LITE_SLV_AW_AWADDR_ALIGNED | csr_awvalid + csr_awready handshake | csr_awaddr must be 4-byte-aligned (lower 2 bits = 0). Misaligned writes cause `csr_bresp=SLVERR`. | FAIL | (none) |
-| AXI4LITE_SLV_W_WVALID_STABLE | csr_wvalid rises HIGH | Until csr_wready observed HIGH. | FAIL | AXI4LITE_ERRM_WVALID_STABLE (unverified) |
-| AXI4LITE_SLV_W_WDATA_STABLE | csr_wvalid is HIGH | csr_wdata must not change. | FAIL | (unverified) |
-| AXI4LITE_SLV_W_WSTRB_STABLE | csr_wvalid is HIGH | csr_wstrb must not change. | FAIL | (unverified) |
-| AXI4LITE_SLV_B_BVALID_STABLE | csr_bvalid rises HIGH | Until csr_bready observed HIGH. | FAIL | AXI4LITE_ERRS_BVALID_STABLE (unverified) |
-| AXI4LITE_SLV_B_BRESP_VALUES | csr_bvalid + csr_bready handshake | csr_bresp ∈ {OKAY=2'b00, SLVERR=2'b10, DECERR=2'b11}. SLVERR for misaligned address or RW1C-write-to-RO-bit; DECERR for unmapped offset. | FAIL | (none) |
-| AXI4LITE_SLV_XCH_W_AFTER_AW | csr_wready asserted | Corresponding csr_awvalid + csr_awready handshake must have completed (or be on the same cycle). | FAIL | (none) |
-| AXI4LITE_SLV_XCH_B_AFTER_AW_AND_W | csr_bvalid asserted | Both AW and W phases of the same write must have completed. | FAIL | (none) |
+| AXI4LITE_SLV_AW_AWVALID_STABLE | csr_awvalid_i rises HIGH | csr_awvalid_i must remain HIGH until csr_awready_o observed HIGH. | FAIL | AXI4LITE_ERRM_AWVALID_STABLE (unverified) |
+| AXI4LITE_SLV_AW_AWADDR_STABLE | csr_awvalid_i is HIGH | csr_awaddr_i must not change. | FAIL | AXI4LITE_ERRM_AWADDR_STABLE (unverified) |
+| AXI4LITE_SLV_AW_AWPROT_STABLE | csr_awvalid_i is HIGH | csr_awprot_i must not change. | FAIL | AXI4LITE_ERRM_AWPROT_STABLE (unverified) |
+| AXI4LITE_SLV_AW_AWADDR_ALIGNED | csr_awvalid_i + csr_awready_o handshake | csr_awaddr_i must be 4-byte-aligned (lower 2 bits = 0). Misaligned writes cause `csr_bresp_o=SLVERR`. | FAIL | (none) |
+| AXI4LITE_SLV_W_WVALID_STABLE | csr_wvalid_i rises HIGH | Until csr_wready_o observed HIGH. | FAIL | AXI4LITE_ERRM_WVALID_STABLE (unverified) |
+| AXI4LITE_SLV_W_WDATA_STABLE | csr_wvalid_i is HIGH | csr_wdata_i must not change. | FAIL | (unverified) |
+| AXI4LITE_SLV_W_WSTRB_STABLE | csr_wvalid_i is HIGH | csr_wstrb_i must not change. | FAIL | (unverified) |
+| AXI4LITE_SLV_B_BVALID_STABLE | csr_bvalid_o rises HIGH | Until csr_bready_i observed HIGH. | FAIL | AXI4LITE_ERRS_BVALID_STABLE (unverified) |
+| AXI4LITE_SLV_B_BRESP_VALUES | csr_bvalid_o + csr_bready_i handshake | csr_bresp_o ∈ {OKAY=2'b00, SLVERR=2'b10, DECERR=2'b11}. SLVERR for misaligned address or RW1C-write-to-RO-bit; DECERR for unmapped offset. | FAIL | (none) |
+| AXI4LITE_SLV_XCH_W_AFTER_AW | csr_wready_o asserted | Corresponding csr_awvalid_i + csr_awready_o handshake must have completed (or be on the same cycle). | FAIL | (none) |
+| AXI4LITE_SLV_XCH_B_AFTER_AW_AND_W | csr_bvalid_o asserted | Both AW and W phases of the same write must have completed. | FAIL | (none) |
 
 ### CSR read channels (AR + R)
 
 | ID | Condition | Required behavior | Severity | ARM SVA equivalent |
 |----|-----------|-------------------|----------|--------------------|
-| AXI4LITE_SLV_AR_ARVALID_STABLE | csr_arvalid rises HIGH | Until csr_arready observed HIGH. | FAIL | (unverified) |
-| AXI4LITE_SLV_AR_ARADDR_STABLE | csr_arvalid is HIGH | csr_araddr must not change. | FAIL | (unverified) |
-| AXI4LITE_SLV_AR_ARPROT_STABLE | csr_arvalid is HIGH | csr_arprot must not change. | FAIL | (unverified) |
-| AXI4LITE_SLV_AR_ARADDR_ALIGNED | csr_arvalid + csr_arready handshake | csr_araddr must be 4-byte-aligned. Misaligned reads cause `csr_rresp=SLVERR`. | FAIL | (none) |
-| AXI4LITE_SLV_R_RVALID_STABLE | csr_rvalid rises HIGH | Until csr_rready observed HIGH. | FAIL | (unverified) |
-| AXI4LITE_SLV_R_RDATA_STABLE | csr_rvalid is HIGH | csr_rdata must not change. | FAIL | (unverified) |
-| AXI4LITE_SLV_R_RRESP_STABLE | csr_rvalid is HIGH | csr_rresp must not change. | FAIL | (unverified) |
-| AXI4LITE_SLV_R_RRESP_VALUES | csr_rvalid + csr_rready handshake | csr_rresp ∈ {OKAY, SLVERR, DECERR}. DECERR for unmapped offset. | FAIL | (none) |
-| AXI4LITE_SLV_R_RLAST_NOT_REQUIRED | csr_rvalid + csr_rready handshake | AXI4-Lite reads are single-beat; no RLAST signal. (NI's CSR port omits csr_rlast.) | FAIL | (none) |
-| AXI4LITE_SLV_XCH_R_AFTER_AR | csr_rvalid asserted | Corresponding csr_arvalid + csr_arready handshake must have completed. | FAIL | (none) |
+| AXI4LITE_SLV_AR_ARVALID_STABLE | csr_arvalid_i rises HIGH | Until csr_arready_o observed HIGH. | FAIL | (unverified) |
+| AXI4LITE_SLV_AR_ARADDR_STABLE | csr_arvalid_i is HIGH | csr_araddr_i must not change. | FAIL | (unverified) |
+| AXI4LITE_SLV_AR_ARPROT_STABLE | csr_arvalid_i is HIGH | csr_arprot_i must not change. | FAIL | (unverified) |
+| AXI4LITE_SLV_AR_ARADDR_ALIGNED | csr_arvalid_i + csr_arready_o handshake | csr_araddr_i must be 4-byte-aligned. Misaligned reads cause `csr_rresp_o=SLVERR`. | FAIL | (none) |
+| AXI4LITE_SLV_R_RVALID_STABLE | csr_rvalid_o rises HIGH | Until csr_rready_i observed HIGH. | FAIL | (unverified) |
+| AXI4LITE_SLV_R_RDATA_STABLE | csr_rvalid_o is HIGH | csr_rdata_o must not change. | FAIL | (unverified) |
+| AXI4LITE_SLV_R_RRESP_STABLE | csr_rvalid_o is HIGH | csr_rresp_o must not change. | FAIL | (unverified) |
+| AXI4LITE_SLV_R_RRESP_VALUES | csr_rvalid_o + csr_rready_i handshake | csr_rresp_o ∈ {OKAY, SLVERR, DECERR}. DECERR for unmapped offset. | FAIL | (none) |
+| AXI4LITE_SLV_R_RLAST_NOT_REQUIRED | csr_rvalid_o + csr_rready_i handshake | AXI4-Lite reads are single-beat; no RLAST signal. (NI's CSR port omits csr_rlast.) | FAIL | (none) |
+| AXI4LITE_SLV_XCH_R_AFTER_AR | csr_rvalid_o asserted | Corresponding csr_arvalid_i + csr_arready_o handshake must have completed. | FAIL | (none) |
 
 ### CSR address policy
 
 | ID | Condition | Required behavior | Severity | ARM SVA equivalent |
 |----|-----------|-------------------|----------|--------------------|
-| AXI4LITE_SLV_UNMAPPED_DECERR | Read or write to a CSR offset not listed in registers.md §Register map | csr_bresp=DECERR (for write) or csr_rresp=DECERR (for read). | FAIL | (none) |
-| AXI4LITE_SLV_RO_WRITE_IGNORED | Write to a Read-Only register (per registers.md Access column) | Write data is silently ignored; csr_bresp=OKAY (write succeeds at the bus level but has no effect). Software contract: don't write to RO. | RECOMMEND | (none) |
+| AXI4LITE_SLV_UNMAPPED_DECERR | Read or write to a CSR offset not listed in registers.md §Register map | csr_bresp_o=DECERR (for write) or csr_rresp_o=DECERR (for read). | FAIL | (none) |
+| AXI4LITE_SLV_RO_WRITE_IGNORED | Write to a Read-Only register (per registers.md Access column) | Write data is silently ignored; csr_bresp_o=OKAY (write succeeds at the bus level but has no effect). Software contract: don't write to RO. | RECOMMEND | (none) |
 | AXI4LITE_SLV_RW1C_WRITE_BIT_LEVEL | Write to a RW1C register | For each bit position: software writes 1 → bit clears + associated counter clears (per registers.md §ERR_STATUS); software writes 0 → no effect (bit retains current state). | FAIL | (none) |
 
 ## Configuration-knob rules
@@ -232,7 +246,7 @@ The CSR access port is AXI4-Lite subordinate. AXI4-Lite is a subset of AXI4: sin
 | NI_CFG_QOS_MODE_TRANSITION | `QOS_MODE` CSR written | New mode applies to the NEXT AW/AR flit injection; in-flight transactions retain the QoS computed at their injection time. | FAIL | (none) |
 | NI_CFG_QOS_FIXED_VALUE | `QOS_MODE = Fixed`; `QOS_FIXED_VALUE` CSR written | Next AW/AR flit's `qos` header field equals `QOS_FIXED_VALUE`, regardless of AXI awqos/arqos input. | FAIL | (none) |
 | NI_CFG_BANDWIDTH_LIMIT_BOUND | `BANDWIDTH_LIMIT` CSR written; `QOS_MODE = Limiter` | Limiter counter increments per request bytes, decrements per cycle by `BANDWIDTH_LIMIT`; QoS drops to `LOW_PRIORITY` when counter > `SATURATION_THRESHOLD`. Saturating arithmetic. | FAIL | (none) |
-| NI_CFG_BANDWIDTH_BUDGET_BOUND | `BANDWIDTH_BUDGET` CSR written; `QOS_MODE = Regulator` | Per cycle: counter += response_bytes − BANDWIDTH_BUDGET. Urgency adjusts per `BASE_QOS[5:4]` (URGENCY_STEP) per cycle: counter<0 → urgency increases; counter>0 → urgency decreases (saturating to 0..MAX_URGENCY). | FAIL | (none) |
+| NI_CFG_BANDWIDTH_BUDGET_BOUND | `BANDWIDTH_BUDGET` CSR written; `QOS_MODE = Regulator` | Per cycle: counter += response_bytes − BANDWIDTH_BUDGET. Urgency adjusts per `BASE_QOS[5:4]` (URGENCY_STEP) per cycle: counter<0 → urgency increases; counter>0 → urgency decreases (saturating to 0..MAX_URGENCY). When software writes URGENCY_STEP=0 to `BASE_QOS[5:4]`, hardware treats the field as if it were 1 (effective minimum step is 1; legal SW-visible values are 1..3). | FAIL | (none) |
 | NI_CFG_REGULATOR_FINAL_QOS | `QOS_MODE = Regulator`; AW/AR flit being injected | flit.hdr.qos = max(min(BASE_QOS[3:0] + urgency_level, 15), `SOCKET_QOS_EN ? SOCKET_QOS : 0`). Saturation arithmetic; clamps to 4-bit range. | FAIL | (none) |
 | NI_CFG_PROBE_EN_TRANSITION | `PKT_PROBE_EN` or `TXN_PROBE_EN` CSR transitions 0→1 | Probe counters start counting from the next cycle; previous count state is preserved (not auto-cleared). To clear, software must explicitly write 0 to the count register or rely on saturating wrap-around. | FAIL | (none) |
 | NI_CFG_PROBE_PKT_BYTE_COUNT | `PKT_PROBE_EN=1`; AW or AR flit injected (depends on PKT_PROBE_MODE) | `PKT_BYTE_COUNT` increments by `(awlen+1) × (1 << awsize)` for writes (PKT_PROBE_MODE=0 or 2) or `(arlen+1) × (1 << arsize)` for reads (PKT_PROBE_MODE=0 or 1). Saturating. | FAIL | (none) |

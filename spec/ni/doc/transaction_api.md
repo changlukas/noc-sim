@@ -77,11 +77,11 @@ Transaction API covers ~95% of typical tests (single-master single-slave, RoB or
 - No Channel API call holding AW or W channels of the manager port.
 
 **Side effects:**
-- Drives `axi_in_*` AW phase: awvalid HIGH, awid=id, awaddr=addr, awlen=0, awsize=log2(strb width), awburst=INCR, awqos=qos. Holds until awready observed.
+- Drives `axi_*_i` AW phase: awvalid HIGH, awid=id, awaddr=addr, awlen=0, awsize=log2(strb width), awburst=INCR, awqos=qos. Holds until awready observed.
 - Drives W phase: wvalid HIGH, wdata=data, wstrb=strb, wlast=1. Holds until wready observed.
 - NMU internally: AddrTrans → QoSGen → FlitPack → ECC Gen → InjectionBuffer → noc_req_o injection (AW + W flits).
 - RoB allocates an entry for AWID=id; entry tracks B response.
-- Blocks until B handshake observed at `axi_in_*`: bvalid HIGH, bid=id, bresp captured.
+- Blocks until B handshake observed at `axi_*_i`: bvalid HIGH, bid=id, bresp captured.
 - The configured response_fault (if any) consumed (one-shot).
 - Observed transaction appended to `get_observed_axi_writes(MANAGER)` list; corresponding NoC AW + W flits appended to `get_observed_noc_flits(REQ, OUT)`.
 
@@ -131,10 +131,10 @@ Plus internal NMU pipeline (FlitPack + ECC + InjectionBuffer) and NoC link injec
 **Preconditions:** Same as `apply_axi_write` for ACTIVE mode + outstanding limits.
 
 **Side effects:**
-- Drives `axi_in_*` AR phase: arvalid HIGH, arid=id, araddr=addr, arlen=0, arsize=full-width, arburst=INCR, arqos=qos.
+- Drives `axi_*_i` AR phase: arvalid HIGH, arid=id, araddr=addr, arlen=0, arsize=full-width, arburst=INCR, arqos=qos.
 - NMU: AddrTrans → QoSGen → FlitPack → noc_req_o (AR flit).
 - RoB allocates for ARID=id.
-- Blocks until R handshake at `axi_in_*` with rid=id, rlast=1.
+- Blocks until R handshake at `axi_*_i` with rid=id, rlast=1.
 - Returns (status, observed rdata).
 
 **Return value:** `(OK, rdata)` on success; status enums same as `apply_axi_write`.
@@ -195,7 +195,7 @@ Mirror of apply_burst_write but for reads. Returns array of len+1 rdata values.
 
 **Side effects:**
 - Blocks until master DUT (or NMU forwarding remote write) issues an AXI write to addr on subordinate port.
-- In ACTIVE: BFM drives `axi_out_*` B response (after configured response_delay_axi); fault-injection knobs consumed.
+- In ACTIVE: BFM drives `axi_*_o` B response (after configured response_delay_axi); fault-injection knobs consumed.
 - In PASSIVE: BFM observes only.
 - WDATA captured and compared against expected `data`; over-strobe lanes compared per WSTRB.
 
@@ -229,7 +229,7 @@ Burst variants of expect_axi_*.
 
 **Side effects:**
 - Blocks until a flit is observed on `noc_req_o`. If `addr_match` provided, additionally requires the flit's payload AWADDR or ARADDR field equals addr_match.
-- In ACTIVE: BFM accepts via `noc_req_o.ready` after configured response_delay_noc.
+- In ACTIVE: BFM accepts via `noc_req_ready_i` after configured response_delay_noc.
 - In PASSIVE: observes only.
 - Flit appended to get_observed_noc_flits(REQ, OUT).
 
@@ -266,10 +266,10 @@ Returns observed flits on `link ∈ {REQ, RSP}` and `direction ∈ {OUT, IN}`. L
 - offset is 4-byte-aligned (lower 2 bits = 0).
 
 **Side effects:**
-- Drives an AXI4-Lite write transaction on `csr_*` port: AW (csr_awaddr=offset, csr_awprot=0) + W (csr_wdata=data, csr_wstrb=0xF) + receives B.
-- BFM internally updates the addressed register's state per registers.md (RW writes: store; RW1C writes: clear bits where data has 1; RO writes: ignored, csr_bresp=OKAY).
+- Drives an AXI4-Lite write transaction on `csr_*` port: AW (csr_awaddr_i=offset, csr_awprot_i=0) + W (csr_wdata_i=data, csr_wstrb_i=0xF) + receives B.
+- BFM internally updates the addressed register's state per registers.md (RW writes: store; RW1C writes: clear bits where data has 1; RO writes: ignored, csr_bresp_o=OKAY).
 
-**Return value:** `OK` (csr_bresp=OKAY) / `SLVERR` (misaligned, RO violation, etc.) / `DECERR` (unmapped offset) / `RESET_DURING_TRANSACTION` / `TIMEOUT`.
+**Return value:** `OK` (csr_bresp_o=OKAY) / `SLVERR` (misaligned, RO violation, etc.) / `DECERR` (unmapped offset) / `RESET_DURING_TRANSACTION` / `TIMEOUT`.
 
 **Example:**
 ```c
@@ -365,7 +365,7 @@ If only one of the two resets is asserted (partial reset): cross-domain transact
 
 ## Outstanding-limit overflow behavior
 
-When a test issues a new transaction while the BFM's outstanding tracker is already full (`total outstanding == MAX_TXNS`, or `outstanding count for id == MAX_TXNS_PER_ID`), the BFM **mirrors RTL back-pressure**: the `apply_axi_*` call holds `axi_in_awready`/`axi_in_arready` LOW (or, on the subordinate-port direction, holds `axi_out_awvalid`/`axi_out_arvalid` until the local slave's ready accepts) and blocks until a tracker slot frees (i.e., a previously-issued transaction's response is received and consumed). The call then resumes, drives the AW/AR phase, and continues to the response phase as usual.
+When a test issues a new transaction while the BFM's outstanding tracker is already full (`total outstanding == MAX_TXNS`, or `outstanding count for id == MAX_TXNS_PER_ID`), the BFM **mirrors RTL back-pressure**: the `apply_axi_*` call holds `axi_awready_o`/`axi_arready_o` LOW (or, on the subordinate-port direction, holds `axi_awvalid_o`/`axi_arvalid_o` until the local slave's ready accepts) and blocks until a tracker slot frees (i.e., a previously-issued transaction's response is received and consumed). The call then resumes, drives the AW/AR phase, and continues to the response phase as usual.
 
 The `Preconditions` line `outstanding count for id < MAX_TXNS_PER_ID; total outstanding < MAX_TXNS` in `apply_axi_write` / `apply_axi_read` is a **performance / liveness guideline, not a hard contract violation**: a test that exceeds the limit will not return an error, but will see the API call stall until back-pressure relief arrives. If the test's slave path is also stalled (deadlock scenario), the call eventually returns `TIMEOUT` per the configured timeout default (10000 aclk cycles).
 

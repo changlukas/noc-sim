@@ -456,7 +456,7 @@ Generate                  Check              Check             Check          Ch
 - `route_par` 提供 hop-level 即時保護（router 不需做 SECDED 仍能擋掉 misroute）
 - `flit_ecc` 提供 end-to-end 完整保護（router 不負擔 ECC 計算成本，整段 NoC 雙端 NMU/NSU 各算一次即可）
 
-**Parameter sensitivity**: 若 `HEADER_WIDTH` 或 `PAYLOAD_WIDTH` 擴大使 `FLIT_DATA_WIDTH` 超過 502 bits，integrator 必須將 `FLIT_ECC_WIDTH` 從 10 升到 11（per Hamming bound 約束）。
+**Parameter sensitivity**: 若 `HEADER_WIDTH` 或 `PAYLOAD_WIDTH` 擴大使 `FLIT_DATA_WIDTH ≥ 502` bits，integrator 必須將 `FLIT_ECC_WIDTH` 從 10 升到 11（per Hamming bound 約束 — `2^9 = 512 ≥ 502 + 10 + 1 = 513` 不成立）。
 
 ### 3.7 Union Alignment & Utilization
 

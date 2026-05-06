@@ -2,9 +2,9 @@
 
 NI exposes a software-visible CSR file via the dedicated AXI4-Lite subordinate port (`csr_*`). All CSRs are 32-bit-aligned. Access policies:
 
-- **Sub-word access**: not supported. CSR writes with `csr_wstrb != 0xF` (any byte deasserted) trigger `csr_bresp = SLVERR` and the write is dropped. Reads ignore byte strobes (full 32-bit word returned).
-- **Unmapped offset**: any `csr_awaddr` or `csr_araddr` that doesn't match a register in §Register map below triggers `csr_bresp = DECERR` (writes) or `csr_rresp = DECERR` (reads). Unmapped reads return `csr_rdata = 0x0`.
-- **Misaligned access**: `csr_awaddr[1:0] != 0` or `csr_araddr[1:0] != 0` triggers `SLVERR`.
+- **Sub-word access**: not supported. CSR writes with `csr_wstrb_i != 0xF` (any byte deasserted) trigger `csr_bresp_o = SLVERR` and the write is dropped. Reads ignore byte strobes (full 32-bit word returned).
+- **Unmapped offset**: any `csr_awaddr_i` or `csr_araddr_i` that doesn't match a register in §Register map below triggers `csr_bresp_o = DECERR` (writes) or `csr_rresp_o = DECERR` (reads). Unmapped reads return `csr_rdata_o = 0x0`.
+- **Misaligned access**: `csr_awaddr_i[1:0] != 0` or `csr_araddr_i[1:0] != 0` triggers `SLVERR`.
 
 CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-conflict-fix); see provenance comments inline.
 

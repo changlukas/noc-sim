@@ -52,7 +52,7 @@ Mapping README Features → testpoints (per stage gate D1.dv.testpoints requirem
 | TP21 | CDC at slow aclk | Set aclk_freq = 0.1 × noc_clk_freq; same. | Same |
 | TP22 | CDC at equal clocks | aclk_freq = noc_clk_freq; same; verify FIFOs degenerate to direct paths but still function. | Same |
 | TP23 | Reset during AXI AW phase | Master raises awvalid; arst_ni asserts before awready; verify NMU returns to IDLE; verify any cross-domain in-flight is cleaned up by NoC-side draining. | NI_RST_OUTPUTS_LOW_AXI |
-| TP24 | Reset during NoC injection | Mid-flit injection on `noc_req_o`; noc_rst_ni asserts; verify noc_req_o.valid drops to 0 same cycle. | NI_RST_OUTPUTS_LOW_NOC |
+| TP24 | Reset during NoC injection | Mid-flit injection on `noc_req_o`; noc_rst_ni asserts; verify noc_req_valid_o drops to 0 same cycle. | NI_RST_OUTPUTS_LOW_NOC |
 | TP25 | Reset during multi-beat R burst | Master in-flight reading; noc_rst_ni asserts mid-burst; verify R beats stop on AXI side; verify the in-flight RoB entry's pending beats are dropped (RoB entry returned to FREE on noc_rst_ni release). On subsequent reset deassertion, master can re-issue the read. AXI side does NOT see rresp=SLVERR for partial-reset case — instead sees no further R beats and the master's transaction times out per master DUT's logic. | NI_RST_PARTIAL |
 | TP26 | Partial reset (only one of two resets) | Assert only `arst_ni`; verify NoC side continues operating but cross-domain transactions stall. | NI_RST_PARTIAL |
 | TP27 | Mode switch ACTIVE→PASSIVE | Issue traffic; mid-burst, switch to PASSIVE; verify all BFM-driven outputs transition to during-reset values within 1 cycle; verify in-flight transactions return MODE_SWITCHED_TO_PASSIVE. | NI_CFG_MODE_SWITCH |
