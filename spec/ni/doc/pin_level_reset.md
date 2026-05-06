@@ -27,6 +27,7 @@ A wire's "during reset" value is determined by its corresponding reset signal. W
 | AW_IN | axi_in_awprot | as driven by DUT |  |
 | AW_IN | axi_in_awqos | as driven by DUT |  |
 | AW_IN | axi_in_awuser | as driven by DUT |  |
+| AW_IN | axi_in_awatop | as driven by DUT | sample-only; out-of-scope per ToO §ATOPs |
 | W_IN | axi_in_wvalid | as driven by DUT |  |
 | W_IN | axi_in_wready | 0 |  |
 | W_IN | axi_in_wdata | as driven by DUT |  |
@@ -104,25 +105,29 @@ A wire's "during reset" value is determined by its corresponding reset signal. W
 
 ### NoC Request link — NoC domain (noc_rst_ni)
 
+All `valid`/`ready`/`flit` are per-VC arrays of width `NUM_VC` (default 1). Reset values apply to every VC slot.
+
 | Channel | Signal | Value during reset | Notes |
 |---------|--------|--------------------|-------|
-| REQ_OUT | noc_req_o_valid | 0 |  |
-| REQ_OUT | noc_req_o_ready | as driven by router | input |
-| REQ_OUT | noc_req_o_flit | 0 (all-zero) | Held to 0 for waveform readability |
-| REQ_IN | noc_req_i_valid | as driven by router |  |
-| REQ_IN | noc_req_i_ready | 0 | NSU not accepting |
-| REQ_IN | noc_req_i_flit | as driven by router |  |
+| REQ_OUT | noc_req_o_valid[NUM_VC-1:0] | 0 (all VCs) |  |
+| REQ_OUT | noc_req_o_ready[NUM_VC-1:0] | as driven by router | Input. Per-VC. |
+| REQ_OUT | noc_req_o_flit[NUM_VC-1:0][FLIT_WIDTH-1:0] | 0 (all VCs, all bits) | Held to 0 for waveform readability. |
+| REQ_IN | noc_req_i_valid[NUM_VC-1:0] | as driven by router |  |
+| REQ_IN | noc_req_i_ready[NUM_VC-1:0] | 0 (all VCs) | NSU not accepting. |
+| REQ_IN | noc_req_i_flit[NUM_VC-1:0][FLIT_WIDTH-1:0] | as driven by router |  |
 
 ### NoC Response link — NoC domain (noc_rst_ni)
 
+All `valid`/`ready`/`flit` are per-VC arrays of width `NUM_VC` (default 1).
+
 | Channel | Signal | Value during reset | Notes |
 |---------|--------|--------------------|-------|
-| RSP_OUT | noc_rsp_o_valid | 0 |  |
-| RSP_OUT | noc_rsp_o_ready | as driven by router |  |
-| RSP_OUT | noc_rsp_o_flit | 0 |  |
-| RSP_IN | noc_rsp_i_valid | as driven by router |  |
-| RSP_IN | noc_rsp_i_ready | 0 |  |
-| RSP_IN | noc_rsp_i_flit | as driven by router |  |
+| RSP_OUT | noc_rsp_o_valid[NUM_VC-1:0] | 0 (all VCs) |  |
+| RSP_OUT | noc_rsp_o_ready[NUM_VC-1:0] | as driven by router |  |
+| RSP_OUT | noc_rsp_o_flit[NUM_VC-1:0][FLIT_WIDTH-1:0] | 0 (all VCs, all bits) |  |
+| RSP_IN | noc_rsp_i_valid[NUM_VC-1:0] | as driven by router |  |
+| RSP_IN | noc_rsp_i_ready[NUM_VC-1:0] | 0 (all VCs) |  |
+| RSP_IN | noc_rsp_i_flit[NUM_VC-1:0][FLIT_WIDTH-1:0] | as driven by router |  |
 
 ### CSR access port — AXI domain (arst_ni)
 
@@ -153,7 +158,48 @@ A wire's "during reset" value is determined by its corresponding reset signal. W
 | Signal | Value during reset | Notes |
 |--------|--------------------|-------|
 | id_i | as driven by integrator | strap-style, expected stable |
+| port_id_i | as driven by integrator | strap-style, expected stable; selects router LOCAL port index |
 | route_table_i | as driven by integrator | strap-style, expected stable when USE_ID_TABLE=1 |
+
+### NoC credit signals — NoC domain (noc_rst_ni); present only when `FLOW_CONTROL = CREDIT_BASED`
+
+Per-VC credit return signals:
+
+| Channel | Signal | Value during reset | Notes |
+|---------|--------|--------------------|-------|
+| REQ_OUT | noc_req_o_credit_i[NUM_VC-1:0] | as driven by router | Input. Per-VC credit return from router. |
+| REQ_IN | noc_req_i_credit_o[NUM_VC-1:0] | 0 (all VCs) | NSU not returning credits while reset. |
+| RSP_OUT | noc_rsp_o_credit_i[NUM_VC-1:0] | as driven by router | Input. |
+| RSP_IN | noc_rsp_i_credit_o[NUM_VC-1:0] | 0 (all VCs) | NMU not returning credits while reset. |
+
+Credit startup handshake signals:
+
+| Channel | Signal | Value during reset | Notes |
+|---------|--------|--------------------|-------|
+| REQ_OUT | noc_req_o_credit_init_ready_o | 0 | NMU asserts AFTER reset deassertion when ready to start credit exchange. |
+| REQ_OUT | noc_req_o_credit_init_ready_i | as driven by router | Router asserts after its reset deassertion. |
+| RSP_OUT | noc_rsp_o_credit_init_ready_o | 0 | NSU asserts AFTER reset deassertion. |
+| RSP_OUT | noc_rsp_o_credit_init_ready_i | as driven by router | Router asserts after its reset deassertion. |
+
+When `FLOW_CONTROL = VALID_READY` (default), all credit signals and credit-init-ready signals are absent. See `signal_interface.md` §"NoC credit signals" for the full conditional contract.
+
+### Optional AXI parity signals — AXI domain (arst_ni)
+
+Conditional presence:
+- `axi_in_*_par_*` signals present only when `ENABLE_AXI_PARITY = true` AND `EN_MGR_PORT = 1`
+- `axi_out_*_par_*` signals present only when `ENABLE_AXI_PARITY = true` AND `EN_SBR_PORT = 1`
+
+| Channel | Signal | Value during reset | Notes |
+|---------|--------|--------------------|-------|
+| AW_IN | axi_in_awaddr_par_i | as driven by DUT | Input. Requires `EN_MGR_PORT=1`. |
+| AR_IN | axi_in_araddr_par_i | as driven by DUT | Input. Requires `EN_MGR_PORT=1`. |
+| W_IN | axi_in_wdata_par_i[DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
+| AW_OUT | axi_out_awaddr_par_o | 0 | NSU-driven. Held 0 while reset. Requires `EN_SBR_PORT=1`. |
+| AR_OUT | axi_out_araddr_par_o | 0 | NSU-driven. Requires `EN_SBR_PORT=1`. |
+| W_OUT | axi_out_wdata_par_o[DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
+| R_OUT | axi_out_rdata_par_i[DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SBR_PORT=1`. |
+
+When `ENABLE_AXI_PARITY = false` (default), all parity signals are absent regardless of `EN_MGR_PORT` / `EN_SBR_PORT`.
 
 ## After reset (first clock edge with respective reset deasserted)
 
