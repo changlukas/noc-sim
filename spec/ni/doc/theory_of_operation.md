@@ -179,7 +179,7 @@ for each rule in Sam (NUM_SAM_RULES rules total):
 no rule matches → NMU returns DECERR
 ```
 
-The `sam_rule_t` type contains `match`, `mask`, and `dst_id` fields per rule. Rule order matters: first-match wins. Runtime updates to `Sam` go through the CSR + quiesce flow (per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW`); the parameter itself is fixed at instantiation.
+The `sam_rule_t` type contains `match`, `mask`, and `dst_id` fields per rule. Rule order matters: first-match wins. The `Sam` parameter is **fixed at instantiation**; runtime modification is out of scope for v0.4.0 (no `SAM_RULE_*` CSR exists in `registers.md`). To change the SAM table, re-elaborate the design with the new `Sam` value.
 
 #### QoS Generator
 
@@ -447,7 +447,7 @@ This regeneration point is the verbatim AMD pg313 §Parity prescription: "Data p
   - `CUT_RSP=1`: 2 cycles.
 - **NSU latency**: mirror of NMU (`noc_req_i` → `axi_*_o` and `axi_*_o` → `noc_rsp_o`).
 - **CDC traversal**: aclk → noc_clk crossing adds 3-4 noc_clk cycles depending on `CDC_FIFO_DEPTH` and clock ratio (per CDC §); same on the inverse direction.
-- **NMU vs Router-Router latency comparison**: an NI's flit at `noc_*_o` reaches the next router 1 cycle later than a flit forwarded between two routers, because the NI sets the output in §"NI Process" phase whereas router-to-router uses the wire-propagation phase directly. Account for this 1-cycle overhead in cycle-accurate co-simulation.
+- **NMU vs Router-Router latency comparison**: an NI's flit at `noc_*_o` reaches the next router 1 cycle later than a flit forwarded between two routers, because the NI sets the output in the simulation pipeline's NI Process phase (defined in `docs/design/08_simulation.md §6` — outside this BFM spec) whereas router-to-router uses the wire-propagation phase directly. Account for this 1-cycle overhead in cycle-accurate co-simulation.
 - **Throughput**: 1 AXI transaction per cycle (best case, no QoS regulation, no RoB back-pressure, no CDC stall, no wormhole-lock contention).
 - **Resource model**: BFM tracks up to `MAX_TXNS` outstanding transactions; RoB depths per `B_ROB_SIZE` / `R_ROB_SIZE`; CDC FIFO depth per `CDC_FIFO_DEPTH`; W reassembly buffer depth per `MAX_BURST_LEN`.
 

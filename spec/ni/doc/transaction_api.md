@@ -353,7 +353,7 @@ See active_passive_mode.md for full semantics.
 | Response fault one-shot flags | Cleared | |
 | `set_response_delay_axi` / `set_response_delay_noc` | Reset to (0, 0) | |
 | CSR file state (QOS_MODE / QOS_FIXED_VALUE / BANDWIDTH_LIMIT / BANDWIDTH_BUDGET / BASE_QOS / SOCKET_QOS_EN / SOCKET_QOS / PKT_PROBE_* / TXN_PROBE_* / TXN_THRESHOLD_*) | **Preserved** | Software-managed state; reset via wire-level reset or explicit csr_write, not via reset_state |
-| `ERR_STATUS` / `ERR_COUNT` / `ECC_UNCORR_ERR_CNT` / `LAST_ERR_INFO` | **Preserved** | Same; clear via RW1C write to ERR_STATUS |
+| `ERR_STATUS` / `ERR_COUNT` / `ECC_UNCORR_ERR_CNT` / `ECC_CORR_ERR_CNT` / `ROUTE_PAR_ERR_CNT` / `AXI_PARITY_ERR_CNT` / `LAST_ERR_INFO` | **Preserved** | Same; clear via RW1C write to the corresponding `ERR_STATUS` bit (counters auto-clear with their paired bit). `ECC_CORR_ERR_CNT` has no clear path — saturating cumulative. |
 | Probe counters (`PKT_BYTE_COUNT`, `TXN_BIN_*_COUNT`, etc.) | **Preserved** | Same |
 | `bfm_mode` (ACTIVE/PASSIVE) | **Preserved** | Testbench-level config |
 

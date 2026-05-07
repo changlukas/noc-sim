@@ -144,7 +144,7 @@ Same shape as Request link, with `noc_rsp_*` prefix.
 
 ### NoC credit signals (always present)
 
-The NoC link uses per-VC credit accounting per AMD pg313 §Credit-Based Flow Control. Credit return is per-VC: one bit per VC, asserted for one cycle to return one credit on that VC. The destination unit can return up to one credit per cycle per virtual channel (AMD verbatim). The startup handshake uses a single bi-directional ready signal per direction, semantics aligned with AMD: "indicates credit exchange is ready".
+The NoC link uses per-VC credit accounting per AMD pg313 §Credit-Based Flow Control. Credit return is per-VC: one bit per VC, asserted for one cycle to return one credit on that VC. The destination unit can return up to one credit per cycle per virtual channel (AMD verbatim). When `NUM_VC = 1` (default), the per-VC array `credit_*[NUM_VC-1:0]` degenerates to a single 1-bit signal. The startup handshake uses a single bi-directional ready signal per direction, semantics aligned with AMD: "indicates credit exchange is ready".
 
 **Per-VC credit return signals:**
 
@@ -173,7 +173,7 @@ After reset, source-credit counters initialise to 0 per VC. Both ends must compl
 - Credit exchange begins only after both ends raise their respective `*_credit_init_ready_*` signals (bi-directional handshake).
 - Once exchange begins, credit counters are seeded with `INPUT_BUFFER_DEPTH / NUM_VC` per VC (where `INPUT_BUFFER_DEPTH` is the receiver's per-link buffer depth, a router-side parameter the integrator must communicate).
 - Credit return latency is `CREDIT_DELAY` cycles (router-side parameter, default 1).
-- Credit starvation (no credit return for `CREDIT_TIMEOUT` cycles, default 10000) is treated as one of the trigger sources of the outstanding-transaction-timeout path: the affected NMU/NSU drives `bresp/rresp = SLVERR` for any in-flight transaction whose response is now permanently blocked by lack of credits, increments `ERR_COUNT`, and sets `ERR_STATUS[1] timeout_err` (per `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR` + `NI_CFG_ERR_STATUS_RW1C`). Counter pairing therefore stays consistent: bit 1 ↔ `ERR_COUNT`. Software disambiguates credit-starvation from other timeout causes (slave never responds, route_par drop, fabric loss) via `LAST_ERR_INFO` plus the per-class counters.
+- Credit starvation (no credit return for `CREDIT_TIMEOUT` `noc_clk_i` cycles, default 10 000) is treated as one of the trigger sources of the outstanding-transaction-timeout path: the affected NMU/NSU drives `bresp/rresp = SLVERR` for any in-flight transaction whose response is now permanently blocked by lack of credits, increments `ERR_COUNT`, and sets `ERR_STATUS[1] timeout_err` (per `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR` + `NI_CFG_ERR_STATUS_RW1C`). Counter pairing therefore stays consistent: bit 1 ↔ `ERR_COUNT`. Software disambiguates credit-starvation from other timeout causes (slave never responds, route_par drop, fabric loss) via `LAST_ERR_INFO` plus the per-class counters.
 
 ### CSR access port (AXI4-Lite subordinate)
 
@@ -207,7 +207,7 @@ A dedicated AXI4-Lite subordinate port for software access to NMU/NSU CSR file. 
 |--------|-----------|-------|-------------|-------|
 | `id_i` | input | X_WIDTH+Y_WIDTH (default 8) | §Sideband row 1 | This NI's Node ID (XY coordinate of the tile). Per-NI unique. Strap-style. Sampled in noc_clk domain. Modifying after `noc_rst_ni` deassertion is undefined. Aligns with FlooNoC `floo_axi_chimney.sv` `id_i` input. |
 
-SAM rule table (`Sam`) is **not** a wire-level signal. It is a compile-time parameter (see §Parameters) — aligns with FlooNoC `Sam` parameter convention. All NIs in the system share the same `Sam` content. Runtime SAM updates are done via CSR + quiesce flow (per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW`).
+SAM rule table (`Sam`) is **not** a wire-level signal. It is a compile-time parameter (see §Parameters) — aligns with FlooNoC `Sam` parameter convention. All NIs in the system share the same `Sam` content. **Compile-time only**: runtime modification is out of scope for v0.4.0 (no `SAM_RULE_*` CSR exists). To change the SAM table, re-elaborate the design with the new `Sam` parameter value.
 
 Single-chimney-per-tile model: each tile (`(x, y)` coordinate) has exactly one NI. Tiles with multiple IPs (CPU + DMA + memory controller + accelerator) mux them through an upstream AXI crossbar before reaching the NI; per-IP identification is by AXI ID, not by any flit-header field.
 
@@ -286,12 +286,12 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `MAX_TXNS` | int | 32 | power-of-2 | HW ceiling on outstanding transactions |
 | `MAX_UNIQUE_IDS` | int | 1 | 1 ≤ x ≤ MAX_TXNS | Number of unique downstream txnIDs |
 | `MAX_TXNS_PER_ID` | int | 32 | 1 ≤ x ≤ MAX_TXNS | Outstanding count per unique ID |
-| `B_ROB_TYPE` | enum {NormalRoB, SimpleRoB, NoRoB} | NoRoB | — | B response RoB mode |
+| `B_ROB_TYPE` | enum {NormalRoB, SimpleRoB, NoRoB} | NoRoB | — | B response RoB mode. Default is smallest-area (NoRoB); typical multi-destination deployments use `SimpleRoB` for B — see `theory_of_operation.md` §RoB. |
 | `B_ROB_SIZE` | int | 0 | 0 if NoRoB, else 1 ≤ x ≤ MAX_TXNS | B RoB depth |
-| `R_ROB_TYPE` | enum | NoRoB | — | R response RoB mode |
+| `R_ROB_TYPE` | enum | NoRoB | — | R response RoB mode. Default is smallest-area (NoRoB); typical multi-destination deployments use `NormalRoB` for R — see `theory_of_operation.md` §RoB. |
 | `R_ROB_SIZE` | int | 0 | same as B_ROB_SIZE | R RoB depth |
-| `CUT_AX` | bool | false | — | AW/AR spill register |
-| `CUT_RSP` | bool | false | — | Response spill register |
+| `CUT_AX` | bool | false | — | AW/AR spill register (FlooNoC `ChimneyCfgN.CutAx` parameter aligned, per `floo_nw_vc_chimney.sv`) |
+| `CUT_RSP` | bool | false | — | Response spill register (FlooNoC `ChimneyCfgN.CutRsp` parameter aligned) |
 | `ROUTE_ALGO` | enum {XYRouting, SourceRouting, IDRouting} | XYRouting | — | Routing algorithm |
 | `USE_ID_TABLE` | bool | false | — | Use SAM table for dst_id derivation |
 | `XY_ADDR_OFFSET_X` | int | 32 | 0 ≤ x ≤ ADDR_WIDTH-X_WIDTH | X coordinate bit offset in AXI address |
@@ -307,12 +307,12 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `BW_COUNTER_WIDTH` | int | 24 | 16 ≤ x ≤ 32 | QoS bandwidth counter width |
 | `URGENCY_WIDTH` | int | 3 | 2 ≤ x ≤ 4 | Regulator urgency level width |
 | `ERR_COUNTER_WIDTH` | int | 16 | 8 ≤ x ≤ 32 | Error counter width |
-| `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | array length = `NUM_SAM_RULES` | SAM rule table. **Compile-time parameter, not a port** — aligns with FlooNoC `floo_axi_chimney.sv` `Sam` parameter. All NIs share the same content. Each `sam_rule_t` carries `{match, mask, dst_id}`. Used when `USE_ID_TABLE=1` (`SourceRouting`/`IDRouting`). Runtime updates via CSR + quiesce flow per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW` |
+| `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | array length = `NUM_SAM_RULES` | SAM rule table. **Compile-time parameter, not a port** — aligns with FlooNoC `floo_axi_chimney.sv` `Sam` parameter. All NIs share the same content. Each `sam_rule_t` carries `{match, mask, dst_id}`. Used when `USE_ID_TABLE=1` (`SourceRouting`/`IDRouting`). Runtime modification is **out of scope for v0.4.0** — no `SAM_RULE_*` CSR exists; to change the table, re-elaborate the design |
 | `MESH_COLS` | int | 4 | 1 ≤ x ≤ 2^X_WIDTH | Mesh column count; bounds `dst_id.x` for `NOC_FLIT_HDR_DST_ID_VALID` |
 | `MESH_ROWS` | int | 4 | 1 ≤ x ≤ 2^Y_WIDTH | Mesh row count; bounds `dst_id.y` |
 | `NUM_VC` | int | 1 | 1 ≤ x ≤ 8 | Number of virtual channels per NoC link. Upper bound 8 matches `VC_ID_WIDTH = 3` in flit header (see `02_flit.md` §1.2 Group 2). Forward data link is shared (single 1-bit `valid` + 1× FLIT_WIDTH `flit`). Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`). `NUM_VC=1` (default) collapses to single-VC operation. `NUM_VC > 1` adds VC mapping at NMU per `theory_of_operation.md` §"VC Mapping" (Hybrid R/W × QoS policy at flit-construct time) and cycle-level VC arbitration at the network switch per `06_qos.md §5` (NPS scope, out of NI). Deadlock-free routing across VCs is the integrator's responsibility. |
 | `CDC_FIFO_DEPTH` | int | 16 | 4 ≤ x ≤ 64 (power-of-2 recommended) | Internal AXI ↔ NoC async-FIFO depth (gray-counter pointer + 2FF synchroniser). Sized to absorb `2 × max_round_trip_cycles × max(aclk_period, noc_clk_period) / min(aclk_period, noc_clk_period) + 2`; default 16 is conservative for ratio range [0.1, 10]. |
-| `MAX_OUTSTANDING` | int | 8 | 1 ≤ x ≤ MAX_TXNS | Software-configurable cap on concurrent outstanding transactions (≤ `MAX_TXNS` hardware ceiling). The BFM allows the test author to throttle below the hardware ceiling for stress-testing scenarios. Implementation may expose this through `transaction_api.md` knob or compile-time parameter; if compile-time, default 8. |
+| `MAX_OUTSTANDING` | int | 8 | 1 ≤ x ≤ MAX_TXNS | Test-author-configurable (BFM knob via `transaction_api.md`) or compile-time parameter (RTL); **not CSR-accessible** (no `MAX_OUTSTANDING` CSR exists in `registers.md`). Caps concurrent outstanding transactions below the `MAX_TXNS` hardware ceiling for stress-testing scenarios. Default 8 when set as compile-time parameter. |
 | `MAX_BURST_LEN` | int | 16 | 1 ≤ x ≤ 256 | Maximum AXI burst length the NMU/NSU supports per transaction. Bounds the NSU W-reassembly buffer depth. Tests issuing `len + 1 > MAX_BURST_LEN` violate `apply_burst_write` precondition (per `transaction_api.md`); BFM returns `BURST_LEN_EXCEEDS_MAX`. |
 | `ECC_GRANULE_WIDTH` | retired | — | — | (v0.3.0) Per-granule SECDED scheme retired in v0.4.0 in favour of whole-flit SECDED via `FLIT_ECC_WIDTH`. |
 | `ECC_PER_GRANULE_WIDTH` | retired | — | — | (v0.3.0) Per-granule ECC width parameter retired with the per-granule scheme. |
@@ -327,7 +327,8 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 ## Optional features in / out of scope
 
 - **Supported**: AXI4 full (AW/W/AR/B/R with bursts up to AWLEN=255 / ARLEN=255; multiple outstanding via RoB), end-to-end SECDED ECC on W and R data, RoB modes (Normal / Simple / NoRoB) per-channel, QoS Generator with 4 modes, Performance Probes (Packet / Transaction), runtime CSR-driven configuration, dual-clock-domain operation with internal CDC.
-- **Not supported**: AXI4 atomic operations (ATOPs / AXI5) — out of scope. Cache-coherent / CHI-derived features. Low-power AXI handshake (CACTIVE/CSYSREQ).
+- **AXI4 ATOPs / AXI5**: monitor-only — `axi_awatop_i` is sampled and recorded, ATOP transactions are terminated with `bresp=SLVERR` (per ToO §ATOPs scope). **Stimulus generation is out of scope**.
+- **Not supported**: Cache-coherent / CHI-derived features. Low-power AXI handshake (CACTIVE/CSYSREQ).
 
 ## Channel grouping
 

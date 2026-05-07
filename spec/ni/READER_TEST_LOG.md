@@ -75,7 +75,7 @@ This NI BFM is a **dual-role, multi-protocol BFM** (AXI4 host-side both manager 
 
 | Gap | File(s) | Fix |
 |-----|---------|-----|
-| Q1  | `doc/protocol_rules.md`                                  | Added §"Channel naming convention" preamble with explicit alias table mapping abstract tokens (AW/W/B/AR/R; `noc_*_o`/`noc_*_i` patterns) to the 19 channels in `signal_interface.md` §Channel grouping. AXI4 channels alias `*_IN`+`*_OUT`; NoC wildcard patterns alias the four NoC channels with role-based discrimination (`<PROTO>_MST_*` → BFM-driven outputs REQ_OUT/RSP_OUT; `<PROTO>_SLV_*` → BFM-observed inputs REQ_IN/RSP_IN). Also resolves LINT-BFM-004 hygiene warning in `LINT_REPORT.md`. |
+| Q1  | `doc/protocol_rules.md`                                  | Added §"Channel naming convention" preamble with explicit alias table mapping abstract tokens (AW/W/B/AR/R; `noc_*_o`/`noc_*_i` patterns) to the 19 channels in `signal_interface.md` §Channel grouping. AXI4 channels alias `*_IN`+`*_OUT`; NoC wildcard patterns alias the four NoC channels with role-based discrimination (`<PROTO>_MST_*` → BFM-driven outputs REQ_OUT/RSP_OUT; `<PROTO>_SLV_*` → BFM-observed inputs REQ_IN/RSP_IN). Also resolves LINT-BFM-004 hygiene warning. |
 | Q4  | `doc/transaction_api.md` §API conventions                | Added §"Method documentation form" sub-section explicitly establishing three compact-form documentation cases (Mirror methods / CSR wrappers / Observation getters and one-shot knobs), enumerating which methods fall in each, and stating exactly what each omitted sub-section inherits or implies. Also resolves LINT-BFM-005 hygiene warning. |
 | Q7  | `doc/transaction_api.md`                                 | Added §"Outstanding-limit overflow behavior" after §Behavior under reset, committing the BFM to **RTL parity**: `apply_axi_*` calls block until back-pressure relief, no separate `OUTSTANDING_LIMIT_EXCEEDED` return enum, only `TIMEOUT` if relief never arrives. Reframed the original Preconditions text as a "performance / liveness guideline, not a hard contract violation." |
 | Q10 | `doc/protocol_rules.md` §Configuration-knob rules        | Added 5 missing CFG rule rows: `NI_CFG_MODE_SWITCH`, `NI_CFG_RESPONSE_DELAY_AXI`, `NI_CFG_RESPONSE_DELAY_NOC`, `NI_CFG_INJECT_ECC_ERROR`, `NI_CFG_RESPONSE_FAULT`. Each describes the wire-level effect of the corresponding knob. `NI_CFG_MODE_SWITCH` described in active_passive_mode.md L28 was promoted from TODO to fully-specified rule. |
@@ -112,10 +112,10 @@ The five previously-failing questions were re-run against the fixed spec. The se
 
 `D1.cross.bfm_reader_test` ✓. The spec is reader-test-clean. All universal-BFM categories have at least one passing question; the burst-capable and slave-side block-specific banks pass; the ID-bearing mandatory questions Q8 + Q9 (per `bfm_reader_test_bank.md` §"For ID-bearing protocols ... questions 20-22 ... mandatory") pass.
 
-The reader-test exercise also contributed two non-blocking wins from `LINT_REPORT.md`:
+The reader-test exercise also contributed two non-blocking wins from the lint pass:
 - **LINT-BFM-004** (channel naming convention) is now resolved by the §Channel naming convention preamble in `protocol_rules.md`.
 - **LINT-BFM-005** (transaction API ↔ channel API decomposition annotations) is now resolved by the §Method documentation form sub-section in `transaction_api.md` §API conventions.
 
-The two remaining `LINT_REPORT.md` hygiene items (LINT-002 untracked-TODO format, LINT-BFM-001 grouped-row expansion in pin_level_reset.md) are unaffected by reader-test fixes; they remain as ~40 minutes of optional polish before formal D1 sign-off, OR can be waived through `WAIVERS.md` if the team prefers.
+The two remaining lint hygiene items (LINT-002 untracked-TODO format, LINT-BFM-001 grouped-row expansion in pin_level_reset.md) are unaffected by reader-test fixes; they remain as ~40 minutes of optional polish before formal D1 sign-off.
 
 Run 2 conducted 2026-05-05.
