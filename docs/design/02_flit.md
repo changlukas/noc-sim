@@ -109,7 +109,7 @@ The legacy ECC parameters are retained as documentation aliases (no functional r
 | `PAYLOAD_WIDTH` | 352 | `max(AW, W, AR, B, R)_PAYLOAD_WIDTH` |
 | `FLIT_DATA_WIDTH` | 396 | `HEADER_DATA_WIDTH + PAYLOAD_WIDTH`; bits protected by `flit_ecc` |
 | `FLIT_WIDTH` | 406 | `HEADER_WIDTH + PAYLOAD_WIDTH`; was 400 in v0.3.0 |
-| `LINK_WIDTH` | 408 | `FLIT_WIDTH + 2` (valid + ready) |
+| `LINK_WIDTH` | 407 | `FLIT_WIDTH + 1` (valid + flit; forward data bundle. Reverse credit return + init-ready handshake counted separately, see §4.2) |
 
 ### 1.3 Flit Structure
 
@@ -137,14 +137,7 @@ Flit 內 wdata/rdata 採 little-endian byte ordering（byte address 0 = data[7:0
 
 ## 2. Header Format
 
-Header 預設 `HEADER_WIDTH = 54 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `route_par` + `flit_ecc` 欄位）。
-
-提供兩種配置：
-
-- Valid/Ready mode (No-VC)
-- Credit-Based mode (With-VC)
-
-兩者僅 vc_id 槽位語意不同，欄位位置與寬度完全相同。
+Header 預設 `HEADER_WIDTH = 54 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `route_par` + `flit_ecc` 欄位）。`vc_id` 欄位攜帶 VC 索引，搭配 credit-based flow control 使用（v0.4.0 起 Valid/Ready mode 已移除）。
 
 ### 2.1 Bit Allocation
 
@@ -156,7 +149,7 @@ Header 預設 `HEADER_WIDTH = 54 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `rou
 | axi_ch | `AXI_CH_WIDTH` | [6:4] | arbitration | AXI channel type (5 channels: AW/W/AR/B/R) |
 | src_id | `X_WIDTH + Y_WIDTH` | [14:7] | routing | Source node ID (X+Y coordinate) |
 | dst_id | `X_WIDTH + Y_WIDTH` | [22:15] | routing | Destination node ID (X+Y coordinate) |
-| vc_id ‡ | `VC_ID_WIDTH` | [25:23] | routing | Virtual Channel ID (Credit-Based mode) |
+| vc_id | `VC_ID_WIDTH` | [25:23] | routing | Virtual Channel ID |
 | route_par | `ROUTE_PAR_WIDTH` | [26] | routing | Even parity over `{dst_id, last}` (9 bits at default); checked at every router hop. Aligned with AMD pg313 §Parity (NPP packet DST ID + LAST coverage) |
 | last | `LAST_WIDTH` | [27] | wormhole | Packet end marker (1 = last flit of packet) |
 | rob_req | `ROB_REQ_WIDTH` | [28] | wormhole | RoB request flag (NMU sets; 1 = RoB allocate) |
@@ -166,14 +159,7 @@ Header 預設 `HEADER_WIDTH = 54 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `rou
 | flit_ecc | `FLIT_ECC_WIDTH` | [53:44] | ECC | Whole-flit SECDED syndrome (covers `header[43:0]` + `payload`) |
 | | **HEADER_WIDTH** = 54 | | | |
 
-**‡ Version-dependent field:**
-
-- **Valid/Ready mode (No-VC):**
-  - `vc_id` 槽位（[25:23]）作為 reserved，傳送時設為 0、接收端忽略
-  - NUM_VC > 1 時透過 signal-level 多組 valid/ready/credit array 實現 VC，不靠 header 識別
-- **Credit-Based mode (With-VC):**
-  - `vc_id` 攜帶 `VC_ID_WIDTH` bits（最多 8 VC），與 credit-based flow control 搭配
-  - router 用 `vc_id` 配對對應 VC FIFO
+**‡ vc_id 欄位**：攜帶 `VC_ID_WIDTH` bits（最多 8 VC），與 credit-based flow control 搭配。Router 與 NI sink 用 `vc_id` 配對對應 VC FIFO。v0.4.0 起一律啟用（A4.7 wave 移除 valid/ready mode）。
 
 ### 2.0 Field Ordering Rationale
 
@@ -243,12 +229,9 @@ Source NI 分配 `rob_idx`，destination NI 依此 index 將 response 寫入對�
 
 #### 2.2.7 VC ID (`VC_ID_WIDTH` = 3 bits)
 
-支援最多 `2^VC_ID_WIDTH` 個 Virtual Channels（預設 8）。
+支援最多 `2^VC_ID_WIDTH` 個 Virtual Channels（預設 8）。`vc_id` 攜帶 VC 索引，搭配 credit-based flow control。Router 與 NI sink 用 `vc_id` 配對對應 VC FIFO。
 
-- **Credit-Based mode (With-VC):** `vc_id` 攜帶 VC 索引，搭配 credit-based flow control。Router 用 `vc_id` 配對對應 VC FIFO。
-- **Valid/Ready mode (No-VC):** `vc_id` 槽位作為 reserved，傳送時設為 0、接收端忽略。NUM_VC > 1 時透過 signal-level 多組 valid/ready/credit array 實現 VC，不靠 header 識別。
-
-VC 用途：請求/回應分離避免 deadlock、traffic class 隔離、QoS 分桶（per `06_qos.md` 與 NMU §VC selection 政策）。
+VC 用途：請求/回應分離避免 deadlock、traffic class 隔離、QoS 分桶（per `06_qos.md` 與 NI §"VC Mapping" 政策）。
 
 #### 2.2.8 Routing Parity: route_par (`ROUTE_PAR_WIDTH` = 1 bit)
 
@@ -309,12 +292,7 @@ Whole-flit SECDED syndrome。範圍：覆蓋 `header[HEADER_WIDTH-FLIT_ECC_WIDTH
 └─────────────────┴─────────────────────┴─────┴─────────┴──┴──┴──┴─────┴──────────┴──────────┴─────┴─────┘
 ```
 
-兩 mode 唯一差異：`vc_id` 槽位語意。
-
-- VR mode：`vc_id` 槽位作為 reserved
-- CB mode：`vc_id` 攜帶 VC 索引
-
-其他 bit position 完全相同。Wire-level 寬度 = `LINK_WIDTH = HEADER_WIDTH + PAYLOAD_WIDTH + 2 = 408 bits`。
+`vc_id` 槽位攜帶 VC 索引（v0.4.0 起一律啟用）。Wire-level forward bundle width = `LINK_WIDTH = HEADER_WIDTH + PAYLOAD_WIDTH + 1 = 407 bits`（valid + flit）。Reverse-direction credit return + init-ready handshake 另計，見 §4.2。
 
 ---
 
@@ -495,26 +473,38 @@ Request link 與 Response link 結構對稱，差異僅在 flit data 欄位名�
 | flit | `[FLIT_WIDTH+1:2]` | `FLIT_WIDTH` | Flit data (req or rsp) |
 | | | **`LINK_WIDTH`** | |
 
-預設 `LINK_WIDTH = 408` bits。
+預設 `LINK_WIDTH = 407` bits（forward data bundle: valid + flit）。
 
 - v0.3.0 為 402 bits
 - Header 從 48→54 bit 淨增加 6 bit (加 route_par(1) + flit_ecc(10), 回收 v0.3.0 上方 3-bit `rsvd`、移除 pre-(δ) `port_id` 2-bit)
 - Flit 從 400→406 bit
-- 加 valid + ready 2 bit 後共 408 bit
+- 加 valid 1 bit 後 407 bit
+- A4.7 wave 移除 ready signal（credit-based only），forward bundle 從 408 → 407
 
-兩 mode (VR / CB) 的 physical link 寬度相同。`vc_id` 槽位語意差異不影響 wire width。
+Reverse-direction credit return（per-VC, NUM_VC bits）與 init-ready handshake（1 bit）另計，見 §4.2。
 
-### 4.2 Flow Control Modes
+### 4.2 Flow Control (Credit-Based)
 
-| Feature | Valid/Ready (VR) | Credit-Based (CB) |
-|---------|------------------|-------------------|
-| VC identification | Signal-level per-VC valid/ready arrays | Header `vc_id` field shared physical link |
-| Wires per link | `NUM_VC × LINK_WIDTH` | `LINK_WIDTH` (shared) |
-| Wire count (NUM_VC=4, default) | 1,632 wires/dir | 408 wires/dir |
-| Header overhead | 0 bits | `VC_ID_WIDTH` = 3 bits (allocated as explicit field, see §2.1) |
-| Arbitration | Per-VC at receiver | Muxed at sender |
+NoC links 一律使用 credit-based flow control，per AMD pg313 §Credit-Based Flow Control verbatim。v0.4.0 (A4.7 wave) 起 Valid/Ready mode 移除。
 
-ASIC 實作推薦 Credit-Based mode — wire count 不隨 VC 數增長，適合高 VC 數與 wire-constrained 場景。Valid/Ready mode 適用 VC ≤ 2 且無需 credit tracking 的簡化設計。
+每條 uni-directional NoC link 的 wire 組成：
+
+| Wire | Width | Direction | Note |
+|------|-------|-----------|------|
+| valid | 1 | forward | flit-slot occupied this cycle |
+| flit | FLIT_WIDTH (406) | forward | flit data |
+| credit_init_ready_o | 1 | forward | source 端 alive 訊號（credit channel ready） |
+| credit | NUM_VC | reverse | per-VC credit return（每 VC 1 bit；AMD verbatim："up to one credit per cycle, per virtual channel"） |
+| credit_init_ready_i | 1 | reverse | sink 端 alive 訊號 |
+
+Wire count (one uni-directional NoC link, NUM_VC=4 default):
+- forward: `LINK_WIDTH` (407) + `credit_init_ready_o` (1) = **408 wires**
+- reverse: `NUM_VC` (4) + `credit_init_ready_i` (1) = **5 wires**
+- **Total per link: 413 wires**
+
+對比 v0.3.0 VR mode (NUM_VC=4): per-direction `NUM_VC × LINK_WIDTH` = 1,632 wires，credit-only 是約 ¼ wire 量。
+
+VC identification 由 header `vc_id` 欄位攜帶。NMU 的 VC mapping 政策見 ToO §"VC Mapping"。
 
 ---
 
@@ -578,10 +568,10 @@ ASIC 實作推薦 Credit-Based mode — wire count 不隨 VC 數增長，適合�
   - `2^QOS_WIDTH` 級優先級（預設 16：0=Best Effort, 15=Real-time Critical）
   - 置於 header LSB 端，支援單級 pipeline partial decode
 
-- **Virtual Channel** — `vc_id` (`VC_ID_WIDTH`, Credit-Based mode), rsvd (Valid/Ready mode)
-  - Valid/Ready mode：signal-level VC（多組 valid/ready lines）
-  - Credit-Based mode：header-level VC（max `2^VC_ID_WIDTH` VCs，預設 8），搭配 credit-based flow control
-  - 用途：Req/Rsp 分離避免 deadlock、traffic class 隔離
+- **Virtual Channel** — `vc_id` (`VC_ID_WIDTH`)
+  - Header-level VC（max `2^VC_ID_WIDTH` VCs，預設 8），搭配 credit-based flow control
+  - NMU 依 Hybrid R/W × QoS 政策做 VC mapping (per ToO §"VC Mapping")
+  - 用途：Req/Rsp 分離避免 deadlock、traffic class 隔離、QoS 分桶
 
 - **Out-of-Order Completion** — `rob_req` (`ROB_REQ_WIDTH`), `rob_idx` (`ROB_IDX_WIDTH`)
   - `2^ROB_IDX_WIDTH`-entry RoB per NI（預設 32），跨 axi_id 與 destination 共享

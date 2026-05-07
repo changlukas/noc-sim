@@ -696,7 +696,7 @@ Buffer 與 credit tracking 分離（booksim2 pattern）。
 |---------|-----------|-----------|
 | XY Routing | Deterministic, X-first then Y, deadlock-free | [Router](03_router.md) |
 | Wormhole Switching | Head flit locks path, `last` bit releases | [Router](03_router.md) |
-| Dual Flow Control | Valid/Ready (Ver A) or Credit-Based (Ver B) | [Physical Channel](05_physical_channel.md) |
+| Credit-Based Flow Control | Per-VC credit accounting per AMD pg313 §Credit-Based Flow Control | [Physical Channel](05_physical_channel.md) |
 | Req/Rsp Separation | 獨立 physical link，消除 protocol deadlock | [Physical Channel](05_physical_channel.md) |
 | QoS-Aware Arbitration | 16-level priority + Round-Robin tie-break | [QoS](06_qos.md) |
 | ECC Protection | SECDED end-to-end (NMU generate, NSU check) | [NI](04_network_interface.md) |

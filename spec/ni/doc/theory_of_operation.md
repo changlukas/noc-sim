@@ -59,7 +59,7 @@ This section is **always required** in protocol-bfm mode.
 The BFM has **two driver instances** running in different clock domains:
 
 - **AXI Driver** (in `aclk_i` domain): owns per-channel state machines for AW/W/B/AR/R on both manager port (`axi_*_i`) and subordinate port (`axi_*_o`). Plus AXI4-Lite state machine for the CSR port. Fully registered outputs.
-- **NoC Driver** (in `noc_clk_i` domain): owns per-link state machines for `noc_req_o`, `noc_req_ready_o`, `noc_rsp_o`, `noc_rsp_ready_o`. Fully registered outputs.
+- **NoC Driver** (in `noc_clk_i` domain): owns per-link state machines for `noc_req_o` (valid + flit + per-VC credit return + credit-init handshake) and `noc_rsp_o` (mirror). Fully registered outputs.
 
 Both drivers are disabled when `bfm_mode == PASSIVE`; outputs follow `pin_level_reset.md` during-reset values.
 
@@ -297,13 +297,17 @@ Out of scope (D8 alternative considered + rejected):
 - **Bus chopping** (NMU breaks long bursts into shorter ones to interleave around DDR open-page boundaries) — rejected for v0.4.0; would require Chop Trackers per outstanding burst, complex re-merge at NSU, and only benefits DDR-controller-fronting traffic, not our typical NI use case (router → switch → endpoint slave).
 - **AxSIZE conversion** (NMU promotes narrow beats to a single wide beat) — rejected; the over-fetch + per-flit `wstrb` regen scheme already gives one wide flit per AXI beat group, no AxSIZE rewrite needed on the wire.
 
-#### VC scheduling (multi-VC arbiter / demux)
+#### VC Mapping
 
-The NoC links carry `NUM_VC` parallel virtual channels (parameter, range 1..8, default 1). NMU and NSU treat each VC as an independent flow with its own credit pool and per-VC FIFO inside the NI.
+The NoC links carry `NUM_VC` parallel virtual channels (parameter, range 1..8, default 1). NMU and NSU treat each VC as an independent flow with its own credit pool and per-VC injection FIFO inside the NI. The forward data link is shared. Per-flit `vc_id` in the flit header (see `02_flit.md` §1.2) identifies the owning VC.
 
-**NMU output (multi-VC arbiter)**: when `NUM_VC > 1`, NMU has `NUM_VC` per-VC injection FIFOs feeding one shared `noc_*_o` link. The arbiter picks one VC per cycle using **Hybrid R/W × QoS policy**: VCs are partitioned into "request" and "response" subsets at instantiation time (see §VC partition policy below). Within each subset, weighted round-robin with QoS-tier weighting. Across subsets, alternating to prevent request/response starvation. Policy is fixed; no runtime selection. Per `protocol_rules.md` `NOC_VC_ARBITER_HYBRID_RW_QOS`.
+NMU performs two distinct VC functions, separately scoped:
 
-**NMU input (per-VC demux)**: the incoming `noc_*_i` link carries the destination VC index in the flit header (`vc_id` field). NMU demuxes flits to one of `NUM_VC` per-VC reception FIFOs.
+**1. VC Mapping (traffic → vc_id)**: at flit-construct time, NMU assigns each outbound flit to a VC using the **Hybrid R/W × QoS policy**. The R/W bit selects the subset (request vs response, per §VC partition policy below). Within the subset, the qos field selects which VC. Mapping is a pure function of `(R/W, qos)`. Policy is fixed at design time, no runtime alternative. Per `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS`.
+
+**2. Wormhole arbiter (per-cycle injection ordering)**: when multiple VCs have flits queued, an internal arbiter picks one VC per cycle to drive onto the shared link, respecting the wormhole-lock (per `NOC_FLIT_VC_HARDLOCK`). Local to NMU. Distinct from the cycle-level VC arbitration that runs in the network switch (NPS, per AMD pg313 §Virtual Channel Arbitration — out of NI scope).
+
+**NMU input (per-VC demux)**: the inbound `noc_*_flit_i` carries the source's `vc_id`. NMU demuxes the inbound flit to one of `NUM_VC` per-VC reception FIFOs based on the header field.
 
 **NSU output / input**: symmetric to NMU.
 
@@ -501,7 +505,7 @@ Sub-modules:
 - **MetaBuffer (NSU)**: per-outstanding-NSU-request snapshot of request-flit metadata (rob_idx, src_id, qos, axi_id). FlooNoC `floo_meta_buffer.sv` aligned.
 - **R Response Buffer (NSU)**: `NSU_R_BUFFER_DEPTH`-entry elastic buffer that decouples local AXI slave R timing from NoC injection back-pressure.
 - **Exclusive Monitor (NSU)**: `EXCLUSIVE_MONITOR_DEPTH`-entry table tracking pending Exclusive read reservations per AXI4 §A7.
-- **VC Arbiter / Demux**: per-NMU/NSU multi-VC scheduling block. Hybrid R/W × QoS policy (fixed at design time per `protocol_rules.md` `NOC_VC_ARBITER_HYBRID_RW_QOS`).
+- **VC Mapping / Demux**: per-NMU/NSU VC mapping block. NMU assigns `vc_id` to each outbound flit per Hybrid R/W × QoS policy (fixed at design time per `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS`). Cycle-level VC arbitration is a NPS (switch) function, not NI, per AMD pg313 §Virtual Channel Arbitration.
 - **Async FIFOs**: gray-counter pointer + 2FF synchronizer; depth synthesis-time parameter.
 - **InjectionBuffer (NMU)**: small per-VC FIFO (`NMU_BUFFER_DEPTH` from `NocConfig`, default 2 in BFM). RTL uses the same default (2 entries) per BFM-RTL behavioral equivalence; *Reviewer assumption: confirm if RTL choice differs.*
 - **FlitECC Gen / Check**: whole-flit SECDED Hamming over flit (header + payload) plus 1-bit `route_par` parity over `{dst_id, last}` (per AMD pg313 §Parity). Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits). See §ECC.

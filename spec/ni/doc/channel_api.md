@@ -8,7 +8,7 @@ NI exposes channel-API methods at two granularities:
 
 Use Channel API when:
 - Driving `awready` / `wready` / `arready` without an accompanying matching response (back-pressure recovery).
-- Holding `noc_req_ready_i` LOW for extended cycles to test router timeout behavior on the upstream side.
+- Withholding `noc_req_credit_i` returns to drain NMU per-VC credit pool, exercising credit-starvation behaviour and the `CREDIT_TIMEOUT` path.
 - Injecting illegal handshake sequences (e.g., assert `noc_*_o.valid` with malformed flit_data; assert `bvalid` before any AW handshake).
 - Driving per-cycle deterministic patterns (vs. random delays via `set_response_delay_axi` / `set_response_delay_noc`).
 
@@ -17,7 +17,7 @@ Otherwise use `transaction_api.md`.
 ## API conventions
 
 - **Per-AXI-channel** methods named `<verb>_<channel>` — e.g. `begin_phase_AW`, `assert_valid_AW`, `wait_for_ready_AW`, `end_phase_AW`.
-- **Per-NoC-link** methods named `<verb>_<link_direction>` — e.g. `begin_phase_NOC_REQ_OUT`, `assert_valid_NOC_REQ_OUT`, `wait_for_ready_NOC_REQ_OUT`, `end_phase_NOC_REQ_OUT`. Direction suffix `_OUT` for BFM-driven, `_IN` for BFM-observed.
+- **Per-NoC-link** methods named `<verb>_<link_direction>` — outbound (BFM-driven, credit-based, no `wait_for_ready` since there is no ready signal): `begin_phase_NOC_REQ_OUT`, `assert_valid_NOC_REQ_OUT`, `end_phase_NOC_REQ_OUT`. Inbound (BFM-observed): `begin_phase_NOC_REQ_IN`, `wait_for_valid_NOC_REQ_IN`, `return_credit_NOC_REQ_IN`, `end_phase_NOC_REQ_IN`. Direction suffix `_OUT` for BFM-driven, `_IN` for BFM-observed.
 - Naming: snake_case.
 - Error reporting: `status_t` enum; per-channel methods return `OK`, `ILLEGAL_PHASE`, `BUSY_TXN_API`, or `RESET_DURING_TRANSACTION`.
 - Blocking discipline: only `wait_for_*` methods block.
@@ -37,7 +37,29 @@ Used by all 5 AXI4 channels (AW, W, B, AR, R). For each channel the BFM either d
 
 ## Channel state machine (NoC side)
 
-NoC links use the same valid/ready handshake state machine. Each link direction (`noc_req_o`, `noc_req_i`, `noc_rsp_o`, `noc_rsp_i`) has its own instance.
+NoC links use credit-based flow control (per AMD pg313 §Credit-Based Flow Control). The state machines differ from the AXI valid/ready model.
+
+Outbound (BFM-driven; NMU on `noc_req_o`, NSU on `noc_rsp_o`):
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> READY_TO_INJECT: begin_phase (loads flit + vc_id; blocks until credit > 0)
+    READY_TO_INJECT --> INJECTED: assert_valid (drives flit + valid HIGH for 1 cycle, decrements credit)
+    INJECTED --> IDLE: end_phase (next cycle, valid returns LOW)
+```
+
+Inbound (BFM-observed; NSU on `noc_req_i`, NMU on `noc_rsp_i`):
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> WAITING_VALID: begin_phase
+    WAITING_VALID --> CAPTURED: wait_for_valid (samples flit + vc_id when valid_i HIGH)
+    CAPTURED --> IDLE: return_credit (drives credit_o[vc] HIGH for 1 cycle) OR end_phase (no credit return — protocol-violation testing)
+```
+
+Each link direction (`noc_req_o`, `noc_req_i`, `noc_rsp_o`, `noc_rsp_i`) has its own instance.
 
 ## Per-AXI-channel API
 
@@ -141,37 +163,37 @@ Direction convention: BFM (NI subordinate) drives ready signals on inbound chann
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
-| `begin_phase_NOC_REQ_OUT(flit_data)` | void(flit_t) | IDLE | `noc_req_flit_o` driven on next noc_clk edge. `noc_req_valid_o` remains LOW. State → WAITING_VALID. | OK or BUSY_TXN_API |
-| `assert_valid_NOC_REQ_OUT()` | void | WAITING_VALID | `noc_req_valid_o` driven HIGH. State → WAITING_READY. | OK or ILLEGAL_PHASE |
-| `wait_for_ready_NOC_REQ_OUT()` | status_t | WAITING_READY | Blocks until router asserts `noc_req_ready_i` HIGH. State → ENDED. | OK or RESET_DURING_TRANSACTION |
-| `end_phase_NOC_REQ_OUT()` | void | ENDED | `noc_req_valid_o` driven LOW. State → IDLE. | OK or ILLEGAL_PHASE |
+| `begin_phase_NOC_REQ_OUT(flit_data, vc_id)` | void(flit_t, uint) | IDLE | Captures `flit_data` and `vc_id`. Blocks until per-VC `credit_counter[vc_id] > 0` (per `NOC_MST_FLIT_ON_CREDIT_ONLY`). State → READY_TO_INJECT. | OK, BUSY_TXN_API, or RESET_DURING_TRANSACTION |
+| `assert_valid_NOC_REQ_OUT()` | void | READY_TO_INJECT | On the next noc_clk edge: drives `noc_req_flit_o = flit_data` and `noc_req_valid_o = 1` for one cycle. `credit_counter[vc_id]` decrements by 1. State → INJECTED. | OK or ILLEGAL_PHASE |
+| `end_phase_NOC_REQ_OUT()` | void | INJECTED | On the next noc_clk edge: `noc_req_valid_o` returns to LOW. State → IDLE. | OK or ILLEGAL_PHASE |
+| `get_credit_NOC_REQ_OUT(vc_id)` | uint | (any) | Non-blocking. Returns the current credit-counter value for the given VC. | uint |
 
 ### Request link, inbound (NSU receiving AW/W/AR flits)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
 | `begin_phase_NOC_REQ_IN()` | void | IDLE | Transition to WAITING_VALID. No wires driven. | OK or BUSY_TXN_API |
-| `assert_ready_NOC_REQ_IN()` | void | WAITING_VALID | `noc_req_ready_o` driven HIGH on next noc_clk edge. State → WAITING_READY. | OK or ILLEGAL_PHASE |
-| `wait_for_valid_NOC_REQ_IN()` | (status, flit_data) | WAITING_READY | Blocks until `noc_req_valid_i` observed HIGH. Returns observed flit. State → ENDED. | OK or RESET_DURING_TRANSACTION |
-| `end_phase_NOC_REQ_IN()` | void | ENDED | `noc_req_ready_o` driven LOW. State → IDLE. | OK or ILLEGAL_PHASE |
+| `wait_for_valid_NOC_REQ_IN()` | (status, flit_data, vc_id) | WAITING_VALID | Blocks until `noc_req_valid_i = 1` observed. Captures flit data and `vc_id` from the flit header. State → CAPTURED. | OK or RESET_DURING_TRANSACTION |
+| `return_credit_NOC_REQ_IN(vc_id)` | void | CAPTURED | Drives `noc_req_credit_o[vc_id] = 1` for one noc_clk cycle. State → IDLE. | OK or ILLEGAL_PHASE |
+| `end_phase_NOC_REQ_IN()` | void | CAPTURED or IDLE | Returns state to IDLE without driving credit return. Use for protocol-violation testing where the BFM intentionally withholds credit. | OK |
 
 ### Response link, outbound (NSU injecting B/R flits)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
-| `begin_phase_NOC_RSP_OUT(flit_data)` | void(flit_t) | IDLE | `noc_rsp_flit_o` driven on next noc_clk edge. `noc_rsp_valid_o` remains LOW. State → WAITING_VALID. | OK or BUSY_TXN_API |
-| `assert_valid_NOC_RSP_OUT()` | void | WAITING_VALID | `noc_rsp_valid_o` driven HIGH. State → WAITING_READY. | OK or ILLEGAL_PHASE |
-| `wait_for_ready_NOC_RSP_OUT()` | status_t | WAITING_READY | Blocks until router asserts `noc_rsp_ready_i` HIGH. State → ENDED. | OK or RESET_DURING_TRANSACTION |
-| `end_phase_NOC_RSP_OUT()` | void | ENDED | `noc_rsp_valid_o` driven LOW. State → IDLE. | OK or ILLEGAL_PHASE |
+| `begin_phase_NOC_RSP_OUT(flit_data, vc_id)` | void(flit_t, uint) | IDLE | Captures `flit_data` and `vc_id`. Blocks until per-VC `credit_counter[vc_id] > 0`. State → READY_TO_INJECT. | OK, BUSY_TXN_API, or RESET_DURING_TRANSACTION |
+| `assert_valid_NOC_RSP_OUT()` | void | READY_TO_INJECT | On the next noc_clk edge: drives `noc_rsp_flit_o = flit_data` and `noc_rsp_valid_o = 1` for one cycle. Credit counter decrements. State → INJECTED. | OK or ILLEGAL_PHASE |
+| `end_phase_NOC_RSP_OUT()` | void | INJECTED | On the next noc_clk edge: `noc_rsp_valid_o` returns to LOW. State → IDLE. | OK or ILLEGAL_PHASE |
+| `get_credit_NOC_RSP_OUT(vc_id)` | uint | (any) | Non-blocking. Returns the current credit-counter value for the given VC. | uint |
 
 ### Response link, inbound (NMU receiving B/R flits)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
 | `begin_phase_NOC_RSP_IN()` | void | IDLE | Transition to WAITING_VALID. No wires driven. | OK or BUSY_TXN_API |
-| `assert_ready_NOC_RSP_IN()` | void | WAITING_VALID | `noc_rsp_ready_o` driven HIGH on next noc_clk edge. State → WAITING_READY. | OK or ILLEGAL_PHASE |
-| `wait_for_valid_NOC_RSP_IN(rob_idx_match=<opt>)` | (status, flit_data) | WAITING_READY | Blocks until `noc_rsp_valid_i` observed HIGH. Optionally filters by flit header `rob_idx`. Returns observed flit. State → ENDED. | OK or RESET_DURING_TRANSACTION |
-| `end_phase_NOC_RSP_IN()` | void | ENDED | `noc_rsp_ready_o` driven LOW. State → IDLE. | OK or ILLEGAL_PHASE |
+| `wait_for_valid_NOC_RSP_IN(rob_idx_match=<opt>)` | (status, flit_data, vc_id) | WAITING_VALID | Blocks until `noc_rsp_valid_i = 1` observed. Optionally filters by flit-header `rob_idx`. Captures flit data and `vc_id`. State → CAPTURED. | OK or RESET_DURING_TRANSACTION |
+| `return_credit_NOC_RSP_IN(vc_id)` | void | CAPTURED | Drives `noc_rsp_credit_o[vc_id] = 1` for one noc_clk cycle. State → IDLE. | OK or ILLEGAL_PHASE |
+| `end_phase_NOC_RSP_IN()` | void | CAPTURED or IDLE | Returns state to IDLE without driving credit return. | OK |
 
 ## Ordering constraints with Transaction API
 

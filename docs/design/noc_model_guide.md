@@ -67,7 +67,7 @@ The model supports the following features:
 - **Parameterized Flit** — width fully parameterized; default 400-bit (48-bit header + 352-bit payload), carrying all five AXI channels (AW, W, AR, B, R) in a unified format
 - **XY Deterministic Routing** — X-first then Y, deadlock-free by construction
 - **Wormhole Switching** — head flit reserves the path, `last` bit releases it
-- **Dual Flow Control** — Valid/Ready mode and Credit-Based mode, selected at compile time via template parameter
+- **Credit-Based Flow Control** — per-VC credit accounting per AMD pg313 §Credit-Based Flow Control (forward `valid` + `flit`; reverse per-VC `credit[NUM_VC]`; bi-directional credit-init-ready handshake at startup)
 - **Req/Rsp Physical Separation** — independent request and response networks, eliminating protocol-level deadlock
 - **QoS-Aware Arbitration** — 16-level priority with round-robin tie-breaking; pluggable allocator (RoundRobin, iSLIP, QoS-Aware RR)
 - **SECDED ECC** — end-to-end data integrity (NMU generates, router passes through, NSU checks)
@@ -81,62 +81,14 @@ The model supports the following features:
 
 ## Flit Format
 
-All data in the NoC is transported as parameterized flits whose widths are configurable via symbolic parameters; the default configuration is 400 bits (48-bit header + 352-bit payload). All five AXI channels (AW, W, AR, B, R) share the same flit width; shorter payloads are zero-padded to `PAYLOAD_WIDTH`.
+The full bit-level flit specification is documented in [02_flit.md](02_flit.md) (canonical source). Summary:
 
-### Header (default 48 bits)
+- All five AXI channels (AW, W, AR, B, R) share unified `FLIT_WIDTH` (v0.4.0 default 406 bits = 54-bit header + 352-bit payload). Shorter payloads zero-padded to `PAYLOAD_WIDTH`.
+- Header carries routing/QoS/VC/RoB metadata plus integrity fields (`route_par` 1-bit even parity over `{dst_id, last}`, `flit_ecc` 10-bit whole-flit SECDED). Per AMD pg313 §Parity / §Data Integrity.
+- Each NoC link uses credit-based flow control (single shared forward link + per-VC reverse credit return + bi-directional credit-init-ready handshake at startup). VC identification by header `vc_id` field.
+- `LINK_WIDTH` (forward bundle: valid + flit) = 407 bits in default config.
 
-The header is common to all flit types. Two modes exist: Valid/Ready (No-VC) and Credit-Based (With-VC), differing only in bits [47:42].
-
-```
- 47    42 41         34 33 32 31    27  26   25  24 23 22    15 14     7  6  4  3  0
-┌───────┬─────────────┬─────┬──────┬────┬────┬─────┬────────┬────────┬─────┬──────┐
-│vc/rsvd│  multicast  │rsvd_│ rob  │rob │last│port │ dst_id │ src_id │ axi │ qos  │
-│  6b   │     8b      │comm │idx 5b│req │ 1b │id 2b│   8b   │   8b   │ch 3b│  4b  │
-│       │ (reserved)  │type │      │ 1b │    │     │{y,x}   │{y,x}   │     │      │
-│       │             │ 2b  │      │    │    │     │        │        │     │      │
-└───────┴─────────────┴─────┴──────┴────┴────┴─────┴────────┴────────┴─────┴──────┘
-```
-
-| Bit Range | Field | Width | Description |
-|-----------|-------|-------|-------------|
-| [3:0] | `qos` | `QOS_WIDTH` (4) | QoS priority (0=best effort, 15=critical) |
-| [6:4] | `axi_ch` | `AXI_CH_WIDTH` (3) | AXI channel type (0=AW, 1=W, 2=AR, 3=B, 4=R) |
-| [14:7] | `src_id` | `X_WIDTH + Y_WIDTH` (8) | Source node ID（[7:4]=y, [3:0]=x） |
-| [22:15] | `dst_id` | `X_WIDTH + Y_WIDTH` (8) | Destination node ID（[7:4]=y, [3:0]=x） |
-| [24:23] | `port_id` | `PORT_ID_WIDTH` (2) | Target LOCAL port index (0–3) |
-| [25] | `last` | `LAST_WIDTH` (1) | Last flit in packet (releases wormhole path lock) |
-| [26] | `rob_req` | `ROB_REQ_WIDTH` (1) | RoB request flag |
-| [31:27] | `rob_idx` | `ROB_IDX_WIDTH` (5) | RoB entry index (0–31) |
-| [33:32] | `rsvd_commtype` | `RSVD_COMMTYPE_WIDTH` (2) | Reserved for future communication type extension |
-| [41:34] | `multicast` | `MULTICAST_WIDTH` (8) | Reserved for future multicast extension (encoding TBD) |
-| [44:42] | `vc_id` | `VC_ID_WIDTH` (3) | Virtual Channel ID (Credit-Based mode only; rsvd in Valid/Ready mode) |
-| [47:45] | `rsvd` | 3 | Reserved (Credit-Based mode); bits [47:42] all rsvd in Valid/Ready mode |
-
-High-frequency fields (`qos`, `axi_ch`) are placed at the LSB end so that the first pipeline stage needs only a narrow slice for arbitration and channel selection. Reserved fields sit at the MSB end, leaving room for future extension without disturbing existing bit positions.
-
-### Payload Formats
-
-Each AXI channel maps to a payload within the 352-bit field:
-
-| Channel | Network | Key Fields | Used Bits | Utilisation |
-|---------|---------|------------|:---------:|:-----------:|
-| AW | REQ | awid(8), awaddr(64), awlen(8), awsize(3), awburst(2), awcache(4), awlock(1), awprot(3), awregion(4), awuser(8) | 105 | 29.8% |
-| W | REQ | wlast(1), wuser(8), wdata(256), wstrb(32), wecc(32) | 329 | 93.5% |
-| AR | REQ | arid(8), araddr(64), arlen(8), arsize(3), arburst(2), arcache(4), arlock(1), arprot(3), arregion(4), aruser(8) | 105 | 29.8% |
-| B | RSP | bid(8), bresp(2), buser(8), ecc_fail(1) | 19 | 5.4% |
-| R | RSP | rlast(1), rid(8), rresp(2), ruser(8), rdata(256), recc(32) | 307 | 87.2% |
-
-W and R payloads carry 32 bits of SECDED ECC (8-bit ECC per 64-bit data granule, 4 granules). ECC is generated by the source NI, passed through routers transparently, and checked by the destination NI. A 1-bit error is auto-corrected; a 2-bit error sets `ecc_fail` in the B response or reports via `rresp`.
-
-In a typical burst write (awlen=15), the flit sequence is 1×AW + 16×W + 1×B = 18 flits. W flits account for 89% of the total, keeping overall padding waste to approximately 8%.
-
-### Physical Link
-
-Each router-to-router or NI-to-router connection carries four unidirectional links: Req forward, Req reverse, Rsp forward, and Rsp reverse. Each link is `LINK_WIDTH` bits (default 402: 1 valid + 1 ready + `FLIT_WIDTH`), totalling 4 × `LINK_WIDTH` (default 1,608) bits per router pair.
-
-Request and response use independent physical links (dual-rail full-duplex), eliminating request-response circular dependency as the primary protocol deadlock avoidance mechanism.
-
-For the complete bit-level specification, see [Flit Format](02_flit.md).
+For bit allocation, payload field tables, ECC scheme, and physical-link wire breakdown, see [02_flit.md](02_flit.md).
 
 ---
 
@@ -253,7 +205,7 @@ The main processing loop is driven by `process_cycle()`, which executes an 8-pha
 | 4 | Route & Forward | RC → VA → SA → ST pipeline + credit return generation |
 | 5 | Wire All | Channel\<T\> propagates outputs to downstream inputs |
 | 6 | Clear Accepted | `out_valid && in_ready` → clear output register |
-| 7 | Credit Update | Upstream credit counter incremented (Credit-Based mode; no-op for Valid/Ready) |
+| 7 | Credit Update | Upstream credit counter incremented (per-VC) |
 | 8 | NI Process | NMU/NSU AXI ↔ flit conversion |
 
 Phases 1–4 are encapsulated in `Router_Interface::tick()`, Phase 5 is the global wiring step managed by the Mesh, Phases 6–7 are in `Router_Interface::post_wire()`, and Phase 8 is `NI_Interface::tick()`. This decomposition maps directly to RTL: sequential phases correspond to `posedge clk` behaviour, and combinational phases to `assign` logic.
@@ -307,8 +259,7 @@ The model works through a single configuration object, NocConfig, which serves a
 | `OUTPUT_BUFFER_DEPTH` | 2 | Router output buffer depth (0 = wire-through) |
 | `NMU_BUFFER_DEPTH` | 2 | NMU injection buffer depth |
 | **Flow Control** | | |
-| `FLOW_CONTROL` | VALID_READY | Flow control mode (factory selects template) |
-| `NUM_VC` | 1 | Number of virtual channels |
+| `NUM_VC` | 1 | Number of virtual channels (credit-based, per-VC credit accounting) |
 | **Pipeline Delay** | | |
 | `ROUTING_DELAY` | 0 | Route computation extra cycles |
 | `VC_ALLOC_DELAY` | 0 | VC allocation extra cycles |
@@ -647,17 +598,7 @@ In addition to the C-style DPI-C API described in the previous sections, the pri
 
 The constructor takes a `NocConfig` object (typically obtained from `load_config()`) and builds the complete mesh, including all routers, NIs, channels, and memory instances. The mesh topology, buffer depths, flow control mode, and all other parameters are determined at construction time from the configuration.
 
-The flow control mode is resolved at compile time through a factory pattern. The user-facing `NocSystem` is a type-erased wrapper around a templated `NocSystemImpl<Mode>`:
-
-```
-NocSystemBase (type-erased)
-    ├── NocSystemImpl<VALID_READY>
-    └── NocSystemImpl<CREDIT>
-
-create_noc_system(config) → switch(config.flow_control) → NocSystemImpl
-```
-
-This is analogous to RTL parameter elaboration — the template parameter selects which flow control signals are instantiated, and no unused signals exist in the compiled model.
+NoC links use credit-based flow control unconditionally (A4.7 wave 起 Valid/Ready mode 移除，原 factory-pattern template `NocSystemImpl<Mode>` 收斂為單一 credit-based 實作)。
 
 ---
 
@@ -896,8 +837,7 @@ The `dump_state()` function outputs the complete internal state of every router,
 |---------|:--------:|-------|
 | Cycle-accurate timing | Y | 8-phase pipeline with configurable delays |
 | Wormhole switching | Y | Path lock/release FSM per head flit |
-| Credit-based flow control | Y | Per-VC credit counters (Credit-Based mode) |
-| Valid/Ready handshake | Y | AXI-style backpressure (Valid/Ready mode) |
+| Credit-based flow control | Y | Per-VC credit counters per AMD pg313 §Credit-Based Flow Control |
 | AXI protocol (AW/W/AR/B/R) | Y | Burst, reorder, interleaving |
 | QoS-aware arbitration | Y | 16-level priority + round-robin tie-break |
 | ECC generate/check | Y | SECDED behavioural model |
@@ -1015,6 +955,5 @@ All public symbols are in the `noc::` namespace. Internal implementation details
 |--------|---------|-------------|
 | `NOC_BUILD_TESTS` | ON | Build GoogleTest test suite |
 | `NOC_BUILD_COSIM` | OFF | Build DPI-C bridge for co-simulation |
-| `NOC_FLOW_CONTROL` | VALID_READY | Default flow control mode |
 
 The model is available in the project repository. All dependencies (GoogleTest) are fetched automatically via CMake's FetchContent mechanism.

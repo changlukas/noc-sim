@@ -7,9 +7,8 @@
 | Drives AXI manager port outputs (`axi_rsp_o.*`) | yes | no |
 | Drives AXI subordinate port outputs (`axi_req_o.*`) | yes | no |
 | Drives NoC outputs (`noc_req_valid_o`, `noc_req_flit_o`, `noc_rsp_valid_o`, `noc_rsp_flit_o`) | yes | no |
-| Drives ready-back signals (`noc_req_ready_o`, `noc_rsp_ready_o`) | yes | no — NoC links un-drained in passive mode (must be paired with a real receiver) |
 | Drives CSR access port outputs (`csr_axi_rsp_o.*`) | yes | no |
-| Drives NoC credit return + credit-init-ready outputs (`noc_*_credit_o`, `noc_*_credit_init_ready_o` — present only when `FLOW_CONTROL = CREDIT_BASED`) | yes | no — same reasoning as NoC ready-back: the BFM stops participating in flow-control handshake, so it cannot promise buffer space or initiate credit exchange |
+| Drives NoC credit return + credit-init-ready outputs (`noc_req_credit_o[NUM_VC-1:0]`, `noc_rsp_credit_o[NUM_VC-1:0]`, `noc_*_credit_init_ready_o`) | yes | no — BFM stops participating in credit-based flow control, so it cannot promise buffer space or initiate credit exchange. NoC links un-drained in passive mode (must be paired with a real receiver) |
 | Drives AXI subordinate-port parity sideband outputs (`axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o` — present only when `ENABLE_AXI_PARITY = true`) | yes | no — these are NSU-side derivatives of `axi_req_o.*` and follow the same rule |
 | Drives interrupt output (`irq_o`) | yes | **yes** — IRQ is the wire-level mechanism by which logged violations are surfaced; PASSIVE mode continues to monitor + log + capture `LAST_ERR_INFO`, so `irq_o` continues to evaluate `OR(ERR_STATUS[i] & IRQ_ENABLE[i])`. This is consistent with the "Reports protocol-rule violations" + "Contributes to coverage hooks" capabilities below being available in PASSIVE. |
 | Samples all inbound signals (AXI inputs, NoC inputs, CSR access inputs) | yes | yes |
@@ -31,8 +30,8 @@
 - **API to switch**: `set_bfm_mode(mode)` per `transaction_api.md`.
 - **Effect of ACTIVE → PASSIVE**: All ACTIVE-only BFM-driven outputs transition to their during-reset values per `pin_level_reset.md` within one cycle of the corresponding clock. The full set:
    - AXI side: `axi_rsp_o.*`, `axi_req_o.*`
-   - NoC side: `noc_req_o.*`, `noc_rsp_o.*`, ready-back signals (`noc_req_ready_o`, `noc_rsp_ready_o`)
-   - NoC credit side (when `FLOW_CONTROL = CREDIT_BASED`): `noc_*_credit_o`, `noc_*_credit_init_ready_o`
+   - NoC side: `noc_req_o.*`, `noc_rsp_o.*` (valid + flit forward bundle)
+   - NoC credit side: `noc_req_credit_o[NUM_VC-1:0]`, `noc_rsp_credit_o[NUM_VC-1:0]`, `noc_*_credit_init_ready_o`
    - CSR side: `csr_axi_rsp_o.*`
    - AXI parity sideband (when `ENABLE_AXI_PARITY = true`, NSU-driven side): `axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o`
 

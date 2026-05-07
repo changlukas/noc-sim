@@ -235,17 +235,15 @@ Burst variants of expect_axi_*.
 
 **Side effects:**
 - Blocks until a flit is observed on `noc_req_o`. If `addr_match` provided, additionally requires the flit's payload AWADDR or ARADDR field equals addr_match.
-- In ACTIVE: BFM accepts via `noc_req_ready_i` after configured response_delay_noc.
+- In ACTIVE: BFM injects on `noc_req_o` when per-VC `credit_counter[vc_id] > 0` (per `NOC_MST_FLIT_ON_CREDIT_ONLY`). `response_delay_noc` throttles the BFM's injection rate by inserting cycles between credit availability and `noc_req_valid_o = 1`.
 - In PASSIVE: observes only.
 - Flit appended to get_observed_noc_flits(REQ, OUT).
 
 **Return:** (OK, flit) / (TIMEOUT, 0) / (RESET_DURING_TRANSACTION, 0).
 
 **Equivalent channel API decomposition:**
-```
-wait_for_valid_NOC_REQ_OUT(addr_match=addr_match)  // returns observed flit
-end_phase_NOC_REQ_OUT()
-```
+
+`(none — this is Transaction-API-only.)` `expect_noc_request` taps the BFM's internal monitor on `noc_req_o.valid`. No direct channel-API equivalent for self-observation of BFM-driven outputs.
 
 ### expect_noc_response(rob_idx_match=<opt>, timeout=10000) -> (status_t, flit_t)
 

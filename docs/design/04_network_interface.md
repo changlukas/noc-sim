@@ -223,7 +223,7 @@ AXI side port 定義：
 | `noc_req_i` | input | Request flit 輸入（Req Router → NSU） |
 | `noc_rsp_i` | input | Response flit 輸入（Rsp Router → NMU） |
 
-每條 noc link 內部包含 `valid`、`ready`、`data`（flit_t），與 Router port interface 完全相容。
+每條 noc link 包含 forward 方向的 `valid` + `flit_t` data，加上 reverse 方向的 per-VC credit return 與 bi-directional credit-init-ready handshake (per AMD pg313 §Credit-Based Flow Control)。Router port interface 對應相同訊號集合。
 
 ### 4.3 Control Inputs
 

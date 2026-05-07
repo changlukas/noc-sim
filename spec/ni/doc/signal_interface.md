@@ -119,74 +119,61 @@ For brevity the wire-level expansion follows the manager port exactly (same fiel
 
 ### NoC Request link
 
-All `valid` / `ready` / `flit` signals are **per-VC arrays** of width `NUM_VC` (default 1).
-
-When `NUM_VC=1` the array degenerates to a single line per signal (synthesis flattens).
-
-When `NUM_VC>1` each VC has independent valid/ready/flit. NMU at injection side selects the VC for each flit per `theory_of_operation.md` §"VC scheduling" (Hybrid R/W × QoS policy, fixed at design time).
+Single shared data link per direction. One flit slot per cycle. The `vc_id` field of the flit header (see `02_flit.md` §1.2 Group 2) identifies the owning VC. Per-cycle backpressure is governed by credits, not by a `ready` handshake — see §"NoC credit signals". NMU at injection side maps each flit onto a VC per `theory_of_operation.md` §"VC Mapping" (Hybrid R/W × QoS policy, fixed at design time).
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Optional | BFM supports | Notes |
 |--------|-----------|-------|--------|-------------|-------------|----------|--------------|-------|
-| `noc_req_valid_o[NUM_VC-1:0]` | output | NUM_VC | H | pos noc_clk | §NoC req out row 1 | no | yes | Per-VC valid. NMU asserts on the chosen VC to inject a flit. |
-| `noc_req_ready_i[NUM_VC-1:0]` | input | NUM_VC | H | pos noc_clk | §NoC req out row 2 | no | yes | Per-VC ready. Router asserts per-VC when its corresponding input FIFO has space. |
-| `noc_req_flit_o[NUM_VC-1:0][FLIT_WIDTH-1:0]` | output | NUM_VC × FLIT_WIDTH | — | pos noc_clk | §NoC req out row 3 | no | yes | Per-VC flit data. Valid when `noc_req_valid_o[v]=1`. |
-| `noc_req_valid_i[NUM_VC-1:0]` | input | NUM_VC | H | pos noc_clk | §NoC req in row 1 | no | yes | Per-VC valid. Router signals incoming flit on a specific VC. |
-| `noc_req_ready_o[NUM_VC-1:0]` | output | NUM_VC | H | pos noc_clk | §NoC req in row 2 | no | yes | Per-VC ready. NSU asserts per-VC when its corresponding input FIFO has space. |
-| `noc_req_flit_i[NUM_VC-1:0][FLIT_WIDTH-1:0]` | input | NUM_VC × FLIT_WIDTH | — | pos noc_clk | §NoC req in row 3 | no | yes | Per-VC inbound flit payload. |
+| `noc_req_valid_o` | output | 1 | H | pos noc_clk | §NoC req out row 1 | no | yes | NMU asserts when driving a valid flit this cycle. |
+| `noc_req_flit_o[FLIT_WIDTH-1:0]` | output | FLIT_WIDTH | — | pos noc_clk | §NoC req out row 2 | no | yes | Outbound flit. Valid when `noc_req_valid_o=1`. |
+| `noc_req_valid_i` | input | 1 | H | pos noc_clk | §NoC req in row 1 | no | yes | Router asserts when an inbound flit is on the link. |
+| `noc_req_flit_i[FLIT_WIDTH-1:0]` | input | FLIT_WIDTH | — | pos noc_clk | §NoC req in row 2 | no | yes | Inbound flit. Valid when `noc_req_valid_i=1`. |
 
 ### NoC Response link
 
 Same shape as Request link, with `noc_rsp_*` prefix.
 
-- NSU injects via `noc_rsp_valid_o` / `noc_rsp_flit_o`
-- NMU receives via `noc_rsp_valid_i` / `noc_rsp_flit_i`
+- NSU injects via `noc_rsp_valid_o` / `noc_rsp_flit_o`; credit return on `noc_rsp_credit_i[NUM_VC-1:0]`
+- NMU receives via `noc_rsp_valid_i` / `noc_rsp_flit_i`; returns credits via `noc_rsp_credit_o[NUM_VC-1:0]`
 
 | Signal | Direction | Width | Reset | Notes |
 |--------|-----------|-------|-------|-------|
-| `noc_rsp_valid_o[NUM_VC-1:0]` | output | NUM_VC | §NoC rsp out row 1 | Per-VC valid. NSU asserts to inject response flit on chosen VC. |
-| `noc_rsp_ready_i[NUM_VC-1:0]` | input | NUM_VC | §NoC rsp out row 2 | Per-VC ready from router. |
-| `noc_rsp_flit_o[NUM_VC-1:0][FLIT_WIDTH-1:0]` | output | NUM_VC × FLIT_WIDTH | §NoC rsp out row 3 | Per-VC flit data. |
-| `noc_rsp_valid_i[NUM_VC-1:0]` | input | NUM_VC | §NoC rsp in row 1 | Per-VC valid from router. |
-| `noc_rsp_ready_o[NUM_VC-1:0]` | output | NUM_VC | §NoC rsp in row 2 | Per-VC ready. NMU asserts when RoB has slot for the corresponding VC. |
-| `noc_rsp_flit_i[NUM_VC-1:0][FLIT_WIDTH-1:0]` | input | NUM_VC × FLIT_WIDTH | §NoC rsp in row 3 | Per-VC inbound flit payload. |
+| `noc_rsp_valid_o` | output | 1 | §NoC rsp out row 1 | NSU asserts when driving a valid flit this cycle. |
+| `noc_rsp_flit_o[FLIT_WIDTH-1:0]` | output | FLIT_WIDTH | §NoC rsp out row 2 | Outbound response flit. |
+| `noc_rsp_valid_i` | input | 1 | §NoC rsp in row 1 | Router asserts when an inbound response flit is on the link. |
+| `noc_rsp_flit_i[FLIT_WIDTH-1:0]` | input | FLIT_WIDTH | §NoC rsp in row 2 | Inbound response flit. |
 
-### NoC credit signals — Optional, present only when `FLOW_CONTROL == CREDIT_BASED`
+### NoC credit signals (always present)
 
-When `FLOW_CONTROL = CREDIT_BASED`, the NoC link uses per-VC credit accounting in lieu of `valid`/`ready` handshake. The following signals are added per NoC link direction. All credit signals have width `NUM_VC` (one credit bit per VC). When `FLOW_CONTROL = VALID_READY`, these signals are absent.
+The NoC link uses per-VC credit accounting per AMD pg313 §Credit-Based Flow Control. Credit return is per-VC: one bit per VC, asserted for one cycle to return one credit on that VC. The destination unit can return up to one credit per cycle per virtual channel (AMD verbatim). The startup handshake uses a single bi-directional ready signal per direction, semantics aligned with AMD: "indicates credit exchange is ready".
 
 **Per-VC credit return signals:**
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Optional | BFM supports | Notes |
 |--------|-----------|-------|--------|-------------|-------------|----------|--------------|-------|
-| `noc_req_credit_i[NUM_VC-1:0]` | input | NUM_VC | H | pos noc_clk | §NoC credit row 1 | conditional (FLOW_CONTROL=CREDIT_BASED) | yes | Per-VC credit return from downstream router. One bit asserts → upstream NMU credit counter for that VC increments by 1. |
-| `noc_req_credit_o[NUM_VC-1:0]` | output | NUM_VC | H | pos noc_clk | §NoC credit row 2 | conditional | yes | Per-VC credit return generated by NSU input buffer pop. One bit assert → downstream router increments its credit. |
-| `noc_rsp_credit_i[NUM_VC-1:0]` | input | NUM_VC | H | pos noc_clk | §NoC credit row 3 | conditional | yes | Per-VC credit return for response link. |
-| `noc_rsp_credit_o[NUM_VC-1:0]` | output | NUM_VC | H | pos noc_clk | §NoC credit row 4 | conditional | yes | Per-VC credit return for NMU response input buffer. |
+| `noc_req_credit_i[NUM_VC-1:0]` | input | NUM_VC | H | pos noc_clk | §NoC credit row 1 | no | yes | Per-VC credit return from downstream router. One bit asserts → upstream NMU credit counter for that VC increments by 1. |
+| `noc_req_credit_o[NUM_VC-1:0]` | output | NUM_VC | H | pos noc_clk | §NoC credit row 2 | no | yes | Per-VC credit return generated by NSU input buffer pop. One bit assert → downstream router increments its credit. |
+| `noc_rsp_credit_i[NUM_VC-1:0]` | input | NUM_VC | H | pos noc_clk | §NoC credit row 3 | no | yes | Per-VC credit return for response link. |
+| `noc_rsp_credit_o[NUM_VC-1:0]` | output | NUM_VC | H | pos noc_clk | §NoC credit row 4 | no | yes | Per-VC credit return for NMU response input buffer. |
 
-**Credit startup handshake signals (per AMD §Credit-Based Flow Control):**
+**Credit startup handshake signals (per AMD pg313 §Credit-Based Flow Control):**
 
-After reset, source-credit counters initialise to 0 per VC. Both ends must complete a bidirectional ready handshake before credit exchange begins. These signals carry that handshake.
+After reset, source-credit counters initialise to 0 per VC. Both ends must complete a bi-directional ready handshake before credit exchange begins. These signals carry that handshake. After both ends assert their ready, both stay HIGH for the lifetime of the link; they do not gate per-cycle data transfers (that role belongs to credits).
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Optional | BFM supports | Notes |
 |--------|-----------|-------|--------|-------------|-------------|----------|--------------|-------|
-| `noc_req_credit_init_ready_o` | output | 1 | H | pos noc_clk | §NoC credit-init row 1 | conditional (FLOW_CONTROL=CREDIT_BASED) | yes | NMU asserts after `noc_rst_ni` deassertion when ready to start credit exchange on the request output link. |
-| `noc_req_credit_init_ready_i` | input | 1 | H | pos noc_clk | §NoC credit-init row 2 | conditional | yes | Router asserts when ready to receive on `noc_req` link. Credit exchange begins on the cycle both `*_o` and `*_i` are HIGH. |
-| `noc_rsp_credit_init_ready_o` | output | 1 | H | pos noc_clk | §NoC credit-init row 3 | conditional | yes | NSU asserts after `noc_rst_ni` deassertion when ready to start credit exchange on the response output link. |
-| `noc_rsp_credit_init_ready_i` | input | 1 | H | pos noc_clk | §NoC credit-init row 4 | conditional | yes | Router asserts when ready to receive on `noc_rsp` link. |
+| `noc_req_credit_init_ready_o` | output | 1 | H | pos noc_clk | §NoC credit-init row 1 | no | yes | NMU asserts after `noc_rst_ni` deassertion when ready to start credit exchange on the request output link. |
+| `noc_req_credit_init_ready_i` | input | 1 | H | pos noc_clk | §NoC credit-init row 2 | no | yes | Router asserts when ready to receive on `noc_req` link. Credit exchange begins on the cycle both `*_o` and `*_i` are HIGH. |
+| `noc_rsp_credit_init_ready_o` | output | 1 | H | pos noc_clk | §NoC credit-init row 3 | no | yes | NSU asserts after `noc_rst_ni` deassertion when ready to start credit exchange on the response output link. |
+| `noc_rsp_credit_init_ready_i` | input | 1 | H | pos noc_clk | §NoC credit-init row 4 | no | yes | Router asserts when ready to receive on `noc_rsp` link. |
 
-**Behaviour summary in `CREDIT_BASED` mode:**
+**Behaviour summary:**
 
-- `noc_*_ready_i` / `noc_*_ready_o` remain part of the link signal but back-pressure is governed by credits, not by per-cycle ready handshake.
+- A flit is driven on `noc_*_flit_o` only when the source has at least one credit on the chosen VC. NMU/NSU decrement the per-VC credit counter on the cycle `noc_*_valid_o=1`.
 - Source-credit counters initialise to 0 per VC at reset deassertion.
-- Credit exchange begins only after both ends raise their respective `*_credit_init_ready_*` signals (bidirectional handshake).
+- Credit exchange begins only after both ends raise their respective `*_credit_init_ready_*` signals (bi-directional handshake).
 - Once exchange begins, credit counters are seeded with `INPUT_BUFFER_DEPTH / NUM_VC` per VC (where `INPUT_BUFFER_DEPTH` is the receiver's per-link buffer depth, a router-side parameter the integrator must communicate).
 - Credit return latency is `CREDIT_DELAY` cycles (router-side parameter, default 1).
 - Credit starvation (no credit return for `CREDIT_TIMEOUT` cycles, default 10000) is treated as one of the trigger sources of the outstanding-transaction-timeout path: the affected NMU/NSU drives `bresp/rresp = SLVERR` for any in-flight transaction whose response is now permanently blocked by lack of credits, increments `ERR_COUNT`, and sets `ERR_STATUS[1] timeout_err` (per `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR` + `NI_CFG_ERR_STATUS_RW1C`). Counter pairing therefore stays consistent: bit 1 ↔ `ERR_COUNT`. Software disambiguates credit-starvation from other timeout causes (slave never responds, route_par drop, fabric loss) via `LAST_ERR_INFO` plus the per-class counters.
-
-**Behaviour in `VALID_READY` mode (default):**
-
-- Standard per-VC `valid` / `ready` handshake per the NoC Request / Response link tables applies.
-- Credit signals and credit-init-ready signals are absent (do not appear in the wire list).
 
 ### CSR access port (AXI4-Lite subordinate)
 
@@ -323,8 +310,7 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | array length = `NUM_SAM_RULES` | SAM rule table. **Compile-time parameter, not a port** — aligns with FlooNoC `floo_axi_chimney.sv` `Sam` parameter. All NIs share the same content. Each `sam_rule_t` carries `{match, mask, dst_id}`. Used when `USE_ID_TABLE=1` (`SourceRouting`/`IDRouting`). Runtime updates via CSR + quiesce flow per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW` |
 | `MESH_COLS` | int | 4 | 1 ≤ x ≤ 2^X_WIDTH | Mesh column count; bounds `dst_id.x` for `NOC_FLIT_HDR_DST_ID_VALID` |
 | `MESH_ROWS` | int | 4 | 1 ≤ x ≤ 2^Y_WIDTH | Mesh row count; bounds `dst_id.y` |
-| `FLOW_CONTROL` | enum {`VALID_READY`, `CREDIT_BASED`} | `VALID_READY` | — | NoC link flow-control mode. `VALID_READY`: standard valid/ready handshake (per `NOC_MST_VALID_STABLE` rule). `CREDIT_BASED`: per-VC credit accounting; sender holds a credit counter per VC, decrements on flit injection, replenished by `noc_*_credit_*` return signals (see Wire table additions). Mode is compile-time fixed; cannot be switched at runtime. |
-| `NUM_VC` | int | 1 | 1 ≤ x ≤ 8 | Number of virtual channels per NoC link. Upper bound 8 matches `VC_ID_WIDTH = 3` in flit header (see `02_flit.md` §1.2 Group 2). `NUM_VC=1` (default) degenerates to single-VC behaviour with no VC arbitration. `NUM_VC > 1` requires per-VC valid/ready/credit signal arrays and a VC arbitration policy (router-side per `06_qos.md §5`, NMU-side per `theory_of_operation.md §VC selection`). Deadlock-free routing across VCs is the integrator's responsibility. |
+| `NUM_VC` | int | 1 | 1 ≤ x ≤ 8 | Number of virtual channels per NoC link. Upper bound 8 matches `VC_ID_WIDTH = 3` in flit header (see `02_flit.md` §1.2 Group 2). Forward data link is shared (single 1-bit `valid` + 1× FLIT_WIDTH `flit`). Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`). `NUM_VC=1` (default) collapses to single-VC operation. `NUM_VC > 1` adds VC mapping at NMU per `theory_of_operation.md` §"VC Mapping" (Hybrid R/W × QoS policy at flit-construct time) and cycle-level VC arbitration at the network switch per `06_qos.md §5` (NPS scope, out of NI). Deadlock-free routing across VCs is the integrator's responsibility. |
 | `CDC_FIFO_DEPTH` | int | 16 | 4 ≤ x ≤ 64 (power-of-2 recommended) | Internal AXI ↔ NoC async-FIFO depth (gray-counter pointer + 2FF synchroniser). Sized to absorb `2 × max_round_trip_cycles × max(aclk_period, noc_clk_period) / min(aclk_period, noc_clk_period) + 2`; default 16 is conservative for ratio range [0.1, 10]. |
 | `MAX_OUTSTANDING` | int | 8 | 1 ≤ x ≤ MAX_TXNS | Software-configurable cap on concurrent outstanding transactions (≤ `MAX_TXNS` hardware ceiling). The BFM allows the test author to throttle below the hardware ceiling for stress-testing scenarios. Implementation may expose this through `transaction_api.md` knob or compile-time parameter; if compile-time, default 8. |
 | `MAX_BURST_LEN` | int | 16 | 1 ≤ x ≤ 256 | Maximum AXI burst length the NMU/NSU supports per transaction. Bounds the NSU W-reassembly buffer depth. Tests issuing `len + 1 > MAX_BURST_LEN` violate `apply_burst_write` precondition (per `transaction_api.md`); BFM returns `BURST_LEN_EXCEEDS_MAX`. |
@@ -359,10 +345,10 @@ Multiple logical channels across two AXI ports + NoC + CSR. Protocol-rule IDs in
 | B_OUT | axi_b*_i |
 | AR_OUT | axi_ar*_o |
 | R_OUT | axi_r*_i |
-| REQ_OUT | `noc_req_valid_o`, `noc_req_ready_i`, `noc_req_flit_o` (per-VC; incl. `noc_req_credit_i` and `noc_req_credit_init_ready_o` / `noc_req_credit_init_ready_i` when FLOW_CONTROL=CREDIT_BASED) |
-| REQ_IN | `noc_req_valid_i`, `noc_req_ready_o`, `noc_req_flit_i` (per-VC; incl. `noc_req_credit_o` when FLOW_CONTROL=CREDIT_BASED) |
-| RSP_OUT | `noc_rsp_valid_o`, `noc_rsp_ready_i`, `noc_rsp_flit_o` (per-VC; incl. `noc_rsp_credit_i` and `noc_rsp_credit_init_ready_o` / `noc_rsp_credit_init_ready_i` when FLOW_CONTROL=CREDIT_BASED) |
-| RSP_IN | `noc_rsp_valid_i`, `noc_rsp_ready_o`, `noc_rsp_flit_i` (per-VC; incl. `noc_rsp_credit_o` when FLOW_CONTROL=CREDIT_BASED) |
+| REQ_OUT | `noc_req_valid_o`, `noc_req_flit_o`, `noc_req_credit_i[NUM_VC-1:0]`, `noc_req_credit_init_ready_o`, `noc_req_credit_init_ready_i` |
+| REQ_IN | `noc_req_valid_i`, `noc_req_flit_i`, `noc_req_credit_o[NUM_VC-1:0]` |
+| RSP_OUT | `noc_rsp_valid_o`, `noc_rsp_flit_o`, `noc_rsp_credit_i[NUM_VC-1:0]`, `noc_rsp_credit_init_ready_o`, `noc_rsp_credit_init_ready_i` |
+| RSP_IN | `noc_rsp_valid_i`, `noc_rsp_flit_i`, `noc_rsp_credit_o[NUM_VC-1:0]` |
 | CSR_AW / CSR_W / CSR_B / CSR_AR / CSR_R | csr_aw* / csr_w* / csr_b* / csr_ar* / csr_r* |
 
 This separates manager-side and subordinate-side channels (e.g., `AW_IN` vs `AW_OUT`) so rules can be specific to which port a given AXI4 STABLE rule applies to.

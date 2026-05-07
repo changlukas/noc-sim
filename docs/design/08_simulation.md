@@ -101,8 +101,7 @@ NocConfig 為**全局唯一的參數定義處**（single source of truth）。�
 | `OUTPUT_BUFFER_DEPTH` | 2 | Router output buffer 深度 (0 = wire-through) |
 | `NMU_BUFFER_DEPTH` | 2 | NMU injection buffer 深度 |
 | **Flow Control** | | |
-| `FLOW_CONTROL` | VALID_READY | Flow control mode（啟動時 factory 選擇 template） |
-| `NUM_VC` | 1 | Virtual channel 數量 |
+| `NUM_VC` | 1 | Virtual channel 數量（credit-based per-VC credit accounting） |
 | **Pipeline Delay** | | |
 | `ROUTING_DELAY` | 0 | RC stage 額外 cycles（0 = 同 cycle 完成） |
 | `VC_ALLOC_DELAY` | 0 | VA stage 額外 cycles |
@@ -315,7 +314,7 @@ SV Testbench:
 | 4 | Route & Forward | RC → VA → SA → ST pipeline + credit return 產生 | Combinational pipeline |
 | 5 | Wire All | Channel\<T\> 交換所有元件 output → 對端 input | Wire connections |
 | 6 | Clear Accepted | `out_valid && in_ready` → 清除 output | `posedge clk` |
-| 7 | Credit Update | 上游收到 credit → counter +1（Credit-Based mode；Valid/Ready 為 no-op） | `posedge clk` |
+| 7 | Credit Update | 上游收到 credit → counter +1（per-VC） | `posedge clk` |
 | 8 | NI Process | NMU/NSU 處理 AXI ↔ flit conversion | NI pipeline |
 
 Phase 1-4 封裝在 `Router_Interface::tick()` 內部，Phase 6-7 為 `post_wire()` 處理，Phase 8 為 `NI_Interface::tick()`。
@@ -385,8 +384,6 @@ RC ──(ROUTING_DELAY)──► VA ──(VC_ALLOC_DELAY)──► SA ──(S
 ```
 upstream.credit[vc] + downstream.buffer.count(vc) + in_flight(vc) == INPUT_BUFFER_DEPTH_PER_VC
 ```
-
-Valid/Ready mode 不使用 explicit credit。`ready` 在 Phase 3 combinational 設定，Phase 7 為 no-op。
 
 ### 6.6 NI Injection Latency
 
@@ -504,8 +501,8 @@ Router 和 NI 均實作抽象介面，Simulation Driver 透過 wiring loop 連�
 **核心規則：**
 
 1. Interface 是合約 — `Router_Interface` 和 `NI_Interface` 定義唯一的元件間通訊方式
-2. Flow control mode 是 compile-time 參數 — 整個系統統一使用同一種 mode
-3. 不帶多餘信號 — Valid/Ready 無 credit 信號；Credit 無 ready 信號
+2. Flow control 一律 credit-based（A4.7 wave 起 dual-mode 移除）
+3. 訊號集合：forward 方向 valid + flit；reverse 方向 per-VC credit + bi-directional credit-init-ready
 4. NI-Router 與 Router-Router 使用相同介面
 
 ### 9.2 Router_Interface\<Mode\>
@@ -529,24 +526,15 @@ Router 和 NI 均實作抽象介面，Simulation Driver 透過 wiring loop 連�
 
 每個 port 的 `PortOutput` 包含該元件**主動驅動**的所有信號：
 
-| Mode | PortOutput 內容 | 說明 |
-|------|----------------|------|
-| VALID_READY | valid, flit, ready | ready = 本元件可接收對端 flit |
-| CREDIT | valid, flit, credit[NUM_VC] | credit = 本元件歸還的 per-VC credit bits |
+| PortOutput 內容 | 說明 |
+|-----------------|------|
+| valid, flit, credit[NUM_VC] | forward 方向 valid + flit；reverse 方向歸還 per-VC credit bits |
 
 信號交換對稱：A 的 `get_output` → B 的 `set_input`，反之亦然。
 
-### 9.5 Factory Pattern（Template Instantiation）
+### 9.5 Implementation
 
-Flow control mode 透過 JSON 指定，啟動時由 factory 選擇 template instantiation（類似 RTL `parameter` elaboration）：
-
-```
-NocSystemBase (type-erased)
-    ├── NocSystemImpl<VALID_READY>
-    └── NocSystemImpl<CREDIT>
-
-create_noc_system(config) → switch(config.flow_control) → 對應 NocSystemImpl
-```
+NoC 一律使用 credit-based flow control。無 template parameter 切換（A4.7 wave 起 dual-mode 架構移除，原 `NocSystemImpl<Mode>` factory pattern 收斂為單一 credit-based 實作）。
 
 ### 9.6 Hot-Swap 機制
 
@@ -604,7 +592,7 @@ DPI-C bridge 為 thin wrapper，提供 SystemVerilog 與 C++ model 的互操作�
 | `noc_get_port_output(h, node, port, ch, &valid, flit, &ready_or_credit)` | C++ model → RTL |
 | `noc_get_num_ports(h, node) → count` | 查詢 port 數 |
 
-`ch`: 0=REQ, 1=RSP。`ready_or_credit`: VR mode → ready bit；Credit mode → credit bitmask。
+`ch`: 0=REQ, 1=RSP。`ready_or_credit`: per-VC credit bitmask（A4.7 wave 起 credit-only。參數名為 v0.3.0 dual-mode 時期遺留，DPI-C 簽名未改名以避免 ABI 破壞）。
 
 ### 10.3 Memory Model
 
@@ -624,8 +612,7 @@ DPI-C bridge 為 thin wrapper，提供 SystemVerilog 與 C++ model 的互操作�
 |------|:----:|------|
 | Cycle-accurate timing | Y | 8-phase pipeline |
 | Wormhole switching | Y | Path lock/release FSM |
-| Credit-based flow control | Y | Per-VC credit (Credit-Based mode) |
-| Valid/Ready handshake | Y | AXI-style (Valid/Ready mode) |
+| Credit-based flow control | Y | Per-VC credit per AMD pg313 §Credit-Based Flow Control |
 | AXI protocol (AW/W/AR/B/R) | Y | Burst, reorder |
 | QoS-Aware arbitration | Y | QoS + Round-Robin |
 | ECC generate/check | Y | SECDED 行為模型 |

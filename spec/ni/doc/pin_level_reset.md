@@ -113,29 +113,25 @@ A wire's "during reset" value is determined by its corresponding reset signal. W
 
 ### NoC Request link — NoC domain (noc_rst_ni)
 
-All `valid`/`ready`/`flit` are per-VC arrays of width `NUM_VC` (default 1). Reset values apply to every VC slot.
+Single shared link per direction. `vc_id` carried in flit header (see `02_flit.md` §1.2). Backpressure governed by credits — see §"NoC credit signals".
 
 | Channel | Signal | Value during reset | Notes |
 |---------|--------|--------------------|-------|
-| REQ_OUT | noc_req_valid_o[NUM_VC-1:0] | 0 (all VCs) |  |
-| REQ_OUT | noc_req_ready_i[NUM_VC-1:0] | as driven by router | Input. Per-VC. |
-| REQ_OUT | noc_req_flit_o[NUM_VC-1:0][FLIT_WIDTH-1:0] | 0 (all VCs, all bits) | Held to 0 for waveform readability. |
-| REQ_IN | noc_req_valid_i[NUM_VC-1:0] | as driven by router |  |
-| REQ_IN | noc_req_ready_o[NUM_VC-1:0] | 0 (all VCs) | NSU not accepting. |
-| REQ_IN | noc_req_flit_i[NUM_VC-1:0][FLIT_WIDTH-1:0] | as driven by router |  |
+| REQ_OUT | noc_req_valid_o | 0 |  |
+| REQ_OUT | noc_req_flit_o[FLIT_WIDTH-1:0] | 0 (all bits) | Held to 0 for waveform readability. |
+| REQ_IN | noc_req_valid_i | as driven by router |  |
+| REQ_IN | noc_req_flit_i[FLIT_WIDTH-1:0] | as driven by router |  |
 
 ### NoC Response link — NoC domain (noc_rst_ni)
 
-All `valid`/`ready`/`flit` are per-VC arrays of width `NUM_VC` (default 1).
+Single shared link per direction. Same shape as Request link with `noc_rsp_*` prefix.
 
 | Channel | Signal | Value during reset | Notes |
 |---------|--------|--------------------|-------|
-| RSP_OUT | noc_rsp_valid_o[NUM_VC-1:0] | 0 (all VCs) |  |
-| RSP_OUT | noc_rsp_ready_i[NUM_VC-1:0] | as driven by router |  |
-| RSP_OUT | noc_rsp_flit_o[NUM_VC-1:0][FLIT_WIDTH-1:0] | 0 (all VCs, all bits) |  |
-| RSP_IN | noc_rsp_valid_i[NUM_VC-1:0] | as driven by router |  |
-| RSP_IN | noc_rsp_ready_o[NUM_VC-1:0] | 0 (all VCs) |  |
-| RSP_IN | noc_rsp_flit_i[NUM_VC-1:0][FLIT_WIDTH-1:0] | as driven by router |  |
+| RSP_OUT | noc_rsp_valid_o | 0 |  |
+| RSP_OUT | noc_rsp_flit_o[FLIT_WIDTH-1:0] | 0 (all bits) |  |
+| RSP_IN | noc_rsp_valid_i | as driven by router |  |
+| RSP_IN | noc_rsp_flit_i[FLIT_WIDTH-1:0] | as driven by router |  |
 
 ### CSR access port — AXI domain (arst_ni)
 
@@ -173,7 +169,7 @@ All `valid`/`ready`/`flit` are per-VC arrays of width `NUM_VC` (default 1).
 |--------|--------------------|-------|
 | irq_o | 0 | Held LOW while `arst_ni` is asserted. Internal `ERR_STATUS` and `IRQ_ENABLE` registers are reset to 0x0 at the same time, so the function `irq_o = OR(ERR_STATUS[i] & IRQ_ENABLE[i])` evaluates to 0 by construction. |
 
-### NoC credit signals — NoC domain (noc_rst_ni); present only when `FLOW_CONTROL = CREDIT_BASED`
+### NoC credit signals — NoC domain (noc_rst_ni)
 
 Per-VC credit return signals:
 
@@ -192,8 +188,6 @@ Credit startup handshake signals:
 | REQ_OUT | noc_req_credit_init_ready_i | as driven by router | Router asserts after its reset deassertion. |
 | RSP_OUT | noc_rsp_credit_init_ready_o | 0 | NSU asserts AFTER reset deassertion. |
 | RSP_OUT | noc_rsp_credit_init_ready_i | as driven by router | Router asserts after its reset deassertion. |
-
-When `FLOW_CONTROL = VALID_READY` (default), all credit signals and credit-init-ready signals are absent. See `signal_interface.md` §"NoC credit signals" for the full conditional contract.
 
 ### Optional AXI parity signals — AXI domain (arst_ni)
 
@@ -225,7 +219,6 @@ For wires driven by the BFM, the first-cycle-after-reset value is generally the 
 | axi_awready_o / axi_wready_o / axi_arready_o | 0 → returns to 1 when NMU is ready to accept stimulus | Default-on at reset deassertion in active mode (1 cycle latency for tracker reset) |
 | axi_bready_o / axi_rready_o | 1 (still always-ready) | Held |
 | All BFM-driven `*valid_o` outputs (manager-port responses `axi_bvalid_o`, `axi_rvalid_o`; subordinate-port requests `axi_awvalid_o`, `axi_wvalid_o`, `axi_arvalid_o`; NoC `noc_req_valid_o`, `noc_rsp_valid_o`; CSR `csr_bvalid_o`, `csr_rvalid_o`) | 0 | Asserts only when a transaction is ready to drive |
-| `noc_req_ready_o` / `noc_rsp_ready_o` | 0 → returns to 1 when NSU/NMU receive-buffer slot available | Default-on |
 | `irq_o` | 0 (held) | Stays LOW until any unmasked `ERR_STATUS` bit asserts. Asserts on the same `aclk_i` edge the OR-function `OR(ERR_STATUS[i] & IRQ_ENABLE[i])` evaluates to 1; deasserts on the cycle software RW1C clears the last set+enabled bit. |
 
 For wires driven by external DUTs ("as driven by DUT" entries above), values during the after-reset window are externally controlled.

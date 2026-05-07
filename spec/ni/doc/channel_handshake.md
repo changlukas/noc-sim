@@ -69,25 +69,31 @@ ARREADY is registered. R burst is wormhole — once started, NMU drives R-beat s
 
 ## NoC side dependencies
 
+NoC links use credit-based flow control per AMD pg313 §Credit-Based Flow Control. No per-cycle valid/ready handshake. Per-VC credit accounting decouples sender from receiver buffer state. After reset, both ends must complete a bi-directional credit-init-ready handshake (per `NOC_CREDIT_STARTUP_HANDSHAKE`) before any flit may be injected.
+
 ### Request link (noc_req_*)
 
 #### Dependency diagram
 
 ```mermaid
 flowchart LR
-    NOC_REQ_VALID --> NOC_REQ_READY
-    NOC_REQ_VALID -. carries .-> FLIT_DATA
+    CREDIT_GRANT["credit_counter[vc] > 0"] ==> NOC_REQ_VALID["noc_req_valid_o = 1"]
+    NOC_REQ_VALID -. carries .-> FLIT_DATA["noc_req_flit_o (FLIT_WIDTH bits)"]
+    NOC_REQ_VALID ==> CREDIT_DECR["credit_counter[vc]--"]
+    NSU_BUF_POP["NSU input FIFO pop on vc"] ==> CREDIT_RETURN["noc_req_credit_o[vc] pulse 1 cycle"]
+    CREDIT_RETURN ==> NMU_CREDIT_INCR["NMU credit_counter[vc]++"]
 ```
 
 #### Textual dependency list
 
-- `noc_req_valid_o` rises → must remain HIGH until `noc_req_ready_i` (back-from-router) is observed HIGH (= flit accepted).
-- `noc_req_flit_o[FLIT_WIDTH-1:0]` must be stable while `valid` is HIGH (per `NOC_MST_FLIT_STABLE` rule).
-- `noc_req_ready_i` and `noc_req_valid_o` are independent — router may have ready HIGH continuously; NI may have valid HIGH continuously.
+- NMU MUST hold credit > 0 on the chosen VC before asserting `noc_req_valid_o` (per `NOC_MST_FLIT_ON_CREDIT_ONLY`). The credit counter for that VC decrements by 1 on the cycle `noc_req_valid_o = 1`.
+- `noc_req_flit_o[FLIT_WIDTH-1:0]` carries the flit data on the same cycle as `noc_req_valid_o = 1`. The flit slot is single-cycle. There is no multi-cycle stall on the wire — credit accounting is the only back-pressure mechanism.
+- NSU returns one credit per cycle per VC on `noc_req_credit_o[vc]` after popping a flit from its per-VC input buffer (per AMD pg313 verbatim: "up to one credit per cycle, per virtual channel"). Credit return on the reverse path is independent of valid/flit on the forward path.
+- The `vc_id` for each flit is encoded in the flit header (see `02_flit.md` §1.2). Forward data link is shared across VCs; multiplexing is at the source via Hybrid R/W × QoS mapping (per `NOC_VC_MAPPING_HYBRID_RW_QOS`).
 
 ### Response link (noc_rsp_*)
 
-Mirror of Request link.
+Mirror of Request link with `noc_rsp_*` prefix. NSU credit gates injection on `noc_rsp_valid_o`. NMU returns credit on `noc_rsp_credit_o`.
 
 ### Cross-link
 
