@@ -12,8 +12,8 @@ NoC 基本傳輸單元。所有欄位寬度透過 symbol 參數表達，預設�
 
 1. **每個欄位皆有對應 width parameter** — 包含 1-bit flag 在內，命名一致便於跨模組引用。HEADER_WIDTH 與 FLIT_WIDTH 為 derived（自動由欄位 parameter 累加產生）。
 2. **預設值對齊 v0.4.0 配置** — 未調參時：
-   - `FLIT_WIDTH = 408 bits`
-   - `HEADER_WIDTH = 56 bits`
+   - `FLIT_WIDTH = 406 bits`
+   - `HEADER_WIDTH = 54 bits`
    - `PAYLOAD_WIDTH = 352 bits`
    - `FLIT_ECC_WIDTH = 10 bits`
    - v0.3.0 為 400/48/352/per-granule-32。變動原因見 §3.6。
@@ -37,9 +37,8 @@ NoC 基本傳輸單元。所有欄位寬度透過 symbol 參數表達，預設�
 |-----------|---------|-------------|
 | `X_WIDTH` | 4 | X coordinate width (max 16 columns) |
 | `Y_WIDTH` | 4 | Y coordinate width (max 16 rows) |
-| `PORT_ID_WIDTH` | 2 | Local port index width (4 ports per router) |
 
-`src_id` 與 `dst_id` 寬度為 `X_WIDTH + Y_WIDTH`（預設 8 bits），編碼 `[X_WIDTH-1:0]=x`、`[X_WIDTH+Y_WIDTH-1:X_WIDTH]=y`。
+`src_id` 與 `dst_id` 寬度為 `X_WIDTH + Y_WIDTH`（預設 8 bits），編碼 `[X_WIDTH-1:0]=x`、`[X_WIDTH+Y_WIDTH-1:X_WIDTH]=y`。每個 tile 對應一個 chimney (NI)，`(x, y)` 為其唯一識別。多 IP 共享一個 tile 的場景由 NI 上游 AXI crossbar 處理（per `04_network_interface.md`），不在 flit format scope。
 
 #### Group 2 — Header Fields
 
@@ -53,7 +52,7 @@ NoC 基本傳輸單元。所有欄位寬度透過 symbol 參數表達，預設�
 | `RSVD_COMMTYPE_WIDTH` | 2 | Reserved for future communication type extension |
 | `MULTICAST_WIDTH` | 8 | Reserved for future multicast extension (encoding TBD) |
 | `VC_ID_WIDTH` | 3 | Virtual Channel ID (Credit-Based mode only, max 8 VCs) |
-| `ROUTE_PAR_WIDTH` | 1 | Even parity over routing-critical fields (`src_id` + `dst_id` + `port_id`); always-on, checked at every router hop. Protects against single-bit errors that would cause misrouting |
+| `ROUTE_PAR_WIDTH` | 1 | Even parity over routing-critical fields (`src_id` + `dst_id`). Always-on, checked at every router hop. Protects against single-bit errors that would cause misrouting |
 | `FLIT_ECC_WIDTH` | 10 | Whole-flit SECDED syndrome covering `header[HEADER_WIDTH-FLIT_ECC_WIDTH-1:0] + payload`. Generated at NMU/NSU egress; checked at NMU/NSU ingress (router fabric does NOT check). Must satisfy SECDED Hamming bound: `2^(FLIT_ECC_WIDTH-1) ≥ FLIT_DATA_WIDTH + FLIT_ECC_WIDTH + 1` where `FLIT_DATA_WIDTH = HEADER_WIDTH - FLIT_ECC_WIDTH + PAYLOAD_WIDTH` |
 
 #### Group 3 — AXI Payload Sub-Fields
@@ -100,17 +99,17 @@ The legacy ECC parameters are retained as documentation aliases (no functional r
 | Parameter | Default | Formula |
 |-----------|---------|---------|
 | `WSTRB_WIDTH` | 32 | `AXI_DATA_WIDTH / 8` |
-| `HEADER_WIDTH` | 56 | Σ Group 1+2 fields (見 §2.1); was 48 in v0.3.0 (per-granule ECC era) |
-| `HEADER_DATA_WIDTH` | 46 | `HEADER_WIDTH - FLIT_ECC_WIDTH`; bits of header protected by `flit_ecc` |
+| `HEADER_WIDTH` | 54 | Σ Group 1+2 fields (見 §2.1). Was 48 in v0.3.0 (per-granule ECC era), 56 in pre-(δ) v0.4.0 (with `port_id` field) |
+| `HEADER_DATA_WIDTH` | 44 | `HEADER_WIDTH - FLIT_ECC_WIDTH`; bits of header protected by `flit_ecc` |
 | `AW_PAYLOAD_WIDTH` | 108 | Σ AW fields (見 §3.1) |
 | `W_PAYLOAD_WIDTH` | 352 | Σ W fields (見 §3.2); `wecc` removed; `w_rsvd` expanded |
 | `AR_PAYLOAD_WIDTH` | 108 | Σ AR fields (見 §3.1) |
 | `B_PAYLOAD_WIDTH` | 64 | Σ B fields (見 §3.3); `ecc_fail` removed; `b_rsvd` expanded |
 | `R_PAYLOAD_WIDTH` | 352 | Σ R fields (見 §3.4); `recc` removed; `r_rsvd` expanded |
 | `PAYLOAD_WIDTH` | 352 | `max(AW, W, AR, B, R)_PAYLOAD_WIDTH` |
-| `FLIT_DATA_WIDTH` | 398 | `HEADER_DATA_WIDTH + PAYLOAD_WIDTH`; bits protected by `flit_ecc` |
-| `FLIT_WIDTH` | 408 | `HEADER_WIDTH + PAYLOAD_WIDTH`; was 400 in v0.3.0 |
-| `LINK_WIDTH` | 410 | `FLIT_WIDTH + 2` (valid + ready) |
+| `FLIT_DATA_WIDTH` | 396 | `HEADER_DATA_WIDTH + PAYLOAD_WIDTH`; bits protected by `flit_ecc` |
+| `FLIT_WIDTH` | 406 | `HEADER_WIDTH + PAYLOAD_WIDTH`; was 400 in v0.3.0 |
+| `LINK_WIDTH` | 408 | `FLIT_WIDTH + 2` (valid + ready) |
 
 ### 1.3 Flit Structure
 
@@ -124,11 +123,11 @@ The legacy ECC parameters are retained as documentation aliases (no functional r
 
 v0.4.0 預設配置：
 
-- Header = 56 bits
+- Header = 54 bits
 - Payload = 352 bits
-- Flit = 408 bits
+- Flit = 406 bits
 
-(v0.3.0 為 48/352/400。Header 從 48→56 因加 `route_par` (1b) + `flit_ecc` (10b) 並回收 3-bit MSB `rsvd` 槽位，淨 +8。)
+(v0.3.0 為 48/352/400。Header 從 48→54 因加 `route_par` (1b) + `flit_ecc` (10b) 並回收 3-bit MSB `rsvd` 槽位，淨 +6。pre-(δ) 中間版本曾為 56 bits 含 `port_id` (2b) 欄位；改 single-chimney-per-tile 模型後 `port_id` 移除，回到 54。)
 
 所有 AXI channel 共用 `FLIT_WIDTH`。較短 payload 以 zero-padding 對齊至 `PAYLOAD_WIDTH`。Request 與 Response flit 寬度對稱。
 
@@ -138,7 +137,7 @@ Flit 內 wdata/rdata 採 little-endian byte ordering（byte address 0 = data[7:0
 
 ## 2. Header Format
 
-Header 預設 `HEADER_WIDTH = 56 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `route_par` + `flit_ecc` 欄位）。
+Header 預設 `HEADER_WIDTH = 54 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `route_par` + `flit_ecc` 欄位）。
 
 提供兩種配置：
 
@@ -157,21 +156,20 @@ Header 預設 `HEADER_WIDTH = 56 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `rou
 | axi_ch | `AXI_CH_WIDTH` | [6:4] | arbitration | AXI channel type (5 channels: AW/W/AR/B/R) |
 | src_id | `X_WIDTH + Y_WIDTH` | [14:7] | routing | Source node ID (X+Y coordinate) |
 | dst_id | `X_WIDTH + Y_WIDTH` | [22:15] | routing | Destination node ID (X+Y coordinate) |
-| port_id | `PORT_ID_WIDTH` | [24:23] | routing | Target local port index at destination router |
-| vc_id ‡ | `VC_ID_WIDTH` | [27:25] | routing | Virtual Channel ID (Credit-Based mode) |
-| route_par | `ROUTE_PAR_WIDTH` | [28] | routing | Even parity over `src_id` + `dst_id` + `port_id`; checked at every router hop |
-| last | `LAST_WIDTH` | [29] | wormhole | Packet end marker (1 = last flit of packet) |
-| rob_req | `ROB_REQ_WIDTH` | [30] | wormhole | RoB request flag (NMU sets; 1 = RoB allocate) |
-| rob_idx | `ROB_IDX_WIDTH` | [35:31] | wormhole | RoB entry index (`rob_req=1` valid) |
-| rsvd_commtype | `RSVD_COMMTYPE_WIDTH` | [37:36] | reserved | Reserved (future communication type extension) |
-| multicast | `MULTICAST_WIDTH` | [45:38] | reserved | Reserved (future multicast destination encoding) |
-| flit_ecc | `FLIT_ECC_WIDTH` | [55:46] | ECC | Whole-flit SECDED syndrome (covers `header[45:0]` + `payload`) |
-| | **HEADER_WIDTH** = 56 | | | |
+| vc_id ‡ | `VC_ID_WIDTH` | [25:23] | routing | Virtual Channel ID (Credit-Based mode) |
+| route_par | `ROUTE_PAR_WIDTH` | [26] | routing | Even parity over `src_id` + `dst_id`; checked at every router hop |
+| last | `LAST_WIDTH` | [27] | wormhole | Packet end marker (1 = last flit of packet) |
+| rob_req | `ROB_REQ_WIDTH` | [28] | wormhole | RoB request flag (NMU sets; 1 = RoB allocate) |
+| rob_idx | `ROB_IDX_WIDTH` | [33:29] | wormhole | RoB entry index (`rob_req=1` valid) |
+| rsvd_commtype | `RSVD_COMMTYPE_WIDTH` | [35:34] | reserved | Reserved (future communication type extension) |
+| multicast | `MULTICAST_WIDTH` | [43:36] | reserved | Reserved (future multicast destination encoding) |
+| flit_ecc | `FLIT_ECC_WIDTH` | [53:44] | ECC | Whole-flit SECDED syndrome (covers `header[43:0]` + `payload`) |
+| | **HEADER_WIDTH** = 54 | | | |
 
 **‡ Version-dependent field:**
 
 - **Valid/Ready mode (No-VC):**
-  - `vc_id` 槽位（[27:25]）作為 reserved，傳送時設為 0、接收端忽略
+  - `vc_id` 槽位（[25:23]）作為 reserved，傳送時設為 0、接收端忽略
   - NUM_VC > 1 時透過 signal-level 多組 valid/ready/credit array 實現 VC，不靠 header 識別
 - **Credit-Based mode (With-VC):**
   - `vc_id` 攜帶 `VC_ID_WIDTH` bits（最多 8 VC），與 credit-based flow control 搭配
@@ -181,7 +179,7 @@ Header 預設 `HEADER_WIDTH = 56 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `rou
 
 按 pipeline access timing 分組：
 - **Stage 1 (arbitration)**: `qos`, `axi_ch` — 第一級流水線就要做仲裁判決，置於 LSB 端方便 partial decode
-- **Stage 2 (routing)**: `src_id` / `dst_id` / `port_id` / `vc_id` / `route_par` — 路徑決策同時做 parity 檢查
+- **Stage 2 (routing)**: `src_id` / `dst_id` / `vc_id` / `route_par` — 路徑決策同時做 parity 檢查
 - **Stage 3 (wormhole control)**: `last` / `rob_req` / `rob_idx` — 路徑鎖控與 response 重排
 - **Reserved**: `rsvd_commtype` / `multicast` — future extensions，置於 MSB 端方便 future bump 不影響既有 bit position
 - **ECC (last)**: `flit_ecc` — 必須在所有其他欄位 settled 後才能算出 syndrome，置於 MSB 端最後
@@ -223,18 +221,7 @@ Router 依據 `axi_ch` 判定 flit 所屬之 Request 或 Response network。
 
 XY routing 依據 dst_id 的 x/y 座標進行路由決策。src_id 用於 response 回程路由及 error handling 來源識別。src_id 置於 dst_id 前方的理由見 Section 2.3。
 
-#### 2.2.4 Port ID (`PORT_ID_WIDTH` = 2 bits)
-
-獨立於 node ID，指定目標 Router 的 local port：
-
-| Value | Port | Typical Usage |
-|-------|------|---------------|
-| 0 | Port 0 | CPU / Processor |
-| 1 | Port 1 | DMA Engine |
-| 2 | Port 2 | Memory Controller |
-| 3 | Port 3 | Accelerator |
-
-Request 時指定目標 local port；response 時 NI 填入原始 requester 的 `port_id`。
+每個 tile 對應一個 chimney (NI)，`(x, y)` 為其唯一識別。tile 內若有多個 IP（CPU + DMA + memory controller + accelerator 等），由 NI 上游 AXI crossbar mux 到單一 NI 接口；不同 IP 的識別由 AXI ID 區分，不在 flit header 出現。此模型對齊 FlooNoC 的 single-chimney-per-tile 慣例（per AMD pg313 NMU/NSU 設計亦同）。
 
 #### 2.2.5 Flit Control: last (`LAST_WIDTH` = 1 bit)
 
@@ -267,7 +254,7 @@ VC 用途：請求/回應分離避免 deadlock、traffic class 隔離、QoS 分�
 
 Always-on even parity over routing-critical fields：
 
-- `src_id` (8 bits) + `dst_id` (8 bits) + `port_id` (2 bits) = 18 bits
+- `src_id` (8 bits) + `dst_id` (8 bits) = 16 bits
 - NMU 在 flit 注入時計算
 - **每一跳 router 在 stage 2 routing 階段重新計算並比對**，不一致則丟棄 flit + 觸發 fatal error report（見 §3.6）
 
@@ -289,7 +276,7 @@ Whole-flit SECDED syndrome。範圍：覆蓋 `header[HEADER_WIDTH-FLIT_ECC_WIDTH
 - **Pass-through**: routers 不檢查 `flit_ecc`（router fabric 只檢 `route_par`）
 - **Check**: NSU/NMU 在 ingress 收到 flit 時重算對比。single-bit error 自動校正。double-bit error 觸發 fatal error report
 
-**SECDED Hamming bound 約束**: `2^(FLIT_ECC_WIDTH-1) ≥ FLIT_DATA_WIDTH + FLIT_ECC_WIDTH + 1`。Default 配置：`FLIT_DATA_WIDTH = 46 + 352 = 398`，需要 `FLIT_ECC_WIDTH ≥ 10`（`2^9 = 512 ≥ 409` ✓）。Integrator 若擴 HEADER 或 PAYLOAD 至 ≥ 502 bit，需把 `FLIT_ECC_WIDTH` 從 10 升到 11。
+**SECDED Hamming bound 約束**: `2^(FLIT_ECC_WIDTH-1) ≥ FLIT_DATA_WIDTH + FLIT_ECC_WIDTH + 1`。Default 配置：`FLIT_DATA_WIDTH = 44 + 352 = 396`，需要 `FLIT_ECC_WIDTH ≥ 10`（`2^9 = 512 ≥ 407` ✓）。Integrator 若擴 HEADER 或 PAYLOAD 至 ≥ 502 bit，需把 `FLIT_ECC_WIDTH` 從 10 升到 11。
 
 詳見 §3.6 ECC Design。
 
@@ -298,26 +285,26 @@ Whole-flit SECDED syndrome。範圍：覆蓋 `header[HEADER_WIDTH-FLIT_ECC_WIDTH
 #### Valid/Ready Mode (No-VC; `vc_id` 槽位 reserved)
 
 ```
-55              46 45                 38 37 36 35     31 30 29 28 27 25 24 23 22       15 14        7 6  4 3   0
-┌─────────────────┬─────────────────────┬─────┬─────────┬──┬──┬──┬─────┬─────┬──────────┬──────────┬─────┬─────┐
-│   flit_ecc      │     multicast       │rsvd_│ rob_idx │rb│ls│rp│vc_id│port │  dst_id  │  src_id  │ axi │ qos │
-│      10b        │       8b            │comm │   5b    │req│  │  │ 3b  │id 2b│    8b    │    8b    │ch 3b│  4b │
-│ (SECDED over    │   (reserved)        │type │         │1b│1b│1b│(rsvd│     │          │          │     │     │
-│  header[45:0]+  │                     │ 2b  │         │  │  │  │ in  │     │          │          │     │     │
-│  payload)       │                     │     │         │  │  │  │ VR) │     │          │          │     │     │
-└─────────────────┴─────────────────────┴─────┴─────────┴──┴──┴──┴─────┴─────┴──────────┴──────────┴─────┴─────┘
+53              44 43                 36 35 34 33     29 28 27 26 25  23 22       15 14        7 6  4 3   0
+┌─────────────────┬─────────────────────┬─────┬─────────┬──┬──┬──┬─────┬──────────┬──────────┬─────┬─────┐
+│   flit_ecc      │     multicast       │rsvd_│ rob_idx │rb│ls│rp│vc_id│  dst_id  │  src_id  │ axi │ qos │
+│      10b        │       8b            │comm │   5b    │req│  │  │ 3b  │    8b    │    8b    │ch 3b│  4b │
+│ (SECDED over    │   (reserved)        │type │         │1b│1b│1b│(rsvd│          │          │     │     │
+│  header[43:0]+  │                     │ 2b  │         │  │  │  │ in  │          │          │     │     │
+│  payload)       │                     │     │         │  │  │  │ VR) │          │          │     │     │
+└─────────────────┴─────────────────────┴─────┴─────────┴──┴──┴──┴─────┴──────────┴──────────┴─────┴─────┘
 ```
 （其中 `rb` = rob_req, `ls` = last, `rp` = route_par）
 
 #### Credit-Based Mode (With-VC; `vc_id` 攜帶 VC 索引)
 
 ```
-55              46 45                 38 37 36 35     31 30 29 28 27 25 24 23 22       15 14        7 6  4 3   0
-┌─────────────────┬─────────────────────┬─────┬─────────┬──┬──┬──┬─────┬─────┬──────────┬──────────┬─────┬─────┐
-│   flit_ecc      │     multicast       │rsvd_│ rob_idx │rb│ls│rp│vc_id│port │  dst_id  │  src_id  │ axi │ qos │
-│      10b        │       8b            │comm │   5b    │req│  │  │ 3b  │id 2b│    8b    │    8b    │ch 3b│  4b │
-│                 │                     │ 2b  │         │1b│1b│1b│ ✓✓ │     │          │          │     │     │
-└─────────────────┴─────────────────────┴─────┴─────────┴──┴──┴──┴─────┴─────┴──────────┴──────────┴─────┴─────┘
+53              44 43                 36 35 34 33     29 28 27 26 25  23 22       15 14        7 6  4 3   0
+┌─────────────────┬─────────────────────┬─────┬─────────┬──┬──┬──┬─────┬──────────┬──────────┬─────┬─────┐
+│   flit_ecc      │     multicast       │rsvd_│ rob_idx │rb│ls│rp│vc_id│  dst_id  │  src_id  │ axi │ qos │
+│      10b        │       8b            │comm │   5b    │req│  │  │ 3b  │    8b    │    8b    │ch 3b│  4b │
+│                 │                     │ 2b  │         │1b│1b│1b│ ✓✓ │          │          │     │     │
+└─────────────────┴─────────────────────┴─────┴─────────┴──┴──┴──┴─────┴──────────┴──────────┴─────┴─────┘
 ```
 
 兩 mode 唯一差異：`vc_id` 槽位語意。
@@ -325,7 +312,7 @@ Whole-flit SECDED syndrome。範圍：覆蓋 `header[HEADER_WIDTH-FLIT_ECC_WIDTH
 - VR mode：`vc_id` 槽位作為 reserved
 - CB mode：`vc_id` 攜帶 VC 索引
 
-其他 bit position 完全相同。Wire-level 寬度 = `LINK_WIDTH = HEADER_WIDTH + PAYLOAD_WIDTH + 2 = 410 bits`。
+其他 bit position 完全相同。Wire-level 寬度 = `LINK_WIDTH = HEADER_WIDTH + PAYLOAD_WIDTH + 2 = 408 bits`。
 
 ---
 
@@ -419,7 +406,7 @@ W 與 R channel 採用相同欄位排列慣例：control fields → data → res
 
 | Property | Value |
 |----------|-------|
-| Coverage | `src_id` (8b) + `dst_id` (8b) + `port_id` (2b) = 18 bits routing-critical fields |
+| Coverage | `src_id` (8b) + `dst_id` (8b) = 16 bits routing-critical fields |
 | Generated by | Source NI (NMU on request, NSU on response) |
 | Checked by | **每一跳 router** — fatal error if mismatch |
 | End-to-end check | NMU/NSU 也會重算驗證 |
@@ -431,7 +418,7 @@ W 與 R channel 採用相同欄位排列慣例：control fields → data → res
 | Property | Value (default) |
 |----------|-----------------|
 | Width | `FLIT_ECC_WIDTH = 10 bits` (parameter) |
-| Coverage | `header[HEADER_WIDTH-FLIT_ECC_WIDTH-1:0]` + `payload` = `FLIT_DATA_WIDTH = 398 bits` |
+| Coverage | `header[HEADER_WIDTH-FLIT_ECC_WIDTH-1:0]` + `payload` = `FLIT_DATA_WIDTH = 396 bits` |
 | Generated by | Source NI on flit egress |
 | Checked by | **僅 destination NI**（router fabric 不檢查 `flit_ecc`，per AMD §Data Integrity） |
 | Detection | 1-bit correct, 2-bit detect (SECDED) |
@@ -464,11 +451,11 @@ Generate                  Check              Check             Check          Ch
 
 | Channel | Network | Actual Payload | Padding | Flit Total |
 |---------|---------|---------------|---------|------------|
-| AW | REQ | 108 | 244 | 408 |
-| W | REQ | 297 (last+user+data+strb) | 55 (rsvd) | 408 |
-| AR | REQ | 108 | 244 | 408 |
-| B | RSP | 20 (id+resp+user+rsvd_mc_status) | 44 | 408 |
-| R | RSP | 275 (last+id+resp+user+data) | 77 | 408 |
+| AW | REQ | 108 | 244 | 406 |
+| W | REQ | 297 (last+user+data+strb) | 55 (rsvd) | 406 |
+| AR | REQ | 108 | 244 | 406 |
+| B | RSP | 20 (id+resp+user+rsvd_mc_status) | 44 | 406 |
+| R | RSP | 275 (last+id+resp+user+data) | 77 | 406 |
 
 **Effective utilization**（非 reserved 欄位佔 `PAYLOAD_WIDTH` 比例，預設值。ECC 已從 payload 移到 header，故 utilization 數字下修）：
 
@@ -484,10 +471,10 @@ Generate                  Check              Check             Check          Ch
 
 v0.4.0 vs v0.3.0 比較：
 
-- Header 從 48 → 56 bits（+16.7% header overhead）
+- Header 從 48 → 54 bits（+12.5% header overhead）
 - ECC 不再佔 payload（從 32-bit `wecc`/`recc` 移到 10-bit header `flit_ecc`）
 - W utilization 從 93.5% → 84.4%。註：v0.3.0 把 `wecc` 算進 effective bits（329/352），v0.4.0 因 ECC 已移出 payload，effective 只算 `last+user+data+strb`（297/352）。實際 data bandwidth 不變（W 維持 297 bit data）。
-- Burst total wire bytes：18×400 = 900 bytes → 18×408 = 918 bytes，+2% wire overhead，換取更乾淨的 ECC 抽象與 future-extension 預留
+- Burst total wire bytes：18×400 = 900 bytes → 18×406 ≈ 913 bytes，+1.4% wire overhead，換取更乾淨的 ECC 抽象與 future-extension 預留
 
 ---
 
@@ -506,12 +493,12 @@ Request link 與 Response link 結構對稱，差異僅在 flit data 欄位名�
 | flit | `[FLIT_WIDTH+1:2]` | `FLIT_WIDTH` | Flit data (req or rsp) |
 | | | **`LINK_WIDTH`** | |
 
-預設 `LINK_WIDTH = 410` bits。
+預設 `LINK_WIDTH = 408` bits。
 
 - v0.3.0 為 402 bits
-- Header 從 48→56 bit 淨增加 8 bit (加 route_par(1) + flit_ecc(10), 回收 v0.3.0 上方 3-bit `rsvd`)
-- Flit 從 400→408 bit
-- 加 valid + ready 2 bit 後共 410 bit
+- Header 從 48→54 bit 淨增加 6 bit (加 route_par(1) + flit_ecc(10), 回收 v0.3.0 上方 3-bit `rsvd`、移除 pre-(δ) `port_id` 2-bit)
+- Flit 從 400→406 bit
+- 加 valid + ready 2 bit 後共 408 bit
 
 兩 mode (VR / CB) 的 physical link 寬度相同。`vc_id` 槽位語意差異不影響 wire width。
 
@@ -521,7 +508,7 @@ Request link 與 Response link 結構對稱，差異僅在 flit data 欄位名�
 |---------|------------------|-------------------|
 | VC identification | Signal-level per-VC valid/ready arrays | Header `vc_id` field shared physical link |
 | Wires per link | `NUM_VC × LINK_WIDTH` | `LINK_WIDTH` (shared) |
-| Wire count (NUM_VC=4, default) | 1,640 wires/dir | 410 wires/dir |
+| Wire count (NUM_VC=4, default) | 1,632 wires/dir | 408 wires/dir |
 | Header overhead | 0 bits | `VC_ID_WIDTH` = 3 bits (allocated as explicit field, see §2.1) |
 | Arbitration | Per-VC at receiver | Muxed at sender |
 
@@ -580,9 +567,10 @@ ASIC 實作推薦 Credit-Based mode — wire count 不隨 VC 數增長，適合�
   - Single-flit packet（AW, AR, B）恆為 `last=1`；multi-flit（W, R）僅末尾設 `last=1`
   - 支援 AXI read data interleaving：不同 `rid` 的 R packet 可在 packet boundary 交錯傳輸
 
-- **Multi-port Addressing** — `port_id` (`PORT_ID_WIDTH`)
-  - 每 Router 最多 `2^PORT_ID_WIDTH` 個 local ports（預設 4：CPU / DMA / MemCtrl / Accelerator）
-  - Response 時填入原始 requester 的 `port_id` 確保回程正確
+- **Single-Chimney-Per-Tile Model** — single NI per `(x, y)` 對應
+  - 每 tile 一個 chimney (NI)，由 `(x, y)` 唯一識別
+  - 多 IP 共享 tile 的場景由 NI 上游 AXI crossbar mux 到單一 NI；不同 IP 由 AXI ID 區分，不在 flit header 出現
+  - 對齊 FlooNoC 與 AMD pg313 NMU/NSU 慣例
 
 - **QoS Arbitration** — `qos` (`QOS_WIDTH`)
   - `2^QOS_WIDTH` 級優先級（預設 16：0=Best Effort, 15=Real-time Critical）
@@ -602,14 +590,14 @@ ASIC 實作推薦 Credit-Based mode — wire count 不隨 VC 數增長，適合�
   - 典型 burst（awlen=15）整體 padding waste 約 8%
 
 - **Two-Layer Data Integrity** — `flit_ecc` (`FLIT_ECC_WIDTH`), `route_par` (`ROUTE_PAR_WIDTH`)
-  - **Layer 1 routing protection**: 1-bit even parity over (`src_id` + `dst_id` + `port_id`); checked at every router hop; fatal interrupt on mismatch
+  - **Layer 1 routing protection**: 1-bit even parity over (`src_id` + `dst_id`); checked at every router hop; fatal interrupt on mismatch
   - **Layer 2 end-to-end SECDED**: whole-flit syndrome covering header (excluding `flit_ecc` itself) + payload; 1-bit correct + 2-bit detect; checked at NMU/NSU endpoint only (router fabric pass-through)
   - 保護範圍：Source NI generate → Router check route_par each hop / pass-through flit_ecc → Dest NI check flit_ecc
   - `FLIT_ECC_WIDTH` parameter 化以支援不同 flit size 的 SECDED bound（`2^(FLIT_ECC_WIDTH-1) ≥ FLIT_DATA_WIDTH + FLIT_ECC_WIDTH + 1`）
 
 - **Dual Physical Network** — Req/Rsp link (`LINK_WIDTH` each)
   - 獨立 full-duplex link，消除 Req-Rsp circular dependency（protocol deadlock avoidance）
-  - 每方向每 cycle `AXI_DATA_WIDTH/8` bytes（預設 32），Req/Rsp 對稱且 flit 寬度統一（預設 408b）
+  - 每方向每 cycle `AXI_DATA_WIDTH/8` bytes（預設 32），Req/Rsp 對稱且 flit 寬度統一（預設 406b）
 
 - **Reserved for Future Extension** — `rsvd_commtype` (`RSVD_COMMTYPE_WIDTH`), `multicast` (`MULTICAST_WIDTH`), `rsvd_mc_status` (`RSVD_MC_STATUS_WIDTH`), W/R/B `*_rsvd`
   - Header 預留 10 bits（commtype 2 + multicast 8）、B payload 預留 2 bits（mc_status）供未來通訊類型 / multicast 擴展使用

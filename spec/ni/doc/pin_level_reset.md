@@ -4,7 +4,7 @@ The NI has **two reset signals** corresponding to its two clock domains. Per-wir
 
 **Reset signals:**
 - `arst_ni` (AXI side, sync to `aclk_i`, active LOW); covers all `axi_*_i`, `axi_*_o`, and `csr_*` wires
-- `noc_rst_ni` (NoC side, sync to `noc_clk_i`, active LOW); covers all `noc_*` wires plus sideband (`id_i`, `route_table_i`)
+- `noc_rst_ni` (NoC side, sync to `noc_clk_i`, active LOW). Covers all `noc_*` wires plus sideband (`id_i`)
 - **Minimum assertion duration**: 16 cycles of the corresponding clock
 - **Synchronicity**: async assertion / sync deassertion to the corresponding clock
 
@@ -165,9 +165,7 @@ All `valid`/`ready`/`flit` are per-VC arrays of width `NUM_VC` (default 1).
 
 | Signal | Value during reset | Notes |
 |--------|--------------------|-------|
-| id_i | as driven by integrator | strap-style, expected stable |
-| port_id_i | as driven by integrator | strap-style, expected stable; selects router LOCAL port index |
-| route_table_i | as driven by integrator | strap-style, expected stable when USE_ID_TABLE=1 |
+| id_i | as driven by integrator | strap-style, expected stable. Per-NI unique node ID (XY coordinate) |
 
 ### Interrupt output — AXI domain (arst_ni)
 

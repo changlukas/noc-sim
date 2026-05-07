@@ -2,7 +2,7 @@
 
 **Protocols:**
 - AXI side: AXI4 (ARM IHI 0022)
-- NoC side: custom flit-based packet protocol. Flit width `FLIT_WIDTH` bits (default 408 in v0.4.0). Header `HEADER_WIDTH` bits (default 56 in v0.4.0). See `02_flit.md` in noc-sim source repo for flit format details.
+- NoC side: custom flit-based packet protocol. Flit width `FLIT_WIDTH` bits (default 406 in v0.4.0). Header `HEADER_WIDTH` bits (default 54 in v0.4.0). See `02_flit.md` in noc-sim source repo for flit format details.
 - CSR side: AXI4-Lite (subset of AXI4) for software-visible configuration and monitoring registers.
 
 **Role:** Both manager and subordinate. NMU (Network Manager Unit) acts as AXI subordinate on the host side (receives AXI requests from local master) and initiates flits on the NoC. NSU (Network Subordinate Unit) receives flits from the NoC and acts as AXI manager on the host side (drives AXI requests to local slave).
@@ -218,9 +218,11 @@ A dedicated AXI4-Lite subordinate port for software access to NMU/NSU CSR file. 
 
 | Signal | Direction | Width | Reset value | Notes |
 |--------|-----------|-------|-------------|-------|
-| `id_i` | input | X_WIDTH+Y_WIDTH (default 8) | §Sideband row 1 | This NI's Node ID. Strap-style. Sampled in noc_clk domain. |
-| `port_id_i` | input | PORT_ID_WIDTH (default 2) | §Sideband row 2 | This NI's local-port index at its attached router (0..3 for default 4-LOCAL-port router). Strap-style. Sampled in noc_clk domain. Used by NMU to populate request flit `port_id` (per `protocol_rules.md` `NOC_FLIT_HDR_PORT_ID_VALID`). Used by NSU to identify response routing back to originating NMU's port. Modifying after `noc_rst_ni` deassertion is undefined. |
-| `route_table_i` | input | NUM_SAM_RULES × sizeof(sam_rule_t) | §Sideband row 3 | Routing table. Only valid when `USE_ID_TABLE=1`. Strap-style. Modifying after `noc_rst_ni` deassertion is undefined. For runtime route reconfiguration use the CSR path with quiesce-then-modify discipline. |
+| `id_i` | input | X_WIDTH+Y_WIDTH (default 8) | §Sideband row 1 | This NI's Node ID (XY coordinate of the tile). Per-NI unique. Strap-style. Sampled in noc_clk domain. Modifying after `noc_rst_ni` deassertion is undefined. Aligns with FlooNoC `floo_axi_chimney.sv` `id_i` input. |
+
+SAM rule table (`Sam`) is **not** a wire-level signal. It is a compile-time parameter (see §Parameters) — aligns with FlooNoC `Sam` parameter convention. All NIs in the system share the same `Sam` content. Runtime SAM updates are done via CSR + quiesce flow (per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW`).
+
+Single-chimney-per-tile model: each tile (`(x, y)` coordinate) has exactly one NI. Tiles with multiple IPs (CPU + DMA + memory controller + accelerator) mux them through an upstream AXI crossbar before reaching the NI; per-IP identification is by AXI ID, not by any flit-header field.
 
 ### Interrupt output
 
@@ -269,7 +271,7 @@ Coverage:
 |--------|-----------|-------------|
 | `aclk_i` | input | AXI side clock; samples all `axi_*_i`, `axi_*_o`, `csr_*` on rising edge |
 | `arst_ni` | input | AXI side active-low reset; async assertion / sync deassertion to `aclk_i`; hold ≥ 16 `aclk_i` cycles |
-| `noc_clk_i` | input | NoC fabric clock; samples all `noc_*`, `id_i`, `route_table_i` on rising edge |
+| `noc_clk_i` | input | NoC fabric clock. Samples all `noc_*` and `id_i` on rising edge |
 | `noc_rst_ni` | input | NoC side active-low reset; async assertion / sync deassertion to `noc_clk_i`; hold ≥ 16 `noc_clk_i` cycles |
 
 NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔ NoC at the boundary inside both NMU and NSU. Cross-domain signals never propagate combinationally.
@@ -299,17 +301,17 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `XY_ADDR_OFFSET_X` | int | 32 | 0 ≤ x ≤ ADDR_WIDTH-X_WIDTH | X coordinate bit offset in AXI address |
 | `XY_ADDR_OFFSET_Y` | int | 36 | 0 ≤ x ≤ ADDR_WIDTH-Y_WIDTH | Y coordinate bit offset |
 | `NUM_SAM_RULES` | int | 0 | 0 ≤ x ≤ 64 | SAM rules count when USE_ID_TABLE=1 |
-| `FLIT_WIDTH` | derived | 408 | derived = HEADER_WIDTH + PAYLOAD_WIDTH | Flit total width (header + payload). v0.4.0 default 408. v0.3.0 was 400. |
-| `HEADER_WIDTH` | derived | 56 | derived = Σ(all header field params) | Flit header width. v0.4.0 default 56. v0.3.0 was 48. Header grew net +8 bits in v0.4.0: added `route_par` (1 bit) + `flit_ecc` (10 bit), recovered 3 bits from v0.3.0 MSB `rsvd` (which was always 0 in CB mode after `vc_id`). |
+| `FLIT_WIDTH` | derived | 406 | derived = HEADER_WIDTH + PAYLOAD_WIDTH | Flit total width (header + payload). v0.4.0 default 406. v0.3.0 was 400. |
+| `HEADER_WIDTH` | derived | 54 | derived = Σ(all header field params) | Flit header width. v0.4.0 default 54. v0.3.0 was 48. Header grew net +6 bits in v0.4.0: added `route_par` (1 bit) + `flit_ecc` (10 bit). Recovered 3 bits from v0.3.0 MSB `rsvd` (which was always 0 in CB mode after `vc_id`) and 2 bits from the `port_id` slot (removed in A4.5 single-chimney-per-tile alignment). |
 | `PAYLOAD_WIDTH` | derived | 352 | derived = max(per-channel payload widths) | Per-channel payload max (W/R = 352, AW/AR = 108, B = 64). v0.3.0 `wecc/recc` removed. Equivalent bits become `*_rsvd` future-extension. |
 | `FLIT_ECC_WIDTH` | int | 10 | satisfy `2^(x-1) ≥ FLIT_DATA_WIDTH + x + 1` SECDED Hamming bound (conservative form, +1 margin over canonical `≥ k+p`) | Whole-flit SECDED syndrome width. Default 10 covers FLIT_DATA_WIDTH up to 501 (`2^9=512 ≥ 501+10+1=512`). Integrator must bump to 11 when FLIT_DATA_WIDTH ≥ 502. |
-| `ROUTE_PAR_WIDTH` | int | 1 | fixed = 1 | Routing parity width. Always 1-bit even parity over `src_id`+`dst_id`+`port_id`. |
+| `ROUTE_PAR_WIDTH` | int | 1 | fixed = 1 | Routing parity width. Always 1-bit even parity over `src_id`+`dst_id`. |
 | `X_WIDTH` | int | 4 | 2 ≤ x ≤ 8 | Mesh X coordinate width |
 | `Y_WIDTH` | int | 4 | 2 ≤ x ≤ 8 | Mesh Y coordinate width |
 | `BW_COUNTER_WIDTH` | int | 24 | 16 ≤ x ≤ 32 | QoS bandwidth counter width |
 | `URGENCY_WIDTH` | int | 3 | 2 ≤ x ≤ 4 | Regulator urgency level width |
 | `ERR_COUNTER_WIDTH` | int | 16 | 8 ≤ x ≤ 32 | Error counter width |
-| `PORT_ID_WIDTH` | int | 2 | 1 ≤ x ≤ 4 | Width of `port_id` strap and flit-header field (router has up to 2^x LOCAL ports per node) |
+| `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | array length = `NUM_SAM_RULES` | SAM rule table. **Compile-time parameter, not a port** — aligns with FlooNoC `floo_axi_chimney.sv` `Sam` parameter. All NIs share the same content. Each `sam_rule_t` carries `{match, mask, dst_id}`. Used when `USE_ID_TABLE=1` (`SourceRouting`/`IDRouting`). Runtime updates via CSR + quiesce flow per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW` |
 | `MESH_COLS` | int | 4 | 1 ≤ x ≤ 2^X_WIDTH | Mesh column count; bounds `dst_id.x` for `NOC_FLIT_HDR_DST_ID_VALID` |
 | `MESH_ROWS` | int | 4 | 1 ≤ x ≤ 2^Y_WIDTH | Mesh row count; bounds `dst_id.y` |
 | `FLOW_CONTROL` | enum {`VALID_READY`, `CREDIT_BASED`} | `VALID_READY` | — | NoC link flow-control mode. `VALID_READY`: standard valid/ready handshake (per `NOC_MST_VALID_STABLE` rule). `CREDIT_BASED`: per-VC credit accounting; sender holds a credit counter per VC, decrements on flit injection, replenished by `noc_*_credit_*` return signals (see Wire table additions). Mode is compile-time fixed; cannot be switched at runtime. |

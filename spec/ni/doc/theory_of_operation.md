@@ -78,9 +78,8 @@ Holds at minimum:
 
 | Field | Source | Used by |
 |-------|--------|---------|
-| `rob_idx` | request flit header | Response flit header (per `NOC_FLIT_RSP_*_INHERIT`) |
+| `rob_idx` | request flit header | Response flit header (per `NOC_FLIT_RSP_ROB_IDX_INHERIT`) |
 | `src_id` | request flit header | Response flit header (routes back to NMU's node) |
-| `port_id` | request flit header | Response flit header (per `NOC_FLIT_RSP_PORT_ID_INHERIT`) |
 | `qos` | request flit header | Response flit header (per `NOC_FLIT_RSP_QOS_INHERIT`) |
 | `axi_id` | request flit payload | Response flit payload (B/R `bid`/`rid`) |
 
@@ -169,10 +168,10 @@ For default parameters (`X_WIDTH=4`, `Y_WIDTH=4`, `XY_ADDR_OFFSET_X=32`, `XY_ADD
 
 If extracted `(dst_x, dst_y)` falls outside `[0, MESH_COLS) × [0, MESH_ROWS)`, NMU asserts a protocol violation per `protocol_rules.md` `NOC_FLIT_HDR_DST_ID_VALID`. The flit is not injected; the originating RoB entry remains pending and ultimately surfaces an AXI SLVERR via the outstanding-transaction timeout path (per `AXI4_MST_TIMEOUT_SLVERR`). This avoids a separate immediate-SLVERR mechanism — the timeout path is the single AXI-rresp-generating contract for all fabric-side fault categories.
 
-**SourceRouting** + **IDRouting** (alternatives selectable via `ROUTE_ALGO`): use a SAM (System Address Map) table indexed by `route_table_i` strap signal.
+**SourceRouting** + **IDRouting** (alternatives selectable via `ROUTE_ALGO`): use a SAM (System Address Map) rule table. The table is the compile-time parameter `Sam` (per `signal_interface.md` §Parameters), aligning with FlooNoC `floo_axi_chimney.sv` `Sam` parameter convention. All NIs in the system share the same `Sam` content.
 
 ```
-for each rule in route_table_i (NUM_SAM_RULES rules total):
+for each rule in Sam (NUM_SAM_RULES rules total):
   if (awaddr & rule.mask) == rule.match:
     dst_id = rule.dst_id
     local_addr = awaddr & ~rule.mask  // bits outside the mask are local
@@ -180,9 +179,7 @@ for each rule in route_table_i (NUM_SAM_RULES rules total):
 no rule matches → NMU returns DECERR
 ```
 
-The `sam_rule_t` type contains `match`, `mask`, and `dst_id` fields per rule. Rule order matters: first-match wins.
-
-**`USE_ID_TABLE=1`** with XYRouting: the `port_id` for the destination NI also comes from the SAM table (rule extension); without the table, NMU uses `port_id_i` only for its own injection identity, and the destination's `port_id` defaults to 0.
+The `sam_rule_t` type contains `match`, `mask`, and `dst_id` fields per rule. Rule order matters: first-match wins. Runtime updates to `Sam` go through the CSR + quiesce flow (per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW`); the parameter itself is fixed at instantiation.
 
 #### QoS Generator
 
@@ -356,17 +353,17 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 
 **Layer 1 — `route_par` (per-hop routing parity)**:
 
-- 1-bit even parity computed over the routing-only header fields `{src_id, dst_id, port_id}`.
-- Generated at NMU/NSU injection; checked at every router output port and at every NI sink.
+- 1-bit even parity computed over the routing-only header fields `{src_id, dst_id}` (16 bits at default).
+- Generated at NMU/NSU injection. Checked at every router output port and at every NI sink.
 - Purpose: catch single-bit corruption on routing fields *before* a flit is misrouted. A failed `route_par` triggers an immediate error report at the router (or sink) where the check fails.
-- Computed as `^{src_id, dst_id, port_id}` (XOR-reduction; `route_par` is set so that the total parity over the four fields is even).
+- Computed as `^{src_id, dst_id}` (XOR-reduction). `route_par` is set so that the total parity over `{src_id, dst_id, route_par}` is 0 (even).
 - Cost: 1 bit per flit, 1 XOR-tree per router output and per NI sink. Far cheaper than rerunning the whole-flit SECDED at every router.
 
 **Layer 2 — `flit_ecc` (whole-flit SECDED at endpoint)**:
 
 - SECDED Hamming code computed over the entire flit (header + payload, *excluding* the `flit_ecc` field itself).
-- Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits for the 398-bit protected payload at default parameters).
-- SECDED bound: `FLIT_ECC_WIDTH` (= `p`) must satisfy `2^(p-1) ≥ FLIT_DATA_WIDTH + p + 1`, where `FLIT_DATA_WIDTH = FLIT_WIDTH - FLIT_ECC_WIDTH` is the protected-bits count. Derivation: Hamming SEC over `k` data bits requires `r` check bits with `2^r ≥ k + r + 1`; SECDED adds one overall-parity bit, so total `p = r + 1`. The canonical bound is therefore `2^(p-1) ≥ k + p`. The spec uses the slightly stricter `2^(p-1) ≥ k + p + 1` form (one bit of margin against future flit-format growth that may push `k` to the boundary). Default config: `FLIT_DATA_WIDTH = 398, p = 10` → `2^9 = 512 ≥ 398 + 10 + 1 = 409` ✓. This formula is shared verbatim with `signal_interface.md` §Parameter constraints and `docs/design/02_flit.md` §3.6.
+- Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits for the 396-bit protected payload at default parameters).
+- SECDED bound: `FLIT_ECC_WIDTH` (= `p`) must satisfy `2^(p-1) ≥ FLIT_DATA_WIDTH + p + 1`, where `FLIT_DATA_WIDTH = FLIT_WIDTH - FLIT_ECC_WIDTH` is the protected-bits count. Derivation: Hamming SEC over `k` data bits requires `r` check bits with `2^r ≥ k + r + 1`. SECDED adds one overall-parity bit, so total `p = r + 1`. The canonical bound is therefore `2^(p-1) ≥ k + p`. The spec uses the slightly stricter `2^(p-1) ≥ k + p + 1` form (one bit of margin against future flit-format growth that may push `k` to the boundary). Default config: `FLIT_DATA_WIDTH = 396, p = 10` → `2^9 = 512 ≥ 396 + 10 + 1 = 407` ✓. This formula is shared verbatim with `signal_interface.md` §Parameter constraints and `docs/design/02_flit.md` §3.6.
 - Generated at NMU/NSU injection (whole flit). Checked **only at the destination NI sink** — NOT at intermediate routers. Routers neither check nor regenerate `flit_ecc`; they trust it end-to-end.
 - Purpose: catch single-bit (correct) and double-bit (detect) errors anywhere in the flit (header or payload) over the entire NoC traversal.
 
@@ -389,7 +386,7 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 - The drop event increments `ROUTE_PAR_ERR_CNT`, sets `ERR_STATUS[2] route_par_err`, captures `LAST_ERR_INFO` if no prior un-cleared error is sticky, and asserts `irq_o` if `IRQ_ENABLE[2]` is set.
 - The originating NMU's outstanding-transaction tracker eventually times out (default 10 000 `aclk_i` cycles) and signals SLVERR back to the AXI master via `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR`. This timeout-driven SLVERR is decoupled from the fabric ECC mechanism — the same path also handles slave-never-responds and other flit-loss scenarios. Software disambiguates the cause via `LAST_ERR_INFO` + counters.
 
-**Why two layers, not one whole-flit SECDED applied per-hop?** Per-hop SECDED would require every router to decode + re-encode 408 bits, adding ~1 cycle per hop and ~10× the gate count of `route_par` parity. The two-layer scheme matches AMD pg313 NPS guidance: routing-critical fields get cheap per-hop check, full payload integrity is end-to-end.
+**Why two layers, not one whole-flit SECDED applied per-hop?** Per-hop SECDED would require every router to decode + re-encode 406 bits, adding ~1 cycle per hop and ~10× the gate count of `route_par` parity. The two-layer scheme matches AMD pg313 NPS guidance: routing-critical fields get cheap per-hop check, full payload integrity is end-to-end.
 
 **Out of scope** (not v0.4.0):
 
@@ -472,13 +469,13 @@ Sub-modules:
 - **Upsize (NMU) / Downsize (NSU)**: data-width converter at the AXI ↔ flit boundary; degenerates to pass-through when `DATA_WIDTH == FLIT_PAYLOAD_WIDTH`. See §NMU Upsize / NSU Downsize.
 - **FlitPack / FlitUnpack**: combinational logic + 1 pipeline register; `CUT_AX` / `CUT_RSP` parameters add spill register.
 - **RoB Storage (NMU)**: flop-based array of `MAX_TXNS` entries, each carrying state, axi_id, rob_idx, response data accumulator. Per-AXI-ID linked-list tracking with `prev_dest` adaptive bypass (NormalRoB variant).
-- **MetaBuffer (NSU)**: per-outstanding-NSU-request snapshot of request-flit metadata (rob_idx, src_id, port_id, qos, axi_id). FlooNoC `floo_meta_buffer.sv` aligned.
+- **MetaBuffer (NSU)**: per-outstanding-NSU-request snapshot of request-flit metadata (rob_idx, src_id, qos, axi_id). FlooNoC `floo_meta_buffer.sv` aligned.
 - **R Response Buffer (NSU)**: `NSU_R_BUFFER_DEPTH`-entry elastic buffer that decouples local AXI slave R timing from NoC injection back-pressure.
 - **Exclusive Monitor (NSU)**: `EXCLUSIVE_MONITOR_DEPTH`-entry table tracking pending Exclusive read reservations per AXI4 §A7.
 - **VC Arbiter / Demux**: per-NMU/NSU multi-VC scheduling block. Hybrid R/W × QoS policy (fixed at design time per `protocol_rules.md` `NOC_VC_ARBITER_HYBRID_RW_QOS`).
 - **Async FIFOs**: gray-counter pointer + 2FF synchronizer; depth synthesis-time parameter.
 - **InjectionBuffer (NMU)**: small per-VC FIFO (`NMU_BUFFER_DEPTH` from `NocConfig`, default 2 in BFM). RTL uses the same default (2 entries) per BFM-RTL behavioral equivalence; *Reviewer assumption: confirm if RTL choice differs.*
-- **FlitECC Gen / Check**: whole-flit SECDED Hamming over flit (header + payload) plus 1-bit `route_par` parity over `{src_id, dst_id, port_id}`. Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits). See §ECC.
+- **FlitECC Gen / Check**: whole-flit SECDED Hamming over flit (header + payload) plus 1-bit `route_par` parity over `{src_id, dst_id}`. Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits). See §ECC.
 
 ### RTL pipeline / timing
 
@@ -512,7 +509,7 @@ Cross-domain partial reset → CDC FIFO is in inconsistent state; integrator mus
 | `apply_axi_*` / `expect_axi_*` / `expect_noc_*` | **Test-only.** RTL is the DUT (in some scenarios) or the AXI responder (in others); it has no method API. |
 | `get_observed_*` lists | **Test-only.** RTL has no observation buffers; observation happens via the BFM (in passive mode) or external scoreboards. |
 | CSR-mapped QoS / Probe / Error registers | **Identical between BFM and RTL.** Software accesses the same CSR memory map (per `registers.md`). The BFM models the same CSR file; RTL implements it as actual flop-based registers. |
-| ECC generation / validation | **Identical at the wire level.** Same two-layer scheme: whole-flit SECDED Hamming on `flit_ecc` field (parameterised `FLIT_ECC_WIDTH`, default 10 bits) checked end-to-end at the destination NI; 1-bit `route_par` even-parity over `{src_id, dst_id, port_id}` checked per-hop at every router. |
+| ECC generation / validation | **Identical at the wire level.** Same two-layer scheme: whole-flit SECDED Hamming on `flit_ecc` field (parameterised `FLIT_ECC_WIDTH`, default 10 bits) checked end-to-end at the destination NI; 1-bit `route_par` even-parity over `{src_id, dst_id}` checked per-hop at every router. |
 | RoB ordering | **Identical at the wire level.** Same per-AXI-ID order release; same back-pressure on `awready` / `arready` when full. |
 
 ### RTL implementation notes

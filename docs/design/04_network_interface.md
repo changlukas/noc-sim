@@ -15,6 +15,8 @@ AXI Slave  ◄──                ◄──
 
 NI 透過 Router 的 Eject port 連接，使用與 Router-Router **完全相同**的 port interface。每個 NI 包含 NMU（Network Master Unit）與 NSU（Network Slave Unit），可獨立啟用/停用。
 
+**Single-chimney-per-tile model**: 每個 tile (`(x, y)` 座標) 對應**一個** NI。tile 內若有多個 IP（CPU + DMA + memory controller + accelerator 等），由 NI 上游的 AXI crossbar 將它們 mux 到單一 NI 接口；不同 IP 的識別由 AXI ID 區分，不在 flit header 出現。此模型對齊 FlooNoC 與 AMD pg313 NMU/NSU 慣例。AXI crossbar 屬於系統整合層，不在 NI scope。
+
 > NI / Router 完整 block diagram 見 [Router 規格 §1.2](03_router.md)。
 
 ### 1.3 命名慣例
@@ -122,6 +124,7 @@ NI 使用 config struct 組織參數，由上層 instantiation 時傳入。
 | `XY_ADDR_OFFSET_X` | int | 32 | `ROUTE_CFG.XY_ADDR_OFFSET_X` | X coordinate 在 address 中的 bit offset |
 | `XY_ADDR_OFFSET_Y` | int | 36 | `ROUTE_CFG.XY_ADDR_OFFSET_Y` | Y coordinate 在 address 中的 bit offset |
 | `NUM_SAM_RULES` | int | 0 | `ROUTE_CFG.NUM_SAM_RULES` | SAM rules 數量（USE_ID_TABLE 時） |
+| `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | `ROUTE_CFG.Sam` | SAM rules 表本身。**Compile-time parameter**，不是 input port。對齊 FlooNoC 慣例（`floo_axi_chimney.sv` 中 `Sam` 也是 parameter）。系統內所有 NI 共用同一份 SAM 規則表。Runtime 修改需透過 CSR + quiesce flow（per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW`） |
 
 ### 3.4 RoB Type 列舉（`rob_type_e`）
 
@@ -189,7 +192,7 @@ NI 採用 **雙 clock domain** 設計，AXI 側與 NoC 側獨立非同步。NI �
 
 **CDC implementation**: NI 內部 async FIFO 採 gray-counter pointer + 2FF synchronizer。FIFO depth 計算方式：max(aclk_i, noc_clk_i) × max round-trip latency × safety factor。具體實作見 NI 內部 sub-module 文件。
 
-**Control inputs (`id_i`, `route_table_i`)**: 視為 strap-style 配置，於 `noc_rst_ni` deassert 後保持穩定；硬體 sample 於 `noc_clk_i` domain。Runtime 修改 `route_table_i` 不被支援（如需 reconfigurability，應透過 CSR 提供，並由軟體保證 quiesce 後修改）。
+**Control inputs (`id_i`)**: 視為 strap-style 配置，於 `noc_rst_ni` deassert 後保持穩定。硬體 sample 於 `noc_clk_i` domain。`id_i` 為 per-NI 唯一識別 (對齊 FlooNoC `floo_axi_chimney.sv` 的 `id_i` input)。SAM 規則表 (`Sam`) 為 compile-time parameter (per §3.3)，不是 input port。Runtime 修改 SAM 需透過 CSR + quiesce flow 配合。
 
 ### 4.1 AXI Side Ports
 
@@ -226,8 +229,9 @@ AXI side port 定義：
 
 | Signal | Type | Description |
 |--------|------|-------------|
-| `id_i` | `id_t` | 本 NI 的 Node ID（XY 座標） |
-| `route_table_i` | `route_t[]` | Routing table（SourceRouting 時使用） |
+| `id_i` | `id_t` | 本 NI 的 Node ID（XY 座標）。Per-NI 唯一；strap-style，於 `noc_rst_ni` deassert 後保持穩定。對齊 FlooNoC `floo_axi_chimney.sv` 的 `id_i` input |
+
+SAM 規則表 (`Sam`) 為 compile-time parameter (per §3.3)，不是 input port — 對齊 FlooNoC `Sam` parameter 慣例。系統內所有 NI 共用同一份 SAM 規則表。
 
 ### 4.4 AXI Channel → NoC Link 映射
 
