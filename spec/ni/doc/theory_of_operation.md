@@ -118,6 +118,8 @@ Coherency scope: this is a *single-NI* exclusive monitor. Multi-master coherency
 
 Reset behavior: all entries cleared on `arst_ni`.
 
+Software-visible monitor state and clear knob: the `EXCLUSIVE_MONITOR_STATUS` CSR (per `registers.md`) reports the live `occupancy` field — the number of currently-pending Exclusive read reservations (range 0..`EXCLUSIVE_MONITOR_DEPTH`). Software invalidates all pending entries by writing `1` to `EXCLUSIVE_MONITOR_CTRL.clear_all` (W1 self-clearing trigger); the typical use case is OS bookkeeping when a process is killed mid-Exclusive. Race semantics for clear vs concurrent NSU events are formalised in `protocol_rules.md` `NI_CFG_EXCLUSIVE_CLEAR_RACE`; live-occupancy accuracy contract in `NI_CFG_EXCLUSIVE_OCCUPANCY_ACCURACY`.
+
 ### Sequencer
 
 Single sequencer instance (logically domain-spanning). Translates Transaction API calls into AXI Driver + NoC Driver activity, coordinated through:
@@ -142,6 +144,8 @@ Per-domain config state; both software-writable (via CSR) and testbench-API-writ
 | `TXN_PROBE_EN`, `TXN_THRESHOLD_*` | aclk | CSR | reset to default (0) | preserved |
 | `ERR_STATUS[3:0]` (RW1C), `ERR_COUNT`, `ECC_UNCORR_ERR_CNT`, `ECC_CORR_ERR_CNT`, `ROUTE_PAR_ERR_CNT`, `AXI_PARITY_ERR_CNT`, `LAST_ERR_INFO` | aclk | hardware writes; CSR write-1-to-clear by software (counters auto-clear with their paired `ERR_STATUS` bit; `ECC_CORR_ERR_CNT` has no clear path — saturating cumulative) | reset to 0 | preserved |
 | `IRQ_ENABLE[3:0]` | aclk | CSR | reset to 0 (all masked) | preserved |
+| `QUIESCE_CTRL.quiesce_req` | aclk | CSR | reset to 0 (resume) | preserved |
+| `EXCLUSIVE_MONITOR_CTRL.clear_all` (one-shot W1 trigger) | aclk | CSR | self-clear; effectively 0 | reset to 0 |
 | `bfm_mode` (ACTIVE/PASSIVE) | testbench-only | `set_bfm_mode` | preserved | preserved |
 | `set_response_delay_axi`, `set_response_delay_noc` | testbench-only | knob | preserved | reset to (0, 0) |
 | ECC error injection one-shot, response fault one-shot | testbench-only | knob | reset | reset |
@@ -300,11 +304,7 @@ Out of scope (D8 alternative considered + rejected):
 
 The NoC links carry `NUM_VC` parallel virtual channels (parameter, range 1..8, default 1). NMU and NSU treat each VC as an independent flow with its own credit pool and per-VC FIFO inside the NI.
 
-**NMU output (multi-VC arbiter)**: when `NUM_VC > 1`, NMU has `NUM_VC` per-VC injection FIFOs feeding one shared `noc_*_o` link. The arbiter picks one VC per cycle for output:
-
-- **Hybrid R/W × QoS policy** (default): VCs are partitioned into "request" and "response" subsets at instantiation time (see §VC partition policy below). Within each subset, weighted round-robin with QoS-tier weighting. Across subsets, alternating to prevent request/response starvation.
-- **Pure round-robin** (alternative, runtime-selectable via `VC_ARB_MODE` CSR): all VCs treated equally.
-- **Strict-priority** (alternative, for debug/eval only): VC[0] highest priority, VC[NUM_VC-1] lowest.
+**NMU output (multi-VC arbiter)**: when `NUM_VC > 1`, NMU has `NUM_VC` per-VC injection FIFOs feeding one shared `noc_*_o` link. The arbiter picks one VC per cycle using **Hybrid R/W × QoS policy**: VCs are partitioned into "request" and "response" subsets at instantiation time (see §VC partition policy below). Within each subset, weighted round-robin with QoS-tier weighting. Across subsets, alternating to prevent request/response starvation. Policy is fixed; no runtime selection. Per `protocol_rules.md` `NOC_VC_ARBITER_HYBRID_RW_QOS`.
 
 **NMU input (per-VC demux)**: the incoming `noc_*_i` link carries the destination VC index in the flit header (`vc_id` field). NMU demuxes flits to one of `NUM_VC` per-VC reception FIFOs.
 
@@ -328,6 +328,27 @@ NMU AXI ingress → NoC injection: aclk-domain producer, noc_clk-domain consumer
 NMU NoC ingress → AXI egress: mirror direction.
 
 NSU has analogous FIFOs in the inverse data flow.
+
+#### Software quiesce flow
+
+Software can request NMU-side quiesce before runtime reconfiguration that requires no in-flight transactions on the NMU path (e.g., software view of routing-table reconfig coordinated through CSR). Two CSRs implement this:
+
+- `QUIESCE_CTRL.quiesce_req` (RW): software sets `1` to enter quiesce; clears to `0` to resume.
+- `QUIESCE_STATUS.quiesce_idle` (RO): asserts when `(QUIESCE_CTRL.quiesce_req=1) AND (PENDING_R_COUNT=0) AND (PENDING_W_COUNT=0)`. All three terms are `aclk_i`-domain (no CDC).
+
+While `quiesce_req=1`:
+
+- NMU stops accepting new AW/AR by holding `axi_awready_o = axi_arready_o = 0`.
+- In-flight outstanding transactions continue to drain through normal response paths.
+- NSU is **NOT** quiesced — NSU continues to service inbound NoC `noc_req_i` requests and drive the local AXI subordinate. This NI's quiesce is NMU-only, scoped to the NMU-reconfig use case. Full-NI drain (e.g., for power-down) would require an additional NSU-side quiesce knob; intentionally out of scope for v0.4.0.
+
+Software polling protocol: write `quiesce_req=1`, poll `quiesce_idle` until set, do reconfig, write `quiesce_req=0` to resume. Polling timeout SHOULD be ≥ `MAX_TXNS × TXN_TIMEOUT` `aclk_i` cycles to accommodate worst-case drain (every outstanding transaction times out one-by-one at `TXN_TIMEOUT` cycles per `AXI4_MST_TIMEOUT_SLVERR`). Default = `32 × 10 000` = 320 000 cycles ≈ 320 µs at 1 GHz.
+
+`PENDING_R_COUNT` / `PENDING_W_COUNT` (RO CSRs per `registers.md`) increment on AXI master-side AW/AR handshake completion at `axi_*_i`, decrement on B / R-with-`rlast` handshake completion at `axi_*_i`. Both counters are `aclk_i`-domain native (no CDC); the AXI-edge increment/decrement contract is the software-observable definition (formalised in `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY`). Counter width = `ceil(log2(MAX_TXNS+1))` per direction; saturation at `MAX_TXNS` is impossible by construction (NMU back-pressures `awready`/`arready` before exceed).
+
+Reset interaction: `arst_ni` clears `quiesce_req` and the outstanding tracker → `quiesce_idle` returns to 0 because both quiesce_req and the (now-zero) PENDING counts make the AND-condition's `quiesce_req=1` term false. Any in-progress quiesce is therefore abandoned by reset.
+
+Formalised in `protocol_rules.md` `NI_CFG_QUIESCE_FLOW` (steady-state contract) and `NI_CFG_QUIESCE_LIVENESS` (drain upper bound).
 
 #### ECC
 
@@ -454,7 +475,7 @@ Sub-modules:
 - **MetaBuffer (NSU)**: per-outstanding-NSU-request snapshot of request-flit metadata (rob_idx, src_id, port_id, qos, axi_id). FlooNoC `floo_meta_buffer.sv` aligned.
 - **R Response Buffer (NSU)**: `NSU_R_BUFFER_DEPTH`-entry elastic buffer that decouples local AXI slave R timing from NoC injection back-pressure.
 - **Exclusive Monitor (NSU)**: `EXCLUSIVE_MONITOR_DEPTH`-entry table tracking pending Exclusive read reservations per AXI4 §A7.
-- **VC Arbiter / Demux**: per-NMU/NSU multi-VC scheduling block. Hybrid R/W × QoS policy by default; runtime-selectable via `VC_ARB_MODE` CSR.
+- **VC Arbiter / Demux**: per-NMU/NSU multi-VC scheduling block. Hybrid R/W × QoS policy (fixed at design time per `protocol_rules.md` `NOC_VC_ARBITER_HYBRID_RW_QOS`).
 - **Async FIFOs**: gray-counter pointer + 2FF synchronizer; depth synthesis-time parameter.
 - **InjectionBuffer (NMU)**: small per-VC FIFO (`NMU_BUFFER_DEPTH` from `NocConfig`, default 2 in BFM). RTL uses the same default (2 entries) per BFM-RTL behavioral equivalence; *Reviewer assumption: confirm if RTL choice differs.*
 - **FlitECC Gen / Check**: whole-flit SECDED Hamming over flit (header + payload) plus 1-bit `route_par` parity over `{src_id, dst_id, port_id}`. Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits). See §ECC.

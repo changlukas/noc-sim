@@ -12,7 +12,7 @@
 Every method is documented under §Method details with five sub-sections (Signature, Preconditions, Side effects, Return value, Error modes) **except** in three compact-form cases below, where omitted sub-sections are inherited or implied:
 
 - **Mirror methods** (documented as "Mirror of X for reads/responses", e.g. `apply_axi_read`, `apply_burst_read`, `expect_axi_read`, `expect_axi_burst_read`, `expect_axi_burst_write`, `expect_noc_response`, `csr_read`, `set_response_delay_noc`): inherit all five sub-sections of the named parent method `X`, with the obvious channel/direction substitution. Where return value or error modes diverge, the mirror entry states the difference explicitly.
-- **CSR wrappers** (`set_qos_mode`, `set_qos_fixed_value`, `set_bandwidth_limit`, `set_saturation_threshold`, `set_low_priority`, `set_bandwidth_budget`, `set_base_qos`, `set_urgency_step`, `set_socket_qos`, `set_pkt_probe`, `set_txn_probe`, `clear_err_status`): inherit all five sub-sections of `csr_write` with the offset and field encoding fixed per the wrapper signature. The "Equivalent channel API decomposition" of `csr_write` applies transitively.
+- **CSR wrappers** (`set_qos_mode`, `set_qos_fixed_value`, `set_bandwidth_limit`, `set_saturation_threshold`, `set_low_priority`, `set_bandwidth_budget`, `set_base_qos`, `set_urgency_step`, `set_socket_qos`, `set_pkt_probe`, `set_txn_probe`, `clear_err_status`, `set_quiesce`, `clear_exclusive_monitor`, `get_pending_r_count`, `get_pending_w_count`, `get_quiesce_idle`, `get_exclusive_monitor_occupancy`): inherit all five sub-sections of `csr_write` (or `csr_read` for `get_*` wrappers) with the offset and field encoding fixed per the wrapper signature. The "Equivalent channel API decomposition" of `csr_write` / `csr_read` applies transitively.
 - **Observation getters and one-shot knobs** (`get_observed_axi_writes`, `get_observed_axi_reads`, `get_observed_noc_flits`, `set_inject_ecc_error`, `set_response_fault`, `set_bfm_mode`, `reset_state`): document Signature + Side effects explicitly. Implied: Preconditions = `BFM instantiated, post-reset`; Return value = `void` (or as stated in Signature); Error modes = `none` (illegal arguments trigger immediate assertion, not a return enum). Equivalent channel API decomposition is `(none — Transaction-API-only)`.
 
 ## When the Transaction API is insufficient
@@ -54,6 +54,12 @@ Transaction API covers ~95% of typical tests (single-master single-slave, RoB or
 | Configuration | `set_pkt_probe(en, mode, window_size)` | Wrappers for Packet Probe configuration. |
 | Configuration | `set_txn_probe(en, threshold[])` | Wrappers for Transaction Probe configuration. |
 | Configuration | `clear_err_status(bit_mask)` | Wrapper: csr_write(0x100, bit_mask) — RW1C clear of selected bits. |
+| Configuration | `get_pending_r_count() -> uint` | Wrapper: csr_read(0x130) → `pending_r_count` field. NMU live outstanding-read count. |
+| Configuration | `get_pending_w_count() -> uint` | Wrapper: csr_read(0x134) → `pending_w_count` field. NMU live outstanding-write count. |
+| Configuration | `set_quiesce(req)` | Wrapper: csr_write(0x13C, req ? 1 : 0). NMU-only quiesce request. |
+| Configuration | `get_quiesce_idle() -> bool` | Wrapper: csr_read(0x140) → bit[0]. Polled by software during quiesce flow. |
+| Configuration | `clear_exclusive_monitor()` | Wrapper: csr_write(0x144, 1). Self-clearing W1 trigger; invalidates all NSU Exclusive Monitor entries. |
+| Configuration | `get_exclusive_monitor_occupancy() -> uint` | Wrapper: csr_read(0x148) → `occupancy` field. NSU Exclusive Monitor live count. |
 | **BFM-internal knobs (test-only; no CSR)** ||
 | Configuration | `set_response_delay_axi(min, max)` | Synthetic delay on AXI response (BFM-only; RTL has fixed timing). |
 | Configuration | `set_response_delay_noc(min, max)` | Synthetic delay on NoC injection. |

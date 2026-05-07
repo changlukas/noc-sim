@@ -15,6 +15,7 @@ Network Interface (NI) bridges an AXI4 manager / subordinate pair to the NoC pac
 - **Error and ECC monitoring CSRs** — ERR_STATUS (RW1C), ERR_COUNT, ECC_UNCORR_ERR_CNT, LAST_ERR_INFO.
 - **Dual clock domain** with built-in CDC — AXI side (`aclk_i`) and NoC fabric side (`noc_clk_i`) run independently asynchronous; NI internal async FIFOs handle pointer crossing.
 - **Configurable enable** — NMU-only / NSU-only / both, via `EN_MGR_PORT` / `EN_SBR_PORT` parameters.
+- **CSR-mapped runtime control** — software-initiated NMU quiesce (drain before reconfig), NSU Exclusive Monitor clear, and live outstanding-transaction count visibility.
 
 ## Description
 

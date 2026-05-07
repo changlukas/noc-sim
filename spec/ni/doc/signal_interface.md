@@ -123,7 +123,7 @@ All `valid` / `ready` / `flit` signals are **per-VC arrays** of width `NUM_VC` (
 
 When `NUM_VC=1` the array degenerates to a single line per signal (synthesis flattens).
 
-When `NUM_VC>1` each VC has independent valid/ready/flit. NMU at injection side selects the VC for each flit per `theory_of_operation.md` §"NMU VC selection policy" (Hybrid R/W × QoS mapping).
+When `NUM_VC>1` each VC has independent valid/ready/flit. NMU at injection side selects the VC for each flit per `theory_of_operation.md` §"VC scheduling" (Hybrid R/W × QoS policy, fixed at design time).
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Optional | BFM supports | Notes |
 |--------|-----------|-------|--------|-------------|-------------|----------|--------------|-------|

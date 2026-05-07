@@ -5,6 +5,7 @@ NI exposes a software-visible CSR file via the dedicated AXI4-Lite subordinate p
 - **Sub-word access**: not supported. CSR writes with `csr_wstrb_i != 0xF` (any byte deasserted) trigger `csr_bresp_o = SLVERR` and the write is dropped. Reads ignore byte strobes (full 32-bit word returned).
 - **Unmapped offset**: any `csr_awaddr_i` or `csr_araddr_i` that doesn't match a register in §Register map below triggers `csr_bresp_o = DECERR` (writes) or `csr_rresp_o = DECERR` (reads). Unmapped reads return `csr_rdata_o = 0x0`.
 - **Misaligned access**: `csr_awaddr_i[1:0] != 0` or `csr_araddr_i[1:0] != 0` triggers `SLVERR`.
+- **Write-only (WO) registers**: in this spec, `WO` means the register accepts writes; reads return `csr_rdata_o = 0x0` with `csr_rresp_o = OKAY` (NOT DECERR). Used for self-clearing trigger registers where there is no persistent read-back state. The unmapped-offset DECERR rule applies only to offsets not listed in §Register map; mapped WO offsets are reachable on reads with the read-as-zero contract.
 
 CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-conflict-fix); see provenance comments inline.
 
@@ -59,6 +60,13 @@ CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-con
 | 0x118 | `ECC_CORR_ERR_CNT` | RO | 0x0 | flit_ecc 單位元（已修正）錯誤累計 (saturating, `ERR_COUNTER_WIDTH` bits). Pure informational; cumulative since hardware reset; no software clear path. Software polls and tracks deltas for health-monitoring purposes. |
 | 0x11C | `ROUTE_PAR_ERR_CNT` | RO | 0x0 | route_par mismatch (flit dropped at router/sink) 累計 (saturating). Cleared via `ERR_STATUS[2]` write-1 (route_par_err). |
 | 0x120 | `AXI_PARITY_ERR_CNT` | RO | 0x0 | AXI host-side parity mismatch 累計 (saturating); covers both NMU-side `axi_*_i_par_i` checks and NSU-side `axi_rdata_par_i` checks. Cleared via `ERR_STATUS[3]` write-1 (axi_parity_err). |
+| **Runtime control** |||||
+| 0x130 | `PENDING_R_COUNT` | RO | 0x0 | NMU live outstanding read transactions. Width = `ceil(log2(MAX_TXNS+1))`. AXI-edge-defined per `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY`. See §PENDING_R_COUNT. |
+| 0x134 | `PENDING_W_COUNT` | RO | 0x0 | NMU live outstanding write transactions. Same width formula and contract as `PENDING_R_COUNT`. See §PENDING_W_COUNT. |
+| 0x13C | `QUIESCE_CTRL` | RW | 0x0 | NMU-side quiesce request bit. See §QUIESCE_CTRL. |
+| 0x140 | `QUIESCE_STATUS` | RO | 0x0 | NMU quiesce drain-complete indicator. See §QUIESCE_STATUS. |
+| 0x144 | `EXCLUSIVE_MONITOR_CTRL` | WO | 0x0 | NSU Exclusive Monitor `clear_all` trigger (W1 self-clearing). See §EXCLUSIVE_MONITOR_CTRL. |
+| 0x148 | `EXCLUSIVE_MONITOR_STATUS` | RO | 0x0 | NSU Exclusive Monitor live `occupancy` count. See §EXCLUSIVE_MONITOR_STATUS. |
 
 ## §BASE_QOS Register (0x018) Field Layout
 
@@ -125,6 +133,60 @@ Field widths derived from defaults: `AXI_ID_WIDTH=8`, `X_WIDTH+Y_WIDTH=8`. For n
 
 **Update semantics** (resolved per ToO §ECC and protocol_rules.md `NI_CFG_LAST_ERR_INFO_CAPTURE`): **sticky** — first error since last clear is captured; subsequent errors do not overwrite until software clears via any `ERR_STATUS[0..3]` RW1C write. All four ERR_STATUS event classes (`ecc_uncorr_err`, `timeout_err`, `route_par_err`, `axi_parity_err`) qualify as "an error" for sticky-capture purposes — whichever fires first wins until cleared. Rationale: prevents losing the original triggering error while system processes subsequent cascaded errors. Test in dv/plan TP19.
 
+## §PENDING_R_COUNT Register (0x130) Field Layout
+
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `pending_r_count` | [n-1:0] | `n = ceil(log2(MAX_TXNS+1))` | NMU live outstanding read count. Increments on AR handshake completion at `axi_*_i`; decrements on R-with-`rlast` handshake completion at `axi_*_i`. `aclk_i`-native (no CDC). Range 0..`MAX_TXNS`. | 0x0 |
+| Reserved | [31:n] | 32-n | — | 0x0 |
+
+For default `MAX_TXNS=32` → `n=6`, field at `[5:0]`, Reserved at `[31:6]`. Field width adjusts at compile time when `MAX_TXNS` changes — always within 32-bit register, no `_HI` companion register needed.
+
+Per `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY`. Used by software during quiesce flow (poll `QUIESCE_STATUS.quiesce_idle` which depends on this counter; per ToO §"Software quiesce flow").
+
+## §PENDING_W_COUNT Register (0x134) Field Layout
+
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `pending_w_count` | [n-1:0] | `n = ceil(log2(MAX_TXNS+1))` | NMU live outstanding write count. Increments on AW handshake completion at `axi_*_i`; decrements on B handshake completion at `axi_*_i`. `aclk_i`-native (no CDC). Range 0..`MAX_TXNS`. | 0x0 |
+| Reserved | [31:n] | 32-n | — | 0x0 |
+
+Same width formula and design rationale as `PENDING_R_COUNT`. Per `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY`.
+
+## §QUIESCE_CTRL Register (0x13C) Field Layout
+
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `quiesce_req` | [0] | 1 | Software requests NMU quiesce. `1`: NMU stops accepting new AW/AR (holds `axi_awready_o = axi_arready_o = 0`); existing in-flight transactions drain via normal response paths. `0`: resume normal NMU operation. NSU continues servicing inbound NoC requests in either state — quiesce is NMU-only by design. | 0x0 |
+| Reserved | [31:1] | 31 | — | 0x0 |
+
+Per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW` and ToO §"Software quiesce flow".
+
+## §QUIESCE_STATUS Register (0x140) Field Layout
+
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `quiesce_idle` | [0] | 1 | Asserts when `(QUIESCE_CTRL.quiesce_req=1) AND (PENDING_R_COUNT=0) AND (PENDING_W_COUNT=0)`. Combinational over `aclk_i`-domain values (no CDC). Software polls this bit after writing `quiesce_req=1` to know when reconfig is safe. Polling timeout SHOULD be ≥ `MAX_TXNS × TXN_TIMEOUT` aclk cycles per `protocol_rules.md` `NI_CFG_QUIESCE_LIVENESS` (default 320 000 cycles). Deasserts on the cycle `quiesce_req` is cleared (because the AND-condition's first term goes false). | 0x0 |
+| Reserved | [31:1] | 31 | — | 0x0 |
+
+## §EXCLUSIVE_MONITOR_CTRL Register (0x144) Field Layout
+
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `clear_all` | [0] | 1 | Write-1 self-clearing trigger: invalidates all pending NSU Exclusive Monitor entries on the `aclk_i` edge that completes the CSR write handshake (the "clear epoch" boundary). The bit self-clears on the next `aclk_i` edge after the clear epoch (latency = 1 cycle); subsequent reads return 0. Use case: OS bookkeeping when a process is killed mid-Exclusive. Race semantics with concurrent NSU events formalised in `protocol_rules.md` `NI_CFG_EXCLUSIVE_CLEAR_RACE`. | 0x0 |
+| Reserved | [31:1] | 31 | — | 0x0 |
+
+Access mode WO: writes to bit `[0]` accepted; writes to Reserved bits `[31:1]` silently ignored per §Reserved-bit policy. Reads return 0 always.
+
+## §EXCLUSIVE_MONITOR_STATUS Register (0x148) Field Layout
+
+| Field | Bit | Width | Description | Reset |
+|-------|-----|-------|-------------|-------|
+| `occupancy` | [m-1:0] | `m = ceil(log2(EXCLUSIVE_MONITOR_DEPTH+1))` | Live count of NSU Exclusive Monitor entries currently in `ALLOCATED` state. Range 0..`EXCLUSIVE_MONITOR_DEPTH`. `aclk_i`-native (same domain as the monitor itself). | 0x0 |
+| Reserved | [31:m] | 32-m | — | 0x0 |
+
+For default `EXCLUSIVE_MONITOR_DEPTH=8` → `m=4`, field at `[3:0]`, Reserved at `[31:4]`. Per `protocol_rules.md` `NI_CFG_EXCLUSIVE_OCCUPANCY_ACCURACY`.
+
 ## Counter saturation behavior
 
 <!-- source: 06_qos.md §4.4 -->
@@ -147,3 +209,6 @@ For NMU outstanding-transaction timeout → `ERR_STATUS[1]` triggering, see prot
 For AXI host-side parity check → `ERR_STATUS[3]` triggering, see protocol_rules.md `AXI4_MST_PARITY_CHECK` (NMU-side) and `AXI4_SLV_PARITY_CHECK` (NSU-side).
 For IRQ assertion behaviour, see protocol_rules.md `NI_IRQ_LEVEL`.
 For Probe counter update timing, see protocol_rules.md `NI_CFG_PROBE_PKT_BYTE_COUNT` and `NI_CFG_PROBE_TXN_LATENCY` for cycle-level update specification.
+For NMU outstanding-transaction count exposure (`PENDING_R_COUNT` / `PENDING_W_COUNT`), see [Theory of Operation §Software quiesce flow](./theory_of_operation.md#software-quiesce-flow) and protocol_rules.md `NI_CFG_PENDING_COUNT_ACCURACY`.
+For NMU quiesce flow (`QUIESCE_CTRL` / `QUIESCE_STATUS`), see [Theory of Operation §Software quiesce flow](./theory_of_operation.md#software-quiesce-flow) and protocol_rules.md `NI_CFG_QUIESCE_FLOW` / `NI_CFG_QUIESCE_LIVENESS`.
+For NSU Exclusive Monitor CSR clear / observability (`EXCLUSIVE_MONITOR_CTRL` / `EXCLUSIVE_MONITOR_STATUS`), see [Theory of Operation §NSU Exclusive Monitor](./theory_of_operation.md#nsu-exclusive-monitor-nsu-sub-block) and protocol_rules.md `NI_CFG_EXCLUSIVE_CLEAR_RACE` / `NI_CFG_EXCLUSIVE_OCCUPANCY_ACCURACY`.
