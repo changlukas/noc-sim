@@ -332,7 +332,7 @@ NSU has analogous FIFOs in the inverse data flow.
 
 #### Software quiesce flow
 
-Software can request NMU-side quiesce before runtime reconfiguration that requires no in-flight transactions on the NMU path (e.g., software view of routing-table reconfig coordinated through CSR). Two CSRs implement this:
+Software can request NMU-side quiesce before runtime reconfiguration that requires no in-flight transactions on the NMU path. Two CSRs implement this:
 
 - `QUIESCE_CTRL.quiesce_req` (RW): software sets `1` to enter quiesce; clears to `0` to resume.
 - `QUIESCE_STATUS.quiesce_idle` (RO): asserts when `(QUIESCE_CTRL.quiesce_req=1) AND (PENDING_R_COUNT=0) AND (PENDING_W_COUNT=0)`. All three terms are `aclk_i`-domain (no CDC).
