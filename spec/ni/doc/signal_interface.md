@@ -238,31 +238,40 @@ Per AMD §Data Integrity, AXI-side data and address parity is an integrator-tuna
 
 Coverage:
 - 1-bit even parity per byte of data (data parity)
-- 1-bit even parity per address word (address parity)
+- 1-bit even parity per byte of address (address parity, ADDR_WIDTH/8 bits per AxAddress)
+
+對齊 AMD pg313 §Parity verbatim：「1 bit per byte for Data」與「1 bit per byte for AxAddress」standard config。
 
 **AXI Manager port (axi_*_i) parity inputs (when `EN_MGR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------------|-------|
-| `axi_awaddr_par_i` | input | 1 | H | pos aclk | §AXI parity row 1 | Even parity over `axi_awaddr_i`. Sampled when `axi_awvalid_i=1`. |
-| `axi_araddr_par_i` | input | 1 | H | pos aclk | §AXI parity row 2 | Even parity over `axi_araddr_i`. Sampled when `axi_arvalid_i=1`. |
+| `axi_awaddr_par_i[ADDR_WIDTH/8-1:0]` | input | ADDR_WIDTH/8 | H | pos aclk | §AXI parity row 1 | Per-byte even parity over `axi_awaddr_i`. Sampled when `axi_awvalid_i=1`. |
+| `axi_araddr_par_i[ADDR_WIDTH/8-1:0]` | input | ADDR_WIDTH/8 | H | pos aclk | §AXI parity row 2 | Per-byte even parity over `axi_araddr_i`. Sampled when `axi_arvalid_i=1`. |
 | `axi_wdata_par_i[DATA_WIDTH/8-1:0]` | input | DATA_WIDTH/8 | H | pos aclk | §AXI parity row 3 | Per-byte even parity over `axi_wdata_i`. Sampled when `axi_wvalid_i=1`. |
+
+**AXI Manager port (axi_*_o) parity outputs (when `EN_MGR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
+
+| Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
+|--------|-----------|-------|--------|-------------|-------------|-------|
+| `axi_rdata_par_o[DATA_WIDTH/8-1:0]` | output | DATA_WIDTH/8 | H | pos aclk | §AXI parity row 8 | Per-byte even parity over `axi_rdata_o` (NMU-generated). NMU regenerates this **after** the `flit_ecc` check stage when converting the NoC packet back to AXI protocol — aligned with AMD pg313 §Parity: "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." |
 
 **AXI Subordinate port (axi_*_o) parity outputs (when `EN_SBR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------------|-------|
-| `axi_awaddr_par_o` | output | 1 | H | pos aclk | §AXI parity row 4 | Even parity over `axi_awaddr_o` (NSU-generated). |
-| `axi_araddr_par_o` | output | 1 | H | pos aclk | §AXI parity row 5 | Even parity over `axi_araddr_o` (NSU-generated). |
+| `axi_awaddr_par_o[ADDR_WIDTH/8-1:0]` | output | ADDR_WIDTH/8 | H | pos aclk | §AXI parity row 4 | Per-byte even parity over `axi_awaddr_o` (NSU-generated). |
+| `axi_araddr_par_o[ADDR_WIDTH/8-1:0]` | output | ADDR_WIDTH/8 | H | pos aclk | §AXI parity row 5 | Per-byte even parity over `axi_araddr_o` (NSU-generated). |
 | `axi_wdata_par_o[DATA_WIDTH/8-1:0]` | output | DATA_WIDTH/8 | H | pos aclk | §AXI parity row 6 | Per-byte even parity over `axi_wdata_o` (NSU-generated). |
 | `axi_rdata_par_i[DATA_WIDTH/8-1:0]` | input | DATA_WIDTH/8 | H | pos aclk | §AXI parity row 7 | Per-byte even parity over `axi_rdata_i` (from local slave). NSU verifies on R reception. |
 
 **Behaviour:**
 
-- NMU verifies `axi_*_i_par_i` on each AW/AR/W handshake. Mismatch logged to `ERR_STATUS[3] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_MST_PARITY_CHECK`); the transaction proceeds — no SLVERR injection at AXI boundary. Software observes via CSR / IRQ.
-- NSU generates `axi_*_o_par_o` from regenerated WSTRB-aligned data after upsize/downsize.
-- NSU verifies `axi_rdata_par_i` from local slave. Mismatch logged to `ERR_STATUS[3] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_SLV_PARITY_CHECK`); the R beat is forwarded to AXI master with `rresp=OKAY`. Same observability path.
-- Parity is verified at AXI boundary only. The protected AXI signal is propagated through NMU/NSU intermediates without re-checking. Once data is on the NoC, `flit_ecc` (whole-flit SECDED) takes over.
+- NMU verifies `axi_*_par_i` on each AW/AR/W handshake at the manager port. Mismatch logged to `ERR_STATUS[3] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_MST_PARITY_CHECK`). Transaction proceeds — no SLVERR injection at AXI boundary. Software observes via CSR / IRQ.
+- NMU **generates** `axi_rdata_par_o` per byte for R responses returning to master. Generation point: after the `flit_ecc` check stage at NMU (per AMD pg313 §Parity). Formalised in `protocol_rules.md` `AXI4_MST_PARITY_GEN_R`.
+- NSU generates `axi_*_par_o` per byte for AW/AR/W signals driven to local slave. Address parity regenerated when NMU/NSU modify the address (e.g., AddrTrans address-map lookup may change upper address bits — parity over those bytes is recomputed, lower bytes carried through).
+- NSU verifies `axi_rdata_par_i` from local slave. Mismatch logged to `ERR_STATUS[3] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_SLV_PARITY_CHECK`). R beat forwarded to AXI master with `rresp=OKAY`. Same observability path.
+- Parity is verified at AXI boundary only. Inside the NoC fabric, `flit_ecc` (whole-flit SECDED) takes over end-to-end protection.
 - Rationale for "log-only, no SLVERR": parity at AXI boundary detects local-wire / local-slave corruption, not fabric corruption. Per the (B)-philosophy ECC scheme (see ToO §ECC), the NI does not synthesise AXI rresp values from its own integrity checks — error visibility goes through CSR + IRQ, leaving the AXI rresp channel reserved for end-to-end (HBM/DDR-style) and timeout-driven SLVERR cases.
 
 ## Protocol clock and reset
@@ -305,7 +314,7 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `HEADER_WIDTH` | derived | 54 | derived = Σ(all header field params) | Flit header width. v0.4.0 default 54. v0.3.0 was 48. Header grew net +6 bits in v0.4.0: added `route_par` (1 bit) + `flit_ecc` (10 bit). Recovered 3 bits from v0.3.0 MSB `rsvd` (which was always 0 in CB mode after `vc_id`) and 2 bits from the `port_id` slot (removed in A4.5 single-chimney-per-tile alignment). |
 | `PAYLOAD_WIDTH` | derived | 352 | derived = max(per-channel payload widths) | Per-channel payload max (W/R = 352, AW/AR = 108, B = 64). v0.3.0 `wecc/recc` removed. Equivalent bits become `*_rsvd` future-extension. |
 | `FLIT_ECC_WIDTH` | int | 10 | satisfy `2^(x-1) ≥ FLIT_DATA_WIDTH + x + 1` SECDED Hamming bound (conservative form, +1 margin over canonical `≥ k+p`) | Whole-flit SECDED syndrome width. Default 10 covers FLIT_DATA_WIDTH up to 501 (`2^9=512 ≥ 501+10+1=512`). Integrator must bump to 11 when FLIT_DATA_WIDTH ≥ 502. |
-| `ROUTE_PAR_WIDTH` | int | 1 | fixed = 1 | Routing parity width. Always 1-bit even parity over `src_id`+`dst_id`. |
+| `ROUTE_PAR_WIDTH` | int | 1 | fixed = 1 | Routing parity width. Always 1-bit even parity over `{dst_id, last}` (9 bits coverage at default). Aligned with AMD pg313 §Parity: NPP packet (DST ID + LAST) protected by 1-bit even parity. |
 | `X_WIDTH` | int | 4 | 2 ≤ x ≤ 8 | Mesh X coordinate width |
 | `Y_WIDTH` | int | 4 | 2 ≤ x ≤ 8 | Mesh Y coordinate width |
 | `BW_COUNTER_WIDTH` | int | 24 | 16 ≤ x ≤ 32 | QoS bandwidth counter width |

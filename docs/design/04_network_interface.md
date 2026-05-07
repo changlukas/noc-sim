@@ -66,9 +66,9 @@ AXI Slave  ────►│  │  FlitPack ← ECC Gen ← AXI Response   │ 
 | AddrTrans | AXI address → dst_id + local_addr |
 | QoSGen | 產生 header qos 值（4 modes） |
 | FlitPack (AW/W/AR) | AXI request → flit |
-| ECC Gen | SECDED ECC 產生（W channel wdata） |
+| ECC Gen | Whole-flit SECDED syndrome 產生 + `route_par` 產生（每個 outgoing request flit）|
 | FlitUnpack (B/R) | Response flit → AXI B/R |
-| ECC Check | SECDED ECC 驗證（R channel rdata） |
+| ECC Check | Whole-flit SECDED 驗證 + `route_par` re-check（每個 incoming response flit；1-bit 自動校正、2-bit forward + log）|
 | RoB | Reorder Buffer，per-ID in-order release |
 | InjectionBuffer | 已打包 flit 的注入 FIFO |
 
@@ -77,11 +77,11 @@ AXI Slave  ────►│  │  FlitPack ← ECC Gen ← AXI Response   │ 
 | Sub-Module | 職責 |
 |------------|------|
 | FlitUnpack (AW/W/AR) | Request flit → AXI request |
-| ReqInfoStore | 暫存 request header（rob_idx, src_id, qos）供 response 配對 |
+| MetaBuffer | 暫存 request header（rob_idx, src_id, qos, axi_id）供 response 配對。FlooNoC `floo_meta_buffer.sv` 對齊命名（v0.3.0 曾稱 `ReqInfoStore`）|
 | W Reassembly | Multi-flit W burst 重組 |
-| ECC Check | SECDED ECC 驗證（W channel wdata） |
+| ECC Check | Whole-flit SECDED 驗證 + `route_par` re-check（每個 incoming request flit）|
 | FlitPack (B/R) | AXI response → flit |
-| ECC Gen | SECDED ECC 產生（R channel rdata） |
+| ECC Gen | Whole-flit SECDED syndrome 產生 + `route_par` 產生（每個 outgoing response flit）|
 
 ---
 
@@ -138,8 +138,8 @@ NI 使用 config struct 組織參數，由上層 instantiation 時傳入。
 
 | Parameter | Description | 來源 |
 |-----------|-------------|------|
-| `flit_t` | Flit data type（`FLIT_WIDTH` bits, 預設 400） | [Flit Format](02_flit.md) |
-| `hdr_t` | Flit header type（`HEADER_WIDTH` bits, 預設 48） | [Flit Format](02_flit.md) |
+| `flit_t` | Flit data type（`FLIT_WIDTH` bits, 預設 406） | [Flit Format](02_flit.md) |
+| `hdr_t` | Flit header type（`HEADER_WIDTH` bits, 預設 54） | [Flit Format](02_flit.md) |
 | `id_t` | Node ID type | `logic[ID_WIDTH-1:0]` |
 | `noc_req_t` | Request link type（valid + flit） | Req network |
 | `noc_rsp_t` | Response link type（valid + flit） | Rsp network |
@@ -274,19 +274,21 @@ SAM 規則表 (`Sam`) 為 compile-time parameter (per §3.3)，不是 input port
 
 ### FR-02: Flit Packing（AXI → Flit）
 
-**描述：** NMU 將 AXI request 打包為 flit（預設 400-bit），NSU 將 AXI response 打包為 flit。
+**描述：** NMU 將 AXI request 打包為 flit（預設 406-bit），NSU 將 AXI response 打包為 flit。
 
 **Payload 使用率（預設配置）：**
 
 | Channel | Network | Used (bits) | Padding (bits) | 主要欄位 |
 |---------|---------|-------------|----------------|---------|
-| AW | REQ | 108 | 244 | awid, awaddr, awlen, awsize, awburst, awcache, awprot, awuser |
-| W | REQ | 352 | 0 | wlast, wuser, wdata[256], wstrb[32], wecc[32] |
-| AR | REQ | 108 | 244 | arid, araddr, arlen, arsize, arburst, arcache, arprot, aruser |
-| B | RSP | 64 | 288 | bid, bresp, buser, ecc_fail |
-| R | RSP | 352 | 0 | rlast, rid, rresp, ruser, rdata[256], recc[32] |
+| AW | REQ | 108 | 244 | awid, awaddr, awlen, awsize, awburst, awcache, awprot, awregion, awuser |
+| W | REQ | 297 | 55 | wlast, wuser, wdata[256], wstrb[32] |
+| AR | REQ | 108 | 244 | arid, araddr, arlen, arsize, arburst, arcache, arprot, arregion, aruser |
+| B | RSP | 20 | 44 | bid, bresp, buser, rsvd_mc_status |
+| R | RSP | 275 | 77 | rlast, rid, rresp, ruser, rdata[256] |
 
-Header 預設 48 bits 的欄位來源（NMU request path）：`qos` ← QoSGen、`src_id` ← 本地座標、`dst_id` ← AddrTrans、`last` ← single-flit(AW/AR)=1 / W 末尾=1、`rob_idx` ← RoB allocate、`rsvd_commtype` ← 0。
+ECC 不再 per-channel 散布在 payload 中。改為 whole-flit SECDED 在 header `flit_ecc` 欄位（預設 10-bit syndrome 涵蓋 396 bits）。詳見 §FR-06 與 [Flit Format](02_flit.md) §3.6。
+
+Header 預設 54 bits 的欄位來源（NMU request path）：`qos` ← QoSGen、`src_id` ← 本地座標、`dst_id` ← AddrTrans、`last` ← single-flit(AW/AR)=1 / W 末尾=1、`rob_idx` ← RoB allocate、`route_par` ← XOR over `{dst_id, last}`、`flit_ecc` ← whole-flit SECDED syndrome、`rsvd_commtype` ← 0。
 
 Payload bit-level layout 詳見 [Flit Format](02_flit.md) Section 3。
 
@@ -345,34 +347,40 @@ FREE ──► ALLOCATED ──► RESPONSE_RECEIVED ──► READY_TO_RELEASE 
 
 ### FR-06: ECC Generate / Check
 
-**描述：** Source NI 產生 SECDED ECC，Destination NI 驗證。Router 為純透通，不檢查/修改 ECC。
+**描述：** Source NI 在 flit egress 產生 whole-flit SECDED ECC syndrome，Destination NI 在 flit ingress 驗證。Router fabric 為純透通，不檢查 / 不重算 ECC（per AMD pg313 §Data Integrity：「No ECC checking is performed in the switch fabric」）。
+
+對齊 AMD pg313 §Data Integrity verbatim：「In the packet domain, after chopping and conversion to the NoC packet format the NoC supports SECDED ECC across the entire flit.」
 
 **ECC 參數：**
 
 | Property | Value |
 |----------|-------|
-| Data granule | 64 bits |
-| ECC per granule | 8 bits (Hsiao SECDED) |
-| Granules per 256-bit data | 4 |
-| Total ECC width | 32 bits |
-| 1-bit error | Correctable（per granule） |
-| 2-bit error | Detectable（per granule） |
+| Scheme | Whole-flit SECDED (single Hamming syndrome over entire flit) |
+| Syndrome width | `FLIT_ECC_WIDTH` = 10 bits at default (in flit header `flit_ecc` field, MSB end) |
+| Coverage | `FLIT_DATA_WIDTH` = 396 bits at default = `HEADER_DATA_WIDTH` (44) + `PAYLOAD_WIDTH` (352)，不含 syndrome 自己 |
+| Hamming bound | `2^(FLIT_ECC_WIDTH-1) ≥ FLIT_DATA_WIDTH + FLIT_ECC_WIDTH + 1`（default：512 ≥ 407 ✓）|
+| 1-bit error | Correctable（whole-flit SEC） |
+| 2-bit error | Detectable（whole-flit DED） |
 
 **ECC 時機：**
 
-| NI | Channel | 動作 | 欄位 |
-|----|---------|------|------|
-| NMU | W (request) | Generate | payload wecc[32] |
-| NSU | W (request) | Check | payload wecc[32] |
-| NSU | R (response) | Generate | payload recc[32] |
-| NMU | R (response) | Check | payload recc[32] |
+| NI | Direction | 動作 | 欄位 |
+|----|-----------|------|------|
+| NMU | Request egress (AW/W/AR flit injection on `noc_req_o`) | Generate | header `flit_ecc` |
+| NSU | Request ingress (AW/W/AR flit reception on `noc_req_i`) | Check + correct | header `flit_ecc` |
+| NSU | Response egress (B/R flit injection on `noc_rsp_o`) | Generate | header `flit_ecc` |
+| NMU | Response ingress (B/R flit reception on `noc_rsp_i`) | Check + correct | header `flit_ecc` |
 
-**Error 處理：**
+**Error 處理（B-philosophy，per A3 wave 鎖定）：**
 
-| Result | W Channel (NSU) | R Channel (NMU) |
-|--------|-----------------|-----------------|
-| 1-bit corrected | 使用校正資料，log CSR | 使用校正資料，log CSR |
-| 2-bit uncorrectable | B response `ecc_fail=1`, `bresp=SLVERR` | `rresp=SLVERR`, log CSR |
+| Result | NMU side (R direction) | NSU side (W direction) |
+|--------|------------------------|------------------------|
+| 1-bit corrected | 使用校正資料，`ECC_CORR_ERR_CNT++`（saturating, no clear path）| 同左 |
+| 2-bit uncorrectable | **forward 損壞 flit 到 master，`rresp=OKAY`**（不合成 SLVERR），增 `ECC_UNCORR_ERR_CNT`、置 `ERR_STATUS[0]`、capture `LAST_ERR_INFO`、assert `irq_o` if `IRQ_ENABLE[0]=1` | 同左（`bresp=OKAY`）|
+
+對齊 AMD pg313 §Data Integrity：「Uncorrectable ECC errors result in a fatal interrupt」— 我們也是 interrupt，**不**合成 AXI rresp/bresp = SLVERR。Spec 內唯一合成 SLVERR 的 fabric 錯誤路徑是 `AXI4_MST_TIMEOUT_SLVERR`（NMU outstanding-transaction tracker timeout）。
+
+詳見 [Flit Format §3.6 ECC Design](02_flit.md#36-ecc-design-whole-flit-secded--route-parity)。
 
 ### FR-07: QoS Generation
 

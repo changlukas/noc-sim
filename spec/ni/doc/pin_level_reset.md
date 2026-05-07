@@ -198,16 +198,19 @@ When `FLOW_CONTROL = VALID_READY` (default), all credit signals and credit-init-
 ### Optional AXI parity signals — AXI domain (arst_ni)
 
 Conditional presence:
-- `axi_*_i_par_*` signals present only when `ENABLE_AXI_PARITY = true` AND `EN_MGR_PORT = 1`
-- `axi_*_o_par_*` signals present only when `ENABLE_AXI_PARITY = true` AND `EN_SBR_PORT = 1`
+- Manager-port parity signals (`axi_awaddr_par_i`, `axi_araddr_par_i`, `axi_wdata_par_i`, `axi_rdata_par_o`) present only when `ENABLE_AXI_PARITY = true` AND `EN_MGR_PORT = 1`
+- Subordinate-port parity signals (`axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o`, `axi_rdata_par_i`) present only when `ENABLE_AXI_PARITY = true` AND `EN_SBR_PORT = 1`
+
+All address and data parity signals are per-byte (1 bit per byte), aligned with AMD pg313 §Parity standard configuration.
 
 | Channel | Signal | Value during reset | Notes |
 |---------|--------|--------------------|-------|
-| AW_IN | axi_awaddr_par_i | as driven by DUT | Input. Requires `EN_MGR_PORT=1`. |
-| AR_IN | axi_araddr_par_i | as driven by DUT | Input. Requires `EN_MGR_PORT=1`. |
+| AW_IN | axi_awaddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
+| AR_IN | axi_araddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
 | W_IN | axi_wdata_par_i[DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| AW_OUT | axi_awaddr_par_o | 0 | NSU-driven. Held 0 while reset. Requires `EN_SBR_PORT=1`. |
-| AR_OUT | axi_araddr_par_o | 0 | NSU-driven. Requires `EN_SBR_PORT=1`. |
+| R_IN | axi_rdata_par_o[DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MGR_PORT=1`. |
+| AW_OUT | axi_awaddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Held 0 while reset. Requires `EN_SBR_PORT=1`. |
+| AR_OUT | axi_araddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
 | W_OUT | axi_wdata_par_o[DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
 | R_OUT | axi_rdata_par_i[DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SBR_PORT=1`. |
 
