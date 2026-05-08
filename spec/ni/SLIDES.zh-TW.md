@@ -12,7 +12,7 @@
 | Batch | Slides | 狀態 |
 |---|---|---|
 | 1 | 1-6（Title / Components / NMU overview / Address Map / QoS / ECC） | ✓ drafted（已加深） |
-| 2 | 7-12（RoB / NSU overview / Excl Monitor / Downsize / Credit / Closing） | pending |
+| 2 | 7-12（RoB / NSU overview / Excl Monitor / Downsize / Credit / Closing） | ✓ drafted |
 
 ---
 
@@ -206,3 +206,203 @@ Fabric ECC 與 parity error 會 raise interrupt 加累加 counter，但**不會 
 Caption 疊在 slide 上：*「Source: AMD pg313 §Data Integrity. 對映到我們的 scheme：AMD Data + Addr Parity = 我們的 AXI parity；AMD ECC = 我們的 whole-flit SECDED；AMD DST ID Parity = 我們的 per-hop routing parity (dst_id + last)」*
 
 **Speaker notes：** 三層 integrity，每一層 scope 不同。Per-hop routing parity 是最便宜的 check — 對 destination-ID 與 last-flit-indicator 欄位做 1-bit XOR。Router 在每個 output port 都驗；parity 失敗就立刻 drop，避免誤送到錯的 tile。Whole-flit SECDED 是重量級 check — 涵蓋整張 flit（header 加 payload，不包 syndrome 自己）；source NI 產生、只在目的端檢查。Router 不檢查的原因是這樣會多大概一個 cycle / hop 加一個數量級的 gate count，比 parity bit 貴太多。AXI host-side parity 是選用的第三層在 AXI 邊界，per-byte 涵蓋 data 跟 address — 驗但不 escalate 成 SLVERR。右邊那張 AMD 圖剛好就是這個 pattern，畫的是 Versal NoC；我們的 scheme 把每一 row 都實作了，差別只在 AMD 把 Data Parity 跟 Addr Parity 畫成兩 row，我們合成一個 AXI host-side parity 層。v0.4.0 的 error reporting policy 是統一的：fabric event 一律不 synth SLVERR 給 AXI master。所有 fabric-side error 走 CSR + IRQ 路徑。AXI rresp / bresp 留給 end-to-end memory error（HBM / DDR endpoint ECC 經由自然 rresp 傳回 master）。這跟 AMD 對 uncorrectable ECC 的立場一致 — 並且我們把這個立場乾淨地推廣到所有 fabric event。
+
+---
+
+## Slide 7 — Reorder Buffer (RoB) types (NMU expansion)
+
+**三種 mode** — 每個 response channel 獨立配置：
+
+| Mode | 面積成本 | 用途 |
+|---|---|---|
+| **NoRoB**（預設） | 最低 — 不分配 | NoC 自己保證 same-source-same-dest 的順序；single-issue master |
+| **SimpleRoB** | 小 — 單一 release pointer | naive FIFO；可接受 cross-AXI-ID HoL |
+| **NormalRoB** | 最大 — per-AXI-ID linked-list + adaptive bypass | 跨 AXI ID 完整 out-of-order；同 destination fast-path |
+
+**B / R channel 獨立配置：** `B_ROB_TYPE`、`R_ROB_TYPE` 各自設定。典型多目的部署：R channel 用 NormalRoB、B channel 用 SimpleRoB（B 是 metadata-only，省面積）。
+
+**A5 設計者確認（2026-05-08）：**
+
+- Allocation policy：lowest-index-first（多個 FREE entry 時選最低 index）。
+- Tie-breaker：兩個 entry 同 cycle 都 ready 時，較低 `rob_idx` 先 release（per-AXI-ID 的 issue order）。
+
+**運作範例：** Master 連續發 R0、R1、R2（同 AXI ID），response 從 NoC 不一定按順序回（不同路徑、congestion 不同）。RoB 保留 entry 0/1/2，等 entry 0 收到 response 才 release，即使 entry 2 比 entry 0 早收到 response 也要等。NormalRoB 的 `prev_dest` adaptive bypass 是 fast-path：連續 same-AXI-ID 打同一個目的 NSU 且前一個還沒回時，跳過 per-ID linked-list 的 overhead 直接走 fast-path（同 dest 的 NoC 必保順序）。
+
+**AMD verbatim：**
+
+> *"Read re-tagging via linked-list RROB structure to maintain AXI ordering compliance."* — AMD pg313 §NoC Master Unit §Read Reorder Buffer
+
+**Visual asset：** RoB state machine — `FREE → ALLOCATED → RESPONSE_RECEIVED → READY_TO_RELEASE → FREE`。
+
+**Speaker notes：** RoB 的存在是因為 NoC 是 packet-switched — 不同 destination 的 response 可能因為 NoC 路徑不同、congestion 不同而 out-of-order 回到 NMU。但 AXI4 強制 same-AXI-ID 的 response 必須 in-order — 所以需要 RoB 在 NMU 端把 out-of-order 的 NoC response 重排成 in-order 的 AXI response。三 mode 在面積跟重排能力之間給整合者選擇：NoRoB 最便宜但要求 NoC 自己保證順序（適合 single-issue master 或單純 NoC topology）；SimpleRoB 用單一 release pointer，跨 ID 也照 issue order release，會發生 cross-ID HoL 但結構簡單；NormalRoB 用 per-AXI-ID linked-list 加 adaptive bypass，最大面積但效能最佳。AMD Versal NoC RROB 預設 64×32-byte（HBM 變體 64×64）；我們預設較保守。
+
+---
+
+## Slide 8 — NSU (Network Subordinate Unit) overview
+
+**NSU 提供：**
+
+- NoC 與 AXI slave 之間的 asynchronous clock domain crossing 與 rate matching。
+- NoC flit format ↔ AXI4 protocol 雙向轉換。
+- W-burst reassembly — driving local AXI slave 前先還原 burst。
+- Data-width down-conversion — AXI slave 比 NoC payload 寬時用（→ Slide 10）。
+- AXI4 Exclusive Access — per-AXI-ID monitor、軟體可清的 reservation table（→ Slide 9）。
+- Read response buffering — 解耦 slave 端的 timing 與 NoC 注入的 back-pressure。
+- Response-side integrity — outbound response flit 套用同樣的 two-layer ECC（per Slide 6）。
+- QoS / ordering metadata 從 inbound request flit 繼承（NSU 不重新計算 QoS）。
+
+**Block diagram（鏡像 NMU 風格）：**
+
+```
+                            NSU                          AXI Master I/F
+                                                         (Async Boundary)
+   ──►  ┌──────────────────────────────────────┐  ────►  AW
+        │  ECC Check  →  De-packetizing        │  ────►  W
+   ──►  │     ↓            ↓                   │  ────►  AR
+        │     W Reassembly Downsize            │  ◄────  B
+        │             ↓                        │  ◄────  R
+        │  Exclusive Monitor  Read Resp Buffer │
+        │             ↓            ↑           │
+   ◄──  │  ECC Gen   ←  Packetizing B/R        │
+        └──────────────────────────────────────┘
+```
+
+**AMD verbatim：**
+
+> *"Conversion of NoC packetized data (NPD) to and from AXI protocol data."* — AMD pg313 §NoC Slave Unit
+>
+> *"buffered before forwarding to minimize bubbles."* — AMD pg313 §NoC Slave Unit
+>
+> *"AXI exclusive access handling."* — AMD pg313 §NoC Slave Unit
+
+**Speaker notes：** NSU 是 NoC 端到 AXI slave 端的轉接介面，跟 NMU 對稱。Inbound request 流程：NoC flit 進來 → ECC Check（per-hop parity 已在 router 驗過、whole-flit SECDED 在這裡驗）→ De-packetizing 拆出 AXI 欄位 → W Reassembly 把多 flit 的 W burst 還原 → Downsize 在 slave 比 NoC payload 寬時把 wide flit 拆成 narrow AXI beats → driving local AXI slave 的 AW/W/AR。Exclusive Monitor 旁觀 AR/AW 的 Exclusive 屬性、配對檢查。Outbound response 流程：本地 slave 回 B/R → Read Response Buffer 緩衝 → Packetizing B/R 組 response flit → ECC Gen 附 integrity → 注入 outbound response link。MetaBuffer（圖中沒明畫）是 NSU 內部關鍵 sub-block：snapshot 每個 inbound request flit 的 header（rob_idx、src_id、qos、axi_id），response 產生時直接繼承這些值，省得 NSU 重新計算或推斷。
+
+---
+
+## Slide 9 — Exclusive Monitor (NSU expansion)
+
+**AXI4 Exclusive Access 支援 — per-AXI-ID 的 reservation table：**
+
+- 每個 reservation entry 存 `(axi_id, awaddr, awsize, awlen)`，在 Exclusive AR 進來時建立。
+- 最多 8 個並行 reservation（可設定）。
+- Exclusive AW 進來時做 match check：
+  - **Match** → 寫入正常完成，`bresp = EXOKAY`。
+  - **Mismatch**（不同 ID、不同 addr、或中途有 normal write 蓋過同一 line）→ 寫入退化成 normal write（仍會 commit），但 `bresp = OKAY`。
+- 軟體可透過 CSR clear 整個 reservation table — 典型用途：OS 在 process 被 kill 時清掉它持有的 Exclusive。
+- **Single-NI scope** — 跨多個 NI 的 multi-master coherency 不在 v0.4.0 範圍（需要 directory 或 snoop protocol）。
+
+**LDREX/STREX 範例流程：**
+
+```
+1. CPU 發 LDREX (Exclusive AR) addr=0x1000, axi_id=3
+2. NSU 在 reservation table 新增 entry (id=3, addr=0x1000, ...)
+3. CPU 收 R 資料、計算新值
+4. CPU 發 STREX (Exclusive AW) addr=0x1000, axi_id=3
+5. NSU match check：id=3 + addr=0x1000 → match → bresp=EXOKAY
+   若中間有別人寫 0x1000 → entry invalidated → bresp=OKAY、CPU retry
+```
+
+**AMD verbatim：**
+
+> *"AXI exclusive access handling."* — AMD pg313 §NoC Slave Unit
+
+**Visual asset：** Reservation table state diagram — Exclusive AR → allocate entry → 等 Exclusive AW → match check → match=EXOKAY；途中 overlap normal write → invalidate。
+
+**Speaker notes：** Exclusive Access 是 AXI4 用來實作 lock-free atomic（compare-and-swap、test-and-set 等）的機制。CPU 的 LDREX 對 NSU 來說是一個帶 AxLOCK=Exclusive 的 AR；CPU 算完新值後發 STREX（帶 AxLOCK=Exclusive 的 AW）；NSU 比對 reservation 是否還有效，有效就 EXOKAY、CPU 知道 atomic 成功，無效就 OKAY、CPU 要 retry。Reservation 失效的情況：(1) 被別的 master 寫到同一個 cache line；(2) entry 被軟體 clear；(3) reservation table 滿了被新的 LDREX 擠掉。我們的設計刻意維持 single-NI scope — 跨 NI coherency 是另一個層級的問題（directory protocol 或 snoop bus），v0.4.0 沒做。Race semantics：軟體 clear 跟同 cycle 的 NSU 事件衝突時的細節，spec 內有規則細節保證；slide 不深入。AMD Versal 也有等價機制，但細節（reservation depth、race policy）是 Versal-specific。
+
+---
+
+## Slide 10 — Downsize (NSU expansion)
+
+**Data-width 降寬機制 — local AXI slave 比 NoC payload 寬時觸發。**
+
+- **W path:** 一張 wide W flit 拆成 N 個 narrow AXI W beats，driving local slave。Lane mapping 用原始 `awaddr` 加 per-beat offset。
+- **R path:** N 個 narrow AXI R beats 從 slave 累積成一張 wide R flit，再注入 response link。
+- **No-conversion case**（`DATA_WIDTH == FLIT_PAYLOAD_WIDTH`）：block 退化成 pass-through。
+- 每個 port 的 `DATA_WIDTH` 設計階段固定。
+- `wstrb` 全程帶過 — 沒被 master 寫到的 lane 帶 `wstrb=0`，slave 只 commit master 真的有寫的 byte。
+
+**寬度範例：** NoC payload 256 bits、local AXI slave 64 bits → Downsize 把 1 wide W flit 拆成 4 個 64-bit AXI W beats（lane 0-7、8-15、16-23、24-31 byte），slave 端看到的就是普通 4-beat burst。R path 反過來累積。
+
+**Visual asset：**
+
+```
+W path (NoC → AXI slave):
+   1 wide flit                     4 narrow AXI W beats
+   [256-bit payload + wstrb]   →   beat 0: bytes [7:0],   wstrb [7:0]
+                                   beat 1: bytes [15:8],  wstrb [15:8]
+                                   beat 2: bytes [23:16], wstrb [23:16]
+                                   beat 3: bytes [31:24], wstrb [31:24]
+
+R path (AXI slave → NoC):
+   4 narrow AXI R beats        →   1 wide flit (accumulate)
+```
+
+**Speaker notes：** Downsize 跟 NMU 那邊的 Upsize 對稱 — Upsize 是 master 比 NoC 窄時把窄 W beat 累積成一張 wide flit，Downsize 是 slave 比 NoC 寬時把 wide flit 拆成多個 narrow beat。實作關鍵是 lane mapping：原始 `awaddr` 加每 beat 的 byte offset 決定每個 narrow beat 對應 wide flit 的哪幾個 bytes。`wstrb` 全程跟著走 — over-fetch 的 lane 帶 `wstrb=0`，slave 自然忽略；slave 端的 commit 行為跟 master 直接打 narrow burst 一樣。具體 width 範例：256-bit NoC payload 對 64-bit slave，1 wide flit 拆 4 beat，beat 0 對 bytes [7:0]、beat 1 對 [15:8]、依此類推。AMD AXI Conversion 章節有類似概念但細節是 Versal Memory Controller 對應的 bandwidth-matching，跟我們 fabric-only 的範圍不同。
+
+---
+
+## Slide 11 — Credit-Based Flow Control + NPS scope footnote
+
+**機制（AMD pg313 verbatim — 直接適用我們的設計）：**
+
+> *"Each NMU, NPS, and NSU source needs to have credit before it can send data to the receiver. After a reset, every NoC component has its source-credit reset to zero. The source unit connects to the destination unit using a bi-directional ready signal that indicates credit exchange is ready. Components wait until both directions are ready before starting the credit exchange. The destination unit can send up to one credit per cycle, per virtual channel, to the source unit. The source unit can send up to one data transaction per cycle to the destination unit."*
+> — AMD pg313 §Credit-Based Flow Control
+
+**運作意涵：**
+
+- 啟動時走 bi-directional credit-init handshake，雙方 ready 後 credit 才開始流。
+- Source 端逐 VC 記 credit 數；receiver 每 cycle 每 VC 最多回 1 credit。
+- Source 必須在所選 VC 上有 ≥ 1 credit 才能 assert flit。
+- 持續 credit 餓死 = 該 VC 永久 stall（v0.4.0 沒有 timeout 自動升級成 SLVERR；軟體靠 PENDING counter / IRQ 自己處理）。
+
+**範例（NUM_VC = 2 的啟動序列）：**
+
+```
+cycle 0:    reset deassert. NMU credit_count[VC0,VC1] = 0
+cycle N:    NMU 與下游 router 互相 assert *_credit_init_ready
+cycle N+1:  雙方都 ready；router 開始送 credit 給 NMU
+cycle N+5:  NMU credit_count[VC0] = 4（router 連送 4 cycle credit）
+cycle N+6:  NMU 有 flit 要送 VC0 → assert noc_*_valid_o，credit_count[VC0]−−
+cycle N+7:  NMU credit_count[VC0] = 3，等 receiver 回 credit 才繼續送
+```
+
+**NPS（NoC Packet Switch）scope footnote — 相鄰 / NI 範圍外：**
+
+- NoC fabric router (NPS) 在 NMU 跟 NSU 之間，spec 另立。
+- Per-VC 的 cycle-level arbitration 在 router 內做；NI 端只做 flit-construct-time 的 VC mapping。AMD pg313 verbatim（router scope）：
+
+  > *"For every cycle, each output port performs Least Recently Used (LRU) arbitration on all virtual channels of the three input ports."*
+
+- Per-hop routing-parity check 也在 router output 做（已在 Slide 6 ECC 涵蓋）。
+
+**Visual asset：** Sequence diagram — post-reset → init handshake → credit exchange begins → flit injection → credit return（時序圖樣式，類似上方範例）。
+
+**Speaker notes：** Credit-based flow control 是 NoC 整體的 flit 流量契約。Source（NMU 或 NSU）持有的 per-VC credit 計數代表 receiver 端還能容納多少 flit；source 每送一張 flit 就遞減該 VC 的 credit、receiver 每處理完一張就回 1 credit。Bi-directional credit-init handshake 是啟動序列：reset 後雙方都從 0 credit 開始，先互相確認彼此 ready 才開始 credit 交換。實際運作時，這保證 flit 不會 overflow receiver buffer。Persistent credit starvation：如果 receiver 端 hang 或 router 不回 credit，source 就在那條 VC 永久 stall — v0.4.0 不做自動 timeout escalation（曾考慮過 Outstanding-tx Timeout，後來決定不在初版做安全機制），由軟體透過 PENDING counter / IRQ 偵測並從外部處理。NPS scope：router 不在這份 spec 範圍，但 NoC 的整體運作離不開 router，這頁簡單帶過 router 在做什麼（per-VC arbitration、per-hop parity check）讓 audience 有完整 picture。AMD Versal NoC 的 8×8 switch、24-token register、Differentiated QoS scoring 等細節是 Versal-specific，我們不沿用。
+
+---
+
+## Slide 12 — Closing
+
+**DV plan 摘要（A5 wave 結算）：**
+
+| 項目 | 數量 |
+|---|---|
+| Protocol rules | 136（126 FAIL + 10 RECOMMEND） |
+| Testpoints | 51 |
+| ABV assertions | 126（每個 FAIL rule 1 個 SVA assert） |
+| Coverage covergroups | 17 |
+| FPV scope | RoB allocator state machine、ECC SECDED gen+check round-trip、IRQ assertion function、CDC async FIFO、reset entry sequencing |
+| Framework | UVM 1.2（A5 designer-confirmed） |
+
+**未來工作：**
+
+- AXI4 ATOPs（atomic operations）支援 — v0.4.0 sample-only 終止為 SLVERR；正式支援 deferred 至 future revision（約 3 週設計 + DV）。
+- v0.5.0 Plugin-side Protocol Reference Library — 把標準 AXI4 / AXI4-Lite / APB rule 抽成共用 library entry，BFM spec 只需描述特定擴充。
+- Debug / safety mechanisms — Outstanding-tx Timeout、watchdog、error injection 等在 v1 後重新評估。
+
+**Q & A**
+
+**Visual asset（選擇性）：** 上方 spec deliverable summary table 整潔放在最下、做 closing artifact。
+
+**Speaker notes：** 這頁是 deck 的 closing。DV plan 數字是 A5 wave 結算後的最終值：post-A5 的 protocol_rules.md 從 138 減到 136（移除 Outstanding-tx Timeout 路徑相關的 AXI4_MST_TIMEOUT_SLVERR 跟 NI_CFG_QUIESCE_LIVENESS）。51 個 testpoint 涵蓋 NMU、NSU、CSR、CDC、reset、QoS、ECC、Exclusive、credit、quiesce 等所有 NI 功能。ABV 是 protocol_rules.md 每個 FAIL severity rule 對應一個 SVA assert property。FPV scope 鎖在那些可以靜態驗證的關鍵正確性 — RoB no-deadlock、ECC SECDED 數學、CDC pointer 正確性。Framework 選 UVM 1.2 是設計者確認後決定（產業標準、in-house 已有）。Future work 把這次刻意簡化的部分列出來：ATOPs 我們 v0.4.0 只 sample 不執行；v0.5.0 plugin 側打算把標準 protocol rule 抽 library 減重；debug/safety 機制（包括我們這次刪掉的 Outstanding-tx Timeout）等系統 design 確定後再回頭評估。
