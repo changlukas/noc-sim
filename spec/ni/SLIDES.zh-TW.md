@@ -34,6 +34,11 @@
 
 ## Slide 2 — NoC Components Overview
 
+**System context (AMD pg313 verbatim):**
+
+> *"An AXI master sends read/write requests to a connected NoC access point (NMU). The NMU relays the requests through a set of NoC packet switches (NPSs) before the requests reach a destination (NoC slave unit NSU or output port)."*
+> — AMD pg313 §NoC Communication
+
 **NI 內部組成：**
 
 - **NMU**（Network Manager Unit）— 從 local AXI master 收 request，注入 NoC 變成 request flit。
@@ -60,19 +65,19 @@ NMU 與 NSU 可獨立 enable。每個 tile 一個 NI。**Tile 內若有多個 IP
 
 ## Slide 3 — NMU (Network Manager Unit) overview
 
-**NMU 提供：**
+**The NMU provides** *(per AMD pg313 §NoC Master Unit; adapted to our spec where indicated)*:
 
-- AXI master 與 NoC 之間的 asynchronous clock domain crossing 與 rate matching。
-- AXI4 protocol ↔ NoC flit format 雙向轉換。
-- Address matching 與 route control — 三種 routing mode（→ Slide 4）。
-- WRAP / INCR / FIXED burst 支援。
-- Read response 重排序，由 Reorder Buffer (RoB) 處理 — 三種 mode 平衡面積與重排序能力（→ Slide 7）。
-- Write order 強制 — W-burst 在 egress link 上保持連續。
-- Ingress QoS control — 四種 mode（→ Slide 5）。
-- 兩層 ECC integrity — per-hop routing parity + end-to-end whole-flit SECDED（→ Slide 6）。
-- AXI4 Exclusive Access 支援（轉送到 NSU Exclusive Monitor）。
-- 可配置 AXI 資料寬度：64、128、256、或 512 bits。
-- 最多 32 個 outstanding AXI reads + 32 個 outstanding AXI writes。
+- Asynchronous clock domain crossing and rate matching between the AXI master and the NoC.
+- Conversion from/to AXI protocol to NoC flit format. *(adapted: AMD writes "NPP")*
+- Address matching and route control. *(→ Slide 4)*
+- WRAP, INCR, and FIXED burst support.
+- Read re-tagging to allow out of order service and prevent interconnect blocking. *(→ Slide 7)*
+- Write order enforcement.
+- Ingress QoS control. *(→ Slide 5)*
+- Handling of the AXI exclusive access feature.
+- Configurable AXI data width: 64, 128, 256, or 512 bits. *(adapted: we drop 32-bit; AXI4-Stream not supported)*
+- Up to 32 outstanding AXI reads and 32 outstanding AXI writes. *(adapted: AMD says 64; ours is 32)*
+- Two-layer ECC integrity — per-hop routing parity + end-to-end whole-flit SECDED. *(→ Slide 6; our addition beyond AMD's NMU bullet list)*
 
 **Block diagram（右側，ref.jpg 風 — 簡單方框）：**
 
@@ -189,6 +194,10 @@ AXI Slave I/F                  NMU                        NoC
 >
 > *"The NPP packet (DST ID + LAST) field is also protected by 1-bit even parity."* — AMD pg313 §Parity
 >
+> *"Parity is checked in the NMU/NSU pipeline when an AXI field is consumed (used by logic). When an AXI field is modified by NMU/NSU logic, parity is regenerated."* — AMD pg313 §Parity
+>
+> *"Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol."* — AMD pg313 §Parity
+>
 > *"Uncorrectable ECC errors result in a fatal interrupt."* — AMD pg313 §Data Integrity
 >
 > *"By default, all interrupts are masked."* — AMD pg313 §Data Integrity
@@ -210,6 +219,12 @@ Caption 疊在 slide 上：*「Source: AMD pg313 §Data Integrity. 對映到我�
 ---
 
 ## Slide 7 — Reorder Buffer (RoB) types (NMU expansion)
+
+**Purpose (AMD pg313 verbatim):**
+
+> *"Read re-tagging to allow out of order service and prevent interconnect blocking."* — AMD pg313 §NoC Master Unit
+>
+> *"The read re-order buffer (RROB) holds 64 32-byte entries. An AXI read that is more than 32 bytes consumes multiple entries."* — AMD pg313 §NoC Master Unit *(我們預設 32 entries，FlooNoC-aligned；模式選擇見下表)*
 
 **三種 mode** — 每個 response channel 獨立配置：
 
@@ -240,16 +255,21 @@ Caption 疊在 slide 上：*「Source: AMD pg313 §Data Integrity. 對映到我�
 
 ## Slide 8 — NSU (Network Subordinate Unit) overview
 
-**NSU 提供：**
+**The NSU provides** *(per AMD pg313 §NoC Slave Unit; adapted to our spec where indicated)*:
 
-- NoC 與 AXI slave 之間的 asynchronous clock domain crossing 與 rate matching。
-- NoC flit format ↔ AXI4 protocol 雙向轉換。
-- W-burst reassembly — driving local AXI slave 前先還原 burst。
-- Data-width down-conversion — AXI slave 比 NoC payload 寬時用（→ Slide 10）。
-- AXI4 Exclusive Access — per-AXI-ID monitor、軟體可清的 reservation table（→ Slide 9）。
-- Read response buffering — 解耦 slave 端的 timing 與 NoC 注入的 back-pressure。
-- Response-side integrity — outbound response flit 套用同樣的 two-layer ECC（per Slide 6）。
-- QoS / ordering metadata 從 inbound request flit 繼承（NSU 不重新計算 QoS）。
+- Conversion of NoC packetized data (NPD) to and from AXI protocol data.
+- Asynchronous clock domain crossing and rate-matching between the AXI slave and the NoC.
+- AXI exclusive access handling. *(→ Slide 9)*
+- Configurable AXI interface widths of 64, 128, 256, or 512 bits. *(adapted: we drop 32-bit)*
+- Read response buffering — *"buffered before forwarding to minimize bubbles (stalls) in the read responses."* (AMD verbatim)
+- W-burst reassembly before driving the local AXI slave. *(our addition)*
+- Data-width down-conversion when AXI slave is wider than NoC payload. *(→ Slide 10; our addition)*
+- Response-side integrity — same two-layer ECC scheme on outbound flits (per Slide 6).
+- QoS / ordering metadata inherited from inbound request flit (no NSU-side QoS recomputation).
+
+**Core operation (AMD pg313 verbatim):**
+
+> *"The NSU logic de-packetizes the received NoC data packets and converts them into AXI transactions. The re-created AXI transaction passes through the buffered asynchronous data crossing and rate-matching (fast to slow) logic to the AXI master interface."* — AMD pg313 §NoC Slave Unit
 
 **Block diagram（鏡像 NMU 風格）：**
 
