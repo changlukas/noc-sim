@@ -170,49 +170,61 @@ AXI Slave I/F                  NMU                        NoC
 
 ## Slide 6 — ECC Scheme
 
-**三層 integrity：**
+**Three-layer integrity scheme** — AMD pg313 §Data Integrity / §Parity 直接適用我們的設計。
 
-1. **Per-hop routing parity** — 保護 routing 關鍵欄位（destination ID + last-flit indicator），每個 router 與目的 NI sink 都檢查。Mismatch flit 在偵測點直接 drop。
-2. **End-to-end whole-flit SECDED ECC** — 涵蓋整張 flit。Source NI 產生，只在目的 NI sink 檢查。Router 不檢查也不重生。
-3. **AXI host-side parity**（選用 sideband，預設啟用）— 在 AXI 邊界檢查；只 log 不 enforce 成 SLVERR。
+### Layer 1 — Per-hop routing parity
 
-**每層 gen / check 點摘要：**
+> *"The NPP packet (DST ID + LAST) field is also protected by 1-bit even parity."* — AMD pg313 §Parity
 
-| Layer | 產生點 | 檢查點 |
-|---|---|---|
-| Per-hop routing parity（dst_id + last-flit indicator） | NMU / NSU 注入 flit 時 | 每個 router output **+** 目的 NI sink（每跳都檢查） |
-| End-to-end whole-flit SECDED | NMU / NSU 注入 flit 時 | 只在目的 NI sink（router 不檢查） |
-| AXI host-side parity（data + address，per-byte） | AXI master、NSU output | NMU input、AXI slave input、NMU output |
+- 由 source NMU / NSU 在注入 flit 時產生。
+- 在每個 router output 與目的 NI sink 都檢查（每跳都驗）。
+- Mismatch flit 在偵測點直接 drop，避免誤送到錯的 tile。
 
-**AMD verbatim（直接放在 slide 上）：**
+### Layer 2 — End-to-end whole-flit SECDED ECC
 
 > *"SECDED ECC across the entire flit."* — AMD pg313 §Data Integrity
 >
 > *"No ECC checking is performed in the switch fabric."* — AMD pg313 §Data Integrity
+
+- 由 source NI 產生；只在目的 NI sink 檢查。
+- Router 不檢查也不重生。
+- Single-bit 沉默修正、double-bit 偵測後 forward 加 log。
+
+### Layer 3 — AXI host-side parity（選用 sideband，預設啟用）
+
+> *"1 bit per byte for Data."* — AMD pg313 §Parity
 >
-> *"1 bit per byte for Data."* / *"1 bit per byte for AxAddress."* — AMD pg313 §Parity
->
-> *"The NPP packet (DST ID + LAST) field is also protected by 1-bit even parity."* — AMD pg313 §Parity
+> *"1 bit per byte for AxAddress."* — AMD pg313 §Parity
 >
 > *"Parity is checked in the NMU/NSU pipeline when an AXI field is consumed (used by logic). When an AXI field is modified by NMU/NSU logic, parity is regenerated."* — AMD pg313 §Parity
 >
 > *"Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol."* — AMD pg313 §Parity
+
+- 在 AXI 邊界檢查；只 log 不 enforce 成 SLVERR。
+- AXI fields 被 NMU / NSU logic 改寫時（例如 address remap）parity 重新產生。
+- NSU 端 R-response 的 data parity 在 ECC check 之後才產生（per AMD verbatim 上面）。
+
+### 整體啟用 / 錯誤處理
+
+> *"Packet domain parity and ECC generation and checking is always enabled."* — AMD pg313 §Data Integrity
 >
-> *"Uncorrectable ECC errors result in a fatal interrupt."* — AMD pg313 §Data Integrity
+> *"Correctable ECC errors are corrected on the fly, and the count of correctable errors is incremented. Uncorrectable ECC errors result in a fatal interrupt."* — AMD pg313 §Data Integrity
 >
 > *"By default, all interrupts are masked."* — AMD pg313 §Data Integrity
 
-**Error reporting policy：**
+**Our error policy ((B)-philosophy)：** Fabric ECC 與 parity error raise interrupt 加累加 counter，但**不會 synth SLVERR** 在 AXI rresp / bresp 上。受損 flit 用 `OKAY` forward 到目的；後續 application-level integrity（HBM endpoint ECC、軟體 CRC）負責 recovery。AXI rresp / bresp 留給 end-to-end memory error 用。**v0.4.0 沒有 fabric-driven SLVERR synthesis** — 把 AMD 對 uncorrectable ECC 的「fatal interrupt」立場乾淨地推廣到所有 fabric event。
 
-Fabric ECC 與 parity error 會 raise interrupt 加累加 counter，但**不會 synth SLVERR** 在 AXI rresp / bresp 上。受損 flit 用 `OKAY` 直接 forward 到目的；後續 / application-level integrity（HBM endpoint ECC、軟體 CRC）負責 recovery。AXI rresp / bresp 留給 end-to-end memory error 用。**v0.4.0 沒有 fabric-driven SLVERR synthesis。**
+### Visual asset
 
-**Visual asset：** AMD pg313 §Data Integrity *End-to-End Protection* 圖（X25510070521）— 檔案 `images/End-to-End Protection.png`。圖中 4 row 對映到我們 3 層如下：
+AMD pg313 §Data Integrity *End-to-End Protection* 圖（X25510070521）— 檔案 `images/End-to-End Protection.png`。AMD 4 row 對映到我們 3 layer：
 
-- AMD *Data Parity* + AMD *Addr Parity* → 我們的 **AXI host-side parity**（一層涵蓋兩者）。
-- AMD *ECC* → 我們的 **end-to-end whole-flit SECDED**。
-- AMD *DST ID Parity* → 我們的 **per-hop routing parity**（`route_par` 涵蓋 DST ID + last-flit indicator）。
+| AMD figure row | 對應 |
+|---|---|
+| Data Parity + Addr Parity | Layer 3 AXI host-side parity（合成一層） |
+| ECC | Layer 2 end-to-end whole-flit SECDED |
+| DST ID Parity | Layer 1 per-hop routing parity |
 
-Caption 疊在 slide 上：*「Source: AMD pg313 §Data Integrity. 對映到我們的 scheme：AMD Data + Addr Parity = 我們的 AXI parity；AMD ECC = 我們的 whole-flit SECDED；AMD DST ID Parity = 我們的 per-hop routing parity (dst_id + last)」*
+Caption 疊在 slide 上：*"Source: AMD pg313 §Data Integrity. AMD Data + Addr Parity = Layer 3；AMD ECC = Layer 2；AMD DST ID Parity = Layer 1."*
 
 **Speaker notes：** 三層 integrity，每一層 scope 不同。Per-hop routing parity 是最便宜的 check — 對 destination-ID 與 last-flit-indicator 欄位做 1-bit XOR。Router 在每個 output port 都驗；parity 失敗就立刻 drop，避免誤送到錯的 tile。Whole-flit SECDED 是重量級 check — 涵蓋整張 flit（header 加 payload，不包 syndrome 自己）；source NI 產生、只在目的端檢查。Router 不檢查的原因是這樣會多大概一個 cycle / hop 加一個數量級的 gate count，比 parity bit 貴太多。AXI host-side parity 是選用的第三層在 AXI 邊界，per-byte 涵蓋 data 跟 address — 驗但不 escalate 成 SLVERR。右邊那張 AMD 圖剛好就是這個 pattern，畫的是 Versal NoC；我們的 scheme 把每一 row 都實作了，差別只在 AMD 把 Data Parity 跟 Addr Parity 畫成兩 row，我們合成一個 AXI host-side parity 層。v0.4.0 的 error reporting policy 是統一的：fabric event 一律不 synth SLVERR 給 AXI master。所有 fabric-side error 走 CSR + IRQ 路徑。AXI rresp / bresp 留給 end-to-end memory error（HBM / DDR endpoint ECC 經由自然 rresp 傳回 master）。這跟 AMD 對 uncorrectable ECC 的立場一致 — 並且我們把這個立場乾淨地推廣到所有 fabric event。
 
