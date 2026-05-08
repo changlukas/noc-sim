@@ -1,10 +1,10 @@
-# NI Presentation Outline (A5 wave, 2026-05-08; rewrite v3)
+# NI Presentation Outline (A5 wave, 2026-05-08; rewrite v3.1)
 
-**Target deck:** 11 slides, IP-datasheet style, **overview + design-decision-expansion** pattern.
+**Target deck:** 12 slides, IP-datasheet style, **overview + design-decision-expansion** pattern, with NMU expansions in pipeline order.
 
 **Audience assumption:** internal review — engineers familiar with AXI4 + general NoC concepts. **This deck introduces the design at architectural level — it is not an implementation walkthrough.**
 
-**Style reference:** AMD pg313 §NoC Master Unit / §NoC Slave Unit. Each component overview slide presents one cohesive description: bullet capability list ("What it provides") + simple labeled block diagram on the right (ref.jpg style). Each design-decision-expansion slide focuses on one decision (3 RoB modes, 4 QoS modes, two-layer ECC, etc.) with table or bullet form. Concrete numbers belong on slides; internal parameter / signal / rule-ID names live in spec docs only.
+**Style reference:** AMD pg313 §NoC Master Unit / §NoC Slave Unit. Each component overview slide presents one cohesive description: bullet capability list ("What it provides") + simple labeled block diagram on the right (ref.jpg style). Each design-decision-expansion slide focuses on one decision (3 routing modes, 3 RoB modes, 4 QoS modes, two-layer ECC, etc.) with table or bullet form. Concrete numbers belong on slides; internal parameter / signal / rule-ID names live in spec docs only.
 
 **AMD content reuse legend:**
 - ✓ Verbatim — quote AMD directly with `per AMD pg313 §<Section>` attribution.
@@ -37,7 +37,7 @@
 
 **AMD pg313 ref.** §NoC Architecture / §NoC Components.
 
-**What this slide covers.** What sits inside the NI block — NMU + NSU + CSR file + level-sensitive `irq_o`. Per-tile single-chimney: NMU drives egress request link + samples ingress response link; NSU samples ingress request link + drives egress response link. Both halves independently enabled. NoC fabric router (NPS) is adjacent — touched briefly on Slide 10.
+**What this slide covers.** What sits inside the NI block — NMU + NSU + CSR file + level-sensitive `irq_o`. Per-tile single-chimney: NMU drives egress request link + samples ingress response link; NSU samples ingress request link + drives egress response link. Both halves independently enabled. NoC fabric router (NPS) is adjacent — touched briefly on Slide 11.
 
 **Visual asset.** Simple top-level diagram: AXI master → NMU → router → NSU → AXI slave, with response path mirror; CSR + irq_o on the side.
 
@@ -57,12 +57,12 @@
 
 - Asynchronous clock domain crossing and rate matching between the AXI master and the NoC.
 - Conversion from/to AXI4 protocol to NoC flit format.
-- Address matching and route control — three routing modes (XY-routed / source-routed / ID-table).
+- Address matching and route control — three routing modes (→ Slide 4).
 - WRAP / INCR / FIXED burst support.
-- Read re-ordering via Reorder Buffer (RoB) — three modes for area / reorder tradeoff (→ Slide 5).
+- Read re-ordering via Reorder Buffer (RoB) — three modes for area / reorder tradeoff (→ Slide 7).
 - Write order enforcement — W-burst kept contiguous on egress link.
-- Ingress QoS control — four modes: bypass / fixed / bandwidth-limiter / urgency-regulator (→ Slide 6).
-- Two-layer ECC integrity — per-hop routing parity + end-to-end whole-flit SECDED (→ Slide 4).
+- Ingress QoS control — four modes (→ Slide 5).
+- Two-layer ECC integrity — per-hop routing parity + end-to-end whole-flit SECDED (→ Slide 6).
 - AXI4 Exclusive Access support (forwarded to NSU Exclusive Monitor).
 - Configurable AXI data width: 64, 128, 256, or 512 bits.
 - Up to 32 outstanding AXI reads + 32 outstanding AXI writes.
@@ -78,9 +78,68 @@ AXI Slave Interface (Async Data Boundary Crossing) on left with AW/W/AR/R/B; NMU
 
 ---
 
-### Slide 4 — ECC Scheme (NMU + cross-cut)
+### Slide 4 — Address Map mechanism (NMU expansion)
 
 **Type.** Design-decision expansion.
+
+**AMD pg313 ref.** §NoC Master Unit §Addressing / §Address Decoding and System Address Map / §Destination ID.
+
+**What this slide covers.** How the NMU resolves an AXI address to a destination tile ID on the NoC. Three routing modes selectable at design time.
+
+**On-slide table (3 modes):**
+
+| Routing mode | Mechanism | Use case |
+|---|---|---|
+| XY-routed (default) | Bit-extraction from AXI `awaddr` / `araddr` — configurable bit fields decode to (X, Y) mesh coordinate | Regular 2D mesh deployments |
+| Source-routed | Pre-computed flit-header route path | Static / compile-time route optimization |
+| ID-table (SAM) | System Address Map lookup — match address ranges to destination tile IDs | Multi-region address space; software-defined region mapping |
+
+**Plus:**
+- Destination tile ID = (X, Y) mesh coordinate.
+- SAM table is a compile-time parameter — no runtime modification in v0.4.0 (re-elaborate to change).
+- Address bit-extraction offsets per axis are configurable at design time.
+- Address translation and packetizing run in parallel — no extra pipeline stage cost.
+
+**Visual asset.** Address bit-field decomposition figure for the XY-routed mode: `awaddr` split into (X-coordinate bits | Y-coordinate bits | local address bits).
+
+**AMD content classification.**
+- ⚠ Concept of address-map / remap aligns with AMD's Master-Specified ID and Re-mapping; specifics differ (we have a uniform 3-mode selector, AMD has a Versal-specific re-mapping path).
+- ✗ Skip: Versal-specific Master-Specified ID; Re-mapping; 7-bit address parity bit map; Memory Controller Interleaving.
+
+---
+
+### Slide 5 — QoS Generator (NMU expansion)
+
+**Type.** Design-decision expansion.
+
+**AMD pg313 ref.** §NoC Communication §Quality of Service.
+
+**What this slide covers.** NMU-side ingress QoS Generator with four modes selectable at runtime via CSR.
+
+**On-slide table (4 modes):**
+
+| Mode | Behavior |
+|---|---|
+| Bypass | Pass through AXI awqos / arqos directly. |
+| Fixed | Override every flit with a CSR-set fixed value. |
+| Bandwidth-limiter | When traffic exceeds the configured bandwidth, drop priority. |
+| Urgency-regulator | Feedback-controlled urgency escalation against a bandwidth target. |
+
+**Plus:**
+- NMU-only feature; NSU inherits per-flit qos via response-side metadata.
+- QoS does not preempt wormhole-locked W-bursts — arbitration grain is per-packet (HEAD flit), not per-flit.
+
+**Visual asset.** Optional: bandwidth-vs-priority graph for Limiter / Regulator modes.
+
+**AMD content classification.**
+- ⚠ AMD's high-level QoS narrative usable.
+- ✗ Skip: Versal-specific Differentiated QoS; NPS-side QoS scoring.
+
+---
+
+### Slide 6 — ECC Scheme (cross-cut)
+
+**Type.** Design-decision expansion (NMU + NSU + cross-cut).
 
 **AMD pg313 ref.** §NoC Communication §Data Integrity / §Parity.
 
@@ -109,12 +168,12 @@ AXI Slave Interface (Async Data Boundary Crossing) on left with AW/W/AR/R/B; NMU
 **Visual asset.** Two-layer schematic: per-hop parity check at each router; SECDED check only at destination NI; AXI parity check at host boundary.
 
 **AMD content classification.**
-- ✓✓ Multiple verbatim quotes directly applicable (highest verbatim-density slide).
+- ✓✓ Multiple verbatim quotes directly applicable (highest verbatim-density slide alongside Slide 11).
 - ✗ Skip: HBM_NMU per-32-bit/per-24-bit exception; address-remap 7-bit parity map; Data Poisoning.
 
 ---
 
-### Slide 5 — Reorder Buffer (RoB) types (NMU expansion)
+### Slide 7 — Reorder Buffer (RoB) types (NMU expansion)
 
 **Type.** Design-decision expansion.
 
@@ -145,36 +204,7 @@ AXI Slave Interface (Async Data Boundary Crossing) on left with AW/W/AR/R/B; NMU
 
 ---
 
-### Slide 6 — QoS Generator (NMU expansion)
-
-**Type.** Design-decision expansion.
-
-**AMD pg313 ref.** §NoC Communication §Quality of Service.
-
-**What this slide covers.** NMU-side ingress QoS Generator with four modes selectable at runtime via CSR.
-
-**On-slide table (4 modes):**
-
-| Mode | Behavior |
-|---|---|
-| Bypass | Pass through AXI awqos / arqos directly. |
-| Fixed | Override every flit with a CSR-set fixed value. |
-| Bandwidth-limiter | When traffic exceeds the configured bandwidth, drop priority. |
-| Urgency-regulator | Feedback-controlled urgency escalation against a bandwidth target. |
-
-**Plus:**
-- NMU-only feature; NSU inherits per-flit qos via response-side metadata.
-- QoS does not preempt wormhole-locked W-bursts — arbitration grain is per-packet (HEAD flit), not per-flit.
-
-**Visual asset.** Optional: bandwidth-vs-priority graph for Limiter / Regulator modes.
-
-**AMD content classification.**
-- ⚠ AMD's high-level QoS narrative usable.
-- ✗ Skip: Versal-specific Differentiated QoS; NPS-side QoS scoring.
-
----
-
-### Slide 7 — NSU (Network Subordinate Unit) overview
+### Slide 8 — NSU (Network Subordinate Unit) overview
 
 **Type.** Overview (ref.jpg style — bullet list + simple block diagram, mirror of Slide 3).
 
@@ -185,10 +215,10 @@ AXI Slave Interface (Async Data Boundary Crossing) on left with AW/W/AR/R/B; NMU
 - Asynchronous clock domain crossing and rate matching between the NoC and the AXI slave.
 - Conversion from/to NoC flit format to AXI4 protocol.
 - W-burst reassembly before driving the local AXI slave.
-- Data-width down-conversion when AXI slave is wider than NoC payload (→ Slide 9).
-- AXI4 Exclusive Access — per-AXI-ID monitor with software-clearable reservation table (→ Slide 8).
+- Data-width down-conversion when AXI slave is wider than NoC payload (→ Slide 10).
+- AXI4 Exclusive Access — per-AXI-ID monitor with software-clearable reservation table (→ Slide 9).
 - Read response buffering to decouple slave-side timing from NoC injection back-pressure.
-- Response-side integrity — same two-layer ECC scheme on outbound response flits (per Slide 4).
+- Response-side integrity — same two-layer ECC scheme on outbound response flits (per Slide 6).
 - QoS / ordering metadata inherited from the inbound request flit (no NSU-side QoS recomputation).
 
 **Block diagram (right) — simple labeled boxes, mirror of NMU layout:**
@@ -203,7 +233,7 @@ NoC on left; NSU box in middle containing: ECC Check · De-packetizing · W Reas
 
 ---
 
-### Slide 8 — Exclusive Monitor (NSU expansion)
+### Slide 9 — Exclusive Monitor (NSU expansion)
 
 **Type.** Design-decision expansion.
 
@@ -226,7 +256,7 @@ NoC on left; NSU box in middle containing: ECC Check · De-packetizing · W Reas
 
 ---
 
-### Slide 9 — Downsize (NSU expansion)
+### Slide 10 — Downsize (NSU expansion)
 
 **Type.** Design-decision expansion.
 
@@ -249,7 +279,7 @@ NoC on left; NSU box in middle containing: ECC Check · De-packetizing · W Reas
 
 ---
 
-### Slide 10 — Credit-Based Flow Control (cross-cut + NPS scope footnote)
+### Slide 11 — Credit-Based Flow Control (cross-cut + NPS scope footnote)
 
 **Type.** Cross-cut (applies to NMU + NSU + router).
 
@@ -270,7 +300,7 @@ NoC on left; NSU box in middle containing: ECC Check · De-packetizing · W Reas
 **NPS (NoC Packet Switch) scope footnote — adjacent / out-of-NI-scope:**
 - NoC fabric routers (NPS) sit between NMU and NSU; their detailed spec is separate.
 - Per-VC arbitration runs at cycle level inside the router; NI itself only does flit-construct-time VC mapping. AMD pg313 verbatim (cite as router scope): *"For every cycle, each output port performs Least Recently Used (LRU) arbitration on all virtual channels of the three input ports."*
-- Per-hop routing-parity check happens at every router output (covered on Slide 4 ECC).
+- Per-hop routing-parity check happens at every router output (covered on Slide 6 ECC).
 
 **Visual asset.** Sequence diagram: post-reset → init handshake → credit exchange begins → flit injection → credit return.
 
@@ -281,7 +311,7 @@ NoC on left; NSU box in middle containing: ECC Check · De-packetizing · W Reas
 
 ---
 
-### Slide 11 — Closing
+### Slide 12 — Closing
 
 **Type.** Closing.
 
@@ -303,17 +333,19 @@ NoC on left; NSU box in middle containing: ECC Check · De-packetizing · W Reas
 | Slide | Strongest AMD verbatim leverage |
 |---|---|
 | 3 NMU overview | clock-crossing tagline; "32 outstanding reads + 32 outstanding writes" pattern |
-| 4 ECC scheme | **8 verbatim sentences across §Parity + §Data Integrity (highest verbatim density alongside Slide 10)** |
-| 5 RoB types | linked-list RROB phrasing |
-| 6 QoS Generator | high-level Read/Write narrative |
-| 7 NSU overview | "Conversion of NPD ↔ AXI"; "buffered before forwarding to minimize bubbles"; "AXI exclusive access handling" |
-| 8 Exclusive Monitor | "AXI exclusive access handling" concept |
-| 10 Credit + NPS | **full Credit-Based Flow Control paragraph (highest verbatim density)** + LRU VC arbitration one-liner |
+| 4 Address Map | concept of address-map (rephrase; AMD has Versal-specific re-mapping) |
+| 5 QoS Generator | high-level QoS narrative |
+| 6 ECC scheme | **8 verbatim sentences across §Parity + §Data Integrity (highest verbatim density alongside Slide 11)** |
+| 7 RoB types | linked-list RROB phrasing |
+| 8 NSU overview | "Conversion of NPD ↔ AXI"; "buffered before forwarding to minimize bubbles"; "AXI exclusive access handling" |
+| 9 Exclusive Monitor | "AXI exclusive access handling" concept |
+| 11 Credit + NPS | **full Credit-Based Flow Control paragraph (highest verbatim density)** + LRU VC arbitration one-liner |
 
 **Slides where we deliberately diverge from AMD (frame as design choice on slide):**
 - Slide 3 NMU — no chopping (single wide flit per AXI message); 32 outstanding (vs AMD's 64); no AXI ID Compression.
-- Slide 4 ECC — fabric ECC errors raise interrupt only, never SLVERR ((B)-philosophy).
-- Slide 6 QoS — modes follow FlooNoC + custom design, not AMD NPS Differentiated QoS.
+- Slide 4 Address Map — uniform 3-mode selector (vs AMD's Versal-specific re-mapping path).
+- Slide 5 QoS — modes follow FlooNoC + custom design, not AMD NPS Differentiated QoS.
+- Slide 6 ECC — fabric ECC errors raise interrupt only, never SLVERR ((B)-philosophy).
 
 ---
 
@@ -321,15 +353,10 @@ NoC on left; NSU box in middle containing: ECC Check · De-packetizing · W Reas
 
 | Batch | Slides | Status |
 |---|---|---|
-| A | 1 Title + 2 Components | pending |
-| B | 3 NMU overview | pending |
-| C | 4 ECC + 5 RoB + 6 QoS (NMU expansions) | pending |
-| D | 7 NSU overview | pending |
-| E | 8 Exclusive Monitor + 9 Downsize (NSU expansions) | pending |
-| F | 10 Credit + NPS | pending |
-| G | 11 Closing | pending |
+| Batch 1 | 1 Title + 2 Components + 3 NMU overview + 4 Address Map + 5 QoS + 6 ECC | pending |
+| Batch 2 | 7 RoB + 8 NSU overview + 9 Excl Monitor + 10 Downsize + 11 Credit + 12 Closing | pending |
 
-Old `SLIDES.md` (8-slide / 4-section meta-template version) is superseded by this v3 plan. New `SLIDES.md` will overwrite the old content; old version recoverable from git history.
+Old `SLIDES.md` (8-slide / 4-section meta-template version) is superseded by this v3.1 plan. New `SLIDES.md` will overwrite the old content; old version recoverable from git history.
 
 ---
 
