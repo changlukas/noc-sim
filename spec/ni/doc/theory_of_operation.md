@@ -196,11 +196,11 @@ QoS is computed at AW/AR flit injection. The W flit qos inherits from the corres
 
 Per source-doc 04_network_interface.md §FR-05. State machine: `FREE → ALLOCATED → RESPONSE_RECEIVED → READY_TO_RELEASE → FREE`. Per-AXI-ID release order enforced by linked-list of rob_idx within each ID's outstanding queue.
 
-**RoB allocator policy when multiple FREE entries are available**: lowest-index-first allocation. Each NMU has a static priority encoder over its `MAX_TXNS`-entry RoB array; the lowest-numbered FREE entry is assigned to the next incoming AW or AR. Rationale: deterministic, matches typical ARM-style RoB implementations, simplifies coverage analysis. *Reviewer assumption: please confirm or override.*
+**RoB allocator policy when multiple FREE entries are available**: lowest-index-first allocation. Each NMU has a static priority encoder over its `MAX_TXNS`-entry RoB array; the lowest-numbered FREE entry is assigned to the next incoming AW or AR. Rationale: deterministic, matches typical ARM-style RoB implementations, simplifies coverage analysis. **Designer-confirmed (A5 wave 2026-05-08): lowest-index-first.**
 
-**Tie-breaking when two RoB entries become READY_TO_RELEASE in the same cycle on the same `axi_id`**: release in `rob_idx` order (lower rob_idx releases first, reflecting the issue order from the per-AXI-ID linked list). The per-AXI-ID linked list is the canonical ordering source — when two entries on the same axi_id chain are simultaneously eligible, the one allocated first (lower rob_idx) wins. *Reviewer assumption: this matches standard AXI4 per-ID ordering semantics; please confirm.*
+**Tie-breaking when two RoB entries become READY_TO_RELEASE in the same cycle on the same `axi_id`**: release in `rob_idx` order (lower rob_idx releases first, reflecting the issue order from the per-AXI-ID linked list). The per-AXI-ID linked list is the canonical ordering source — when two entries on the same axi_id chain are simultaneously eligible, the one allocated first (lower rob_idx) wins. **Designer-confirmed (A5 wave 2026-05-08): lower rob_idx releases first.**
 
-**RoB behavior when `rob_req = 0` in the flit header (i.e., master indicates it doesn't need RoB)**: NMU still allocates a tracker entry (to back-pressure on RoB-full), but releases responses immediately on receive without waiting for in-order release. Equivalent to "fast-path" / NoRoB-effective semantics for that transaction. *Reviewer assumption: confirm vs alternative (skip allocation entirely; degenerate stall).*
+**RoB behavior when `rob_req = 0` in the flit header (i.e., master indicates it doesn't need RoB)**: NMU still allocates a tracker entry (to back-pressure on RoB-full), but releases responses immediately on receive without waiting for in-order release. Equivalent to "fast-path" / NoRoB-effective semantics for that transaction. **Designer-confirmed (A5 wave 2026-05-08): NMU allocates a tracker even when rob_req=0.**
 
 **RoB variants** (FlooNoC-aligned naming; chosen *per response channel* via two independent build-time parameters `B_ROB_TYPE` and `R_ROB_TYPE`, each in `{NoRoB, SimpleRoB, NormalRoB}`):
 
@@ -324,7 +324,7 @@ NMU performs two distinct VC functions, separately scoped:
 
 #### CDC (async FIFO)
 
-NMU AXI ingress → NoC injection: aclk-domain producer, noc_clk-domain consumer. Gray-counter pointer + 2FF synchronizer. Default depth: 16 entries (sized to absorb 2× the maximum expected aclk-cycle round-trip at the slowest clock-ratio combination, plus 2 entries for synchroniser pipeline depth). *Reviewer assumption: 16 is conservative; tune down if area-critical.*
+NMU AXI ingress → NoC injection: aclk-domain producer, noc_clk-domain consumer. Gray-counter pointer + 2FF synchronizer. Default depth: 16 entries (sized to absorb 2× the maximum expected aclk-cycle round-trip at the slowest clock-ratio combination, plus 2 entries for synchroniser pipeline depth). **Designer-confirmed (A5 wave 2026-05-08): default 16. Integrators with extreme clock-ratio combinations re-size per the formula above.**
 
 NMU NoC ingress → AXI egress: mirror direction.
 
@@ -507,7 +507,7 @@ Sub-modules:
 - **Exclusive Monitor (NSU)**: `EXCLUSIVE_MONITOR_DEPTH`-entry table tracking pending Exclusive read reservations per AXI4 §A7.
 - **VC Mapping / Demux**: per-NMU/NSU VC mapping block. NMU assigns `vc_id` to each outbound flit per Hybrid R/W × QoS policy (fixed at design time per `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS`). Cycle-level VC arbitration is a NPS (switch) function, not NI, per AMD pg313 §Virtual Channel Arbitration.
 - **Async FIFOs**: gray-counter pointer + 2FF synchronizer; depth synthesis-time parameter.
-- **InjectionBuffer (NMU)**: small per-VC FIFO (`NMU_BUFFER_DEPTH` from `NocConfig`, default 2 in BFM). RTL uses the same default (2 entries) per BFM-RTL behavioral equivalence; *Reviewer assumption: confirm if RTL choice differs.*
+- **InjectionBuffer (NMU)**: small per-VC FIFO (`NMU_BUFFER_DEPTH` from `NocConfig`, default 2 in BFM). RTL uses the same default (2 entries) per BFM-RTL behavioral equivalence; **Designer-confirmed (A5 wave 2026-05-08): RTL default 2 entries (BFM-RTL behavioral equivalence).**
 - **FlitECC Gen / Check**: whole-flit SECDED Hamming over flit (header + payload) plus 1-bit `route_par` parity over `{dst_id, last}` (per AMD pg313 §Parity). Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits). See §ECC.
 
 ### RTL pipeline / timing
@@ -547,7 +547,7 @@ Cross-domain partial reset → CDC FIFO is in inconsistent state; integrator mus
 
 ### RTL implementation notes
 
-- Synthesis target: ASIC 7nm process; target frequency 1.2 GHz on `noc_clk_i` and 800 MHz on `aclk_i`. *Reviewer assumption: representative target; adjust for actual deployment.*
+- Synthesis target: ASIC 7nm process; target frequency 1.2 GHz on `noc_clk_i` and 800 MHz on `aclk_i`. **Designer-confirmed (A5 wave 2026-05-08): representative target — integrators adjust for actual deployment.**
 - RoB Storage: flop-based at MAX_TXNS=32 (default); for larger MAX_TXNS, integrator should evaluate SRAM macro.
 - CDC FIFO depth: parameter `CDC_FIFO_DEPTH`, default 16 entries.
 - Lint exemption: `WIDTH_TRUNC` on AXI awaddr / araddr upper bits where the routing extracts only X_WIDTH+Y_WIDTH bits for dst_id (intentional). No other exemptions expected.
@@ -564,4 +564,4 @@ When NMU has a W burst in flight on `noc_req_o`, may it inject an AR flit betwee
 
 AXI4 atomic operations (ATOPs) — single-token CAS / SWAP / LOAD-STORE — are **out of scope** for this NI revision. The `awatop` field is sampled and recorded for monitor mode but the BFM and RTL both terminate ATOPs with `bresp=SLVERR` and a single B response (no ATOP read-response generation).
 
-*Reviewer assumption: matches noc-sim §3 parameter list which omits ATOP_SUPPORT. Confirm or upgrade to ATOP_SUPPORT=1 path (would add ~3 weeks of design + DV).*
+**Designer-confirmed (A5 wave 2026-05-08): ATOP_SUPPORT=0. ATOP_SUPPORT=1 path deferred to a future revision (~3 weeks of design + DV).**

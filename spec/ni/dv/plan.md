@@ -20,7 +20,7 @@ Verify the NI against:
 15. Outstanding-transaction count CSR observability (`PENDING_R_COUNT` / `PENDING_W_COUNT`) and NSU Exclusive Monitor CSR clear / observability (`EXCLUSIVE_MONITOR_CTRL` / `EXCLUSIVE_MONITOR_STATUS`; race semantics with concurrent NSU events).
 
 DV strategy:
-- **Constrained-random testing** — **UVM 1.2** (industry standard; mature DV ecosystem; matches assumed in-house DV expertise). Master DUT stimulates AXI; NoC router stub provides flit endpoint; scoreboard cross-checks AXI handshakes against observed NoC flits. *Reviewer assumption: confirm or override (cocotb if Python-driven flow preferred; plain SV if UVM overhead unwanted).*
+- **Constrained-random testing** — **UVM 1.2** (industry standard; mature DV ecosystem; matches assumed in-house DV expertise). Master DUT stimulates AXI; NoC router stub provides flit endpoint; scoreboard cross-checks AXI handshakes against observed NoC flits. **Designer-confirmed (A5 wave 2026-05-08): UVM 1.2.**
 - **Directed tests for configuration knobs** — verify each CSR write produces the documented wire-level effect.
 - **Mode-switch tests** — ACTIVE / PASSIVE transitions with and without in-flight transactions.
 - **Reset tests** — assert each reset mid-transaction at every channel state; assert both resets together; assert partial reset.
@@ -131,7 +131,7 @@ D3 coverage closure goal: 100% bin hits on every covergroup.
 - CDC async FIFO — verify no data loss / corruption / pointer divergence across all clock-ratio extremes.
 - Reset entry sequencing — verify the wire-level reset values and post-reset transitions match pin_level_reset.md formally.
 
-**Security role**: NI does NOT participate in security-critical paths (access control, attestation, key management). Sec_cm FPV is **not required**. AXI awprot/arprot are sampled but not enforced; protection-attribute checking is delegated to downstream slaves or upstream IP. *Reviewer assumption: confirm — if a future revision adds security gating (e.g., NMU enforces awprot[1]=0 for non-secure transactions), revisit and add sec_cm FPV.*
+**Security role**: NI does NOT participate in security-critical paths (access control, attestation, key management). Sec_cm FPV is **not required**. AXI awprot/arprot are sampled but not enforced; protection-attribute checking is delegated to downstream slaves or upstream IP. **Designer-confirmed (A5 wave 2026-05-08): NI is not security-critical; no sec_cm FPV required. Revisit if a future revision adds security gating.**
 
 ## Out of scope
 
