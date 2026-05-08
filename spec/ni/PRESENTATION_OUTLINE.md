@@ -340,6 +340,6 @@
 ## Open issues to resolve before drafting actual slides
 
 1. **NMU/NSU block-diagram drift** — fix the 5 confirmed stale items + 3 coverage gaps from earlier audit (`VC Arbiter` → `VC Mapping`, `route_par` 9-bit cover, `port_id` removed, A4.5 stamp, NSU CSR-link missing). Otherwise Slides 3 / 9 will display stale info.
-2. **`flit_ecc` coverage exact bit count** — Slide 14 cites "10-bit syndrome over 396-bit". Verify against `doc/theory_of_operation.md` §ECC formula vs `FLIT_WIDTH=406 − FLIT_ECC_WIDTH=10 − ROUTE_PAR_WIDTH=1 = 395`. Pick one and unify.
+2. **`flit_ecc` coverage** — ✓ resolved 2026-05-08: 396 bit correct per `doc/theory_of_operation.md:369-371` §ECC (`FLIT_DATA_WIDTH = FLIT_WIDTH − FLIT_ECC_WIDTH = 406 − 10`; Layer 2 SECDED excludes only `flit_ecc` itself, so `route_par` is deliberately covered by both Layer 1 per-hop parity and Layer 2 end-to-end SECDED — overlap is intentional on routing-critical bits). AMD pg313 §Data Integrity ("SECDED ECC across the entire flit" + DST-ID parity as "additional") aligns with this two-layer design.
 3. **Top-level NI block diagram** — Slide 2 currently uses NMU/NSU diagrams jointly. Could draw one combined top-level (drafted in earlier turn). Decision: include or skip.
 4. **DV plan slide depth** — Slide 15 currently bundles AXI conversion + clocking + DV + future. If audience wants DV detail, split into 2 slides (16-slide deck).
