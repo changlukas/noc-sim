@@ -173,7 +173,7 @@ After reset, source-credit counters initialise to 0 per VC. Both ends must compl
 - Credit exchange begins only after both ends raise their respective `*_credit_init_ready_*` signals (bi-directional handshake).
 - Once exchange begins, credit counters are seeded with `INPUT_BUFFER_DEPTH / NUM_VC` per VC (where `INPUT_BUFFER_DEPTH` is the receiver's per-link buffer depth, a router-side parameter the integrator must communicate).
 - Credit return latency is `CREDIT_DELAY` cycles (router-side parameter, default 1).
-- Credit starvation (no credit return for `CREDIT_TIMEOUT` `noc_clk_i` cycles, default 10 000) is treated as one of the trigger sources of the outstanding-transaction-timeout path: the affected NMU/NSU drives `bresp/rresp = SLVERR` for any in-flight transaction whose response is now permanently blocked by lack of credits, increments `ERR_COUNT`, and sets `ERR_STATUS[1] timeout_err` (per `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR` + `NI_CFG_ERR_STATUS_RW1C`). Counter pairing therefore stays consistent: bit 1 ↔ `ERR_COUNT`. Software disambiguates credit-starvation from other timeout causes (slave never responds, route_par drop, fabric loss) via `LAST_ERR_INFO` plus the per-class counters.
+- Credit starvation: if the receiver returns no credits, the source is permanently stalled on that VC until credits resume. There is no automatic timeout / SLVERR escalation in v0.4.0 — software detects via PENDING counters / IRQ and handles recovery externally.
 
 ### CSR access port (AXI4-Lite subordinate)
 
@@ -254,12 +254,12 @@ Coverage:
 
 **Behaviour:**
 
-- NMU verifies `axi_*_par_i` on each AW/AR/W handshake at the manager port. Mismatch logged to `ERR_STATUS[3] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_MST_PARITY_CHECK`). Transaction proceeds — no SLVERR injection at AXI boundary. Software observes via CSR / IRQ.
+- NMU verifies `axi_*_par_i` on each AW/AR/W handshake at the manager port. Mismatch logged to `ERR_STATUS[2] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_MST_PARITY_CHECK`). Transaction proceeds — no SLVERR injection at AXI boundary. Software observes via CSR / IRQ.
 - NMU **generates** `axi_rdata_par_o` per byte for R responses returning to master. Generation point: after the `flit_ecc` check stage at NMU (per AMD pg313 §Parity). Formalised in `protocol_rules.md` `AXI4_MST_PARITY_GEN_R`.
 - NSU generates `axi_*_par_o` per byte for AW/AR/W signals driven to local slave. Address parity regenerated when NMU/NSU modify the address (e.g., AddrTrans address-map lookup may change upper address bits — parity over those bytes is recomputed, lower bytes carried through).
-- NSU verifies `axi_rdata_par_i` from local slave. Mismatch logged to `ERR_STATUS[3] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_SLV_PARITY_CHECK`). R beat forwarded to AXI master with `rresp=OKAY`. Same observability path.
+- NSU verifies `axi_rdata_par_i` from local slave. Mismatch logged to `ERR_STATUS[2] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_SLV_PARITY_CHECK`). R beat forwarded to AXI master with `rresp=OKAY`. Same observability path.
 - Parity is verified at AXI boundary only. Inside the NoC fabric, `flit_ecc` (whole-flit SECDED) takes over end-to-end protection.
-- Rationale for "log-only, no SLVERR": parity at AXI boundary detects local-wire / local-slave corruption, not fabric corruption. Per the (B)-philosophy ECC scheme (see ToO §ECC), the NI does not synthesise AXI rresp values from its own integrity checks — error visibility goes through CSR + IRQ, leaving the AXI rresp channel reserved for end-to-end (HBM/DDR-style) and timeout-driven SLVERR cases.
+- Rationale for "log-only, no SLVERR": parity at AXI boundary detects local-wire / local-slave corruption, not fabric corruption. Per the (B)-philosophy ECC scheme (see ToO §ECC), the NI does not synthesise AXI rresp values from its own integrity checks — error visibility goes through CSR + IRQ, leaving the AXI rresp channel reserved for end-to-end (HBM/DDR-style) cases (no fabric-driven SLVERR synthesis in v0.4.0).
 
 ## Protocol clock and reset
 

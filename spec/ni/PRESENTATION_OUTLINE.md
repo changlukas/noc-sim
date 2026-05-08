@@ -48,9 +48,9 @@
 **Slide structure** (per AMD §NMU pattern): "What it provides" bullet list + flowing prose paragraphs.
 
 **Bullet topics** (~13 items, each one capability or concrete parameter value):
-async clock crossing · AXI4 ↔ NoC flit conversion · address translation (3 routing modes) · WRAP / INCR / FIXED burst · per-AXI-ID Reorder Buffer (3 modes) · write ordering (W-burst contiguity) · Ingress QoS (4 modes) · Exclusive Access support · data width 64 / 128 / 256 / 512 · up to 32+32 outstanding · wide flit / no chopping · two-layer integrity · timeout safety net.
+async clock crossing · AXI4 ↔ NoC flit conversion · address translation (3 routing modes) · WRAP / INCR / FIXED burst · per-AXI-ID Reorder Buffer (3 modes) · write ordering (W-burst contiguity) · Ingress QoS (4 modes) · Exclusive Access support · data width 64 / 128 / 256 / 512 · up to 32+32 outstanding · wide flit / no chopping · two-layer integrity.
 
-**Prose narrative** (~5 short paragraphs): position + clock-domain split → packetizing path → RoB allocation → QoS + ECC + inject → response path + timeout safety net.
+**Prose narrative** (~5 short paragraphs): position + clock-domain split → packetizing path → RoB allocation → QoS + ECC + inject → response path.
 
 **Visual asset.** `images/NMU_block_diagram.md` — drift fix prereq (D1/D3/D5/D9/D11).
 
@@ -111,7 +111,7 @@ async clock crossing (NoC ↔ AXI slave) · NoC flit ↔ AXI4 conversion · W-bu
 - Bi-directional credit-init handshake at startup before any flits flow.
 - Per-VC credit accounting at the source; receiver returns one credit per VC per cycle.
 - A source asserts a flit only when ≥ 1 credit is held on the chosen VC.
-- Persistent credit starvation eventually escalates to the outstanding-transaction timeout path → AXI SLVERR (covered on Slide 3).
+- Persistent credit starvation = permanent stall on the affected VC (no automatic SLVERR escalation in v0.4.0).
 
 **Visual asset.** Sequence diagram: post-reset → init handshake → credit exchange begins → flit injection → credit return.
 
@@ -161,7 +161,7 @@ async clock crossing (NoC ↔ AXI slave) · NoC flit ↔ AXI4 conversion · W-bu
 >
 > *"Uncorrectable ECC errors result in a fatal interrupt."* — AMD pg313 §Data Integrity
 
-**Error reporting policy (frame as design choice on slide):** Fabric ECC errors raise an interrupt and increment counters but never synthesize SLVERR on AXI rresp / bresp. The corrupted flit is forwarded with `OKAY`; downstream / application-level integrity (HBM ECC, software CRC) handles recovery. AXI rresp / bresp channels are reserved for end-to-end memory errors and the timeout-driven SLVERR path.
+**Error reporting policy (frame as design choice on slide):** Fabric ECC errors raise an interrupt and increment counters but never synthesize SLVERR on AXI rresp / bresp. The corrupted flit is forwarded with `OKAY`. Downstream / application-level integrity (HBM ECC, software CRC) handles recovery. AXI rresp / bresp channels are reserved for end-to-end memory errors only — no fabric-driven SLVERR synthesis in v0.4.0.
 
 **Visual asset.** Two-layer schematic: per-hop parity check at each router; SECDED check only at destination NI; AXI parity check at host boundary.
 

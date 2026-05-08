@@ -8,7 +8,7 @@ NI exposes channel-API methods at two granularities:
 
 Use Channel API when:
 - Driving `awready` / `wready` / `arready` without an accompanying matching response (back-pressure recovery).
-- Withholding `noc_req_credit_i` returns to drain NMU per-VC credit pool, exercising credit-starvation behaviour and the `CREDIT_TIMEOUT` path.
+- Withholding `noc_req_credit_i` returns to drain NMU per-VC credit pool, exercising credit-starvation behaviour (permanent stall on the affected VC).
 - Injecting illegal handshake sequences (e.g., assert `noc_*_o.valid` with malformed flit_data; assert `bvalid` before any AW handshake).
 - Driving per-cycle deterministic patterns (vs. random delays via `set_response_delay_axi` / `set_response_delay_noc`).
 

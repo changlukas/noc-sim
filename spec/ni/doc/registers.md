@@ -52,14 +52,13 @@ CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-con
 | 0x09C | `TXN_TOTAL_COUNT` | RO | 0x0 | 總 transaction 數 (saturating). |
 | **Error Status / IRQ** |||||
 | 0x100 | `ERR_STATUS` | RW1C | 0x0 | 錯誤狀態 — write 1 to clear bit and the associated saturating counter. See §ERR_STATUS. <!-- source: 06_qos.md §4.1, post-fix RW1C --> |
-| 0x104 | `ERR_COUNT` | RO | 0x0 | Timeout 錯誤計數 (`ERR_COUNTER_WIDTH` bits, saturating). Cleared via `ERR_STATUS[1]` write-1 (timeout_err). |
 | 0x108 | `ECC_UNCORR_ERR_CNT` | RO | 0x0 | ECC uncorrectable 錯誤計數 (saturating). Cleared via `ERR_STATUS[0]` write-1 (ecc_uncorr_err). |
 | 0x10C | `LAST_ERR_INFO` | RO | 0x0 | 最近錯誤資訊 (sticky semantics; see §LAST_ERR_INFO for field layout). |
 | 0x110 | (reserved for `LAST_ERR_INFO_HI`) | — | — | Allocated for compile-time `LAST_ERR_INFO` extension when total field width exceeds 32 bits (e.g., `AXI_ID_WIDTH=16` with extended `X_WIDTH+Y_WIDTH`). Unused at default parameters; reads as DECERR until activated. |
 | 0x114 | `IRQ_ENABLE` | RW | 0x0 | Per-bit IRQ mask, layout 1:1 with `ERR_STATUS`. `irq_o = OR over i of (ERR_STATUS[i] & IRQ_ENABLE[i])`. Default 0 = all IRQs masked; software opts in. See §IRQ_ENABLE for field layout. |
 | 0x118 | `ECC_CORR_ERR_CNT` | RO | 0x0 | flit_ecc 單位元（已修正）錯誤累計 (saturating, `ERR_COUNTER_WIDTH` bits). Pure informational; cumulative since hardware reset; no software clear path. Software polls and tracks deltas for health-monitoring purposes. |
-| 0x11C | `ROUTE_PAR_ERR_CNT` | RO | 0x0 | route_par mismatch (flit dropped at router/sink) 累計 (saturating). Cleared via `ERR_STATUS[2]` write-1 (route_par_err). |
-| 0x120 | `AXI_PARITY_ERR_CNT` | RO | 0x0 | AXI host-side parity mismatch 累計 (saturating); covers both NMU-side `axi_*_i_par_i` checks and NSU-side `axi_rdata_par_i` checks. Cleared via `ERR_STATUS[3]` write-1 (axi_parity_err). |
+| 0x11C | `ROUTE_PAR_ERR_CNT` | RO | 0x0 | route_par mismatch (flit dropped at router/sink) 累計 (saturating). Cleared via `ERR_STATUS[1]` write-1 (route_par_err). |
+| 0x120 | `AXI_PARITY_ERR_CNT` | RO | 0x0 | AXI host-side parity mismatch 累計 (saturating); covers both NMU-side `axi_*_i_par_i` checks and NSU-side `axi_rdata_par_i` checks. Cleared via `ERR_STATUS[2]` write-1 (axi_parity_err). |
 | **Runtime control** |||||
 | 0x130 | `PENDING_R_COUNT` | RO | 0x0 | NMU live outstanding read transactions. Width = `ceil(log2(MAX_TXNS+1))`. AXI-edge-defined per `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY`. See §PENDING_R_COUNT. |
 | 0x134 | `PENDING_W_COUNT` | RO | 0x0 | NMU live outstanding write transactions. Same width formula and contract as `PENDING_R_COUNT`. See §PENDING_W_COUNT. |
@@ -99,10 +98,9 @@ CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-con
 | Field | Bit | Width | Description | Reset |
 |-------|-----|-------|-------------|-------|
 | `ecc_uncorr_err` | [0] | 1 | flit_ecc 雙位元錯偵測到 (corrupted flit forwarded; AXI rresp 不變). Write 1 clears bit + `ECC_UNCORR_ERR_CNT`. | 0x0 |
-| `timeout_err` | [1] | 1 | NMU outstanding-transaction tracker timeout (covers slave-not-responding, lost flit, and route_par-induced flit drop scenarios — software disambiguates via `LAST_ERR_INFO`). Write 1 clears bit + `ERR_COUNT`. | 0x0 |
-| `route_par_err` | [2] | 1 | route_par mismatch detected by router or NI sink (offending flit dropped). Write 1 clears bit + `ROUTE_PAR_ERR_CNT`. | 0x0 |
-| `axi_parity_err` | [3] | 1 | AXI host-side parity mismatch (NMU-side AW/AR/W input parity OR NSU-side rdata parity). Transaction is logged but not aborted. Write 1 clears bit + `AXI_PARITY_ERR_CNT`. | 0x0 |
-| Reserved | [31:4] | 28 | — | 0x0 |
+| `route_par_err` | [1] | 1 | route_par mismatch detected by router or NI sink (offending flit dropped). Write 1 clears bit + `ROUTE_PAR_ERR_CNT`. | 0x0 |
+| `axi_parity_err` | [2] | 1 | AXI host-side parity mismatch (NMU-side AW/AR/W input parity OR NSU-side rdata parity). Transaction is logged but not aborted. Write 1 clears bit + `AXI_PARITY_ERR_CNT`. | 0x0 |
+| Reserved | [31:3] | 29 | — | 0x0 |
 
 **Bit-to-IRQ mapping**: each bit drives `irq_o` when its companion `IRQ_ENABLE[i]` bit is set. See §IRQ_ENABLE.
 
@@ -111,10 +109,9 @@ CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-con
 | Field | Bit | Width | Description | Reset |
 |-------|-----|-------|-------------|-------|
 | `ecc_uncorr_irq_en` | [0] | 1 | Allow `ERR_STATUS[0]` to drive `irq_o`. | 0x0 |
-| `timeout_irq_en` | [1] | 1 | Allow `ERR_STATUS[1]` to drive `irq_o`. | 0x0 |
-| `route_par_irq_en` | [2] | 1 | Allow `ERR_STATUS[2]` to drive `irq_o`. | 0x0 |
-| `axi_parity_irq_en` | [3] | 1 | Allow `ERR_STATUS[3]` to drive `irq_o`. | 0x0 |
-| Reserved | [31:4] | 28 | — | 0x0 |
+| `route_par_irq_en` | [1] | 1 | Allow `ERR_STATUS[1]` to drive `irq_o`. | 0x0 |
+| `axi_parity_irq_en` | [2] | 1 | Allow `ERR_STATUS[2]` to drive `irq_o`. | 0x0 |
+| Reserved | [31:3] | 29 | — | 0x0 |
 
 Reset default 0x0 (all IRQs masked) — software opts in per error class. The IRQ assertion function is purely combinational over the latched `ERR_STATUS` bits in the `aclk_i` domain (`irq_o = |(ERR_STATUS & IRQ_ENABLE)`). NoC-domain error sources reach `ERR_STATUS` via the existing CSR-file CDC sync path; no separate interrupt CDC is introduced. See `protocol_rules.md` `NI_IRQ_LEVEL`.
 
@@ -131,7 +128,7 @@ Field widths derived from defaults: `AXI_ID_WIDTH=8`, `X_WIDTH+Y_WIDTH=8`. For n
 | `err_dst_id` | [23:16] | `X_WIDTH + Y_WIDTH` | 錯誤目標 node ID. | 0x0 |
 | Reserved | [31:24] | 8 | — | 0x0 |
 
-**Update semantics** (resolved per ToO §ECC and protocol_rules.md `NI_CFG_LAST_ERR_INFO_CAPTURE`): **sticky** — first error since last clear is captured; subsequent errors do not overwrite until software clears via any `ERR_STATUS[0..3]` RW1C write. All four ERR_STATUS event classes (`ecc_uncorr_err`, `timeout_err`, `route_par_err`, `axi_parity_err`) qualify as "an error" for sticky-capture purposes — whichever fires first wins until cleared. Rationale: prevents losing the original triggering error while system processes subsequent cascaded errors. Test in dv/plan TP19.
+**Update semantics** (resolved per ToO §ECC and protocol_rules.md `NI_CFG_LAST_ERR_INFO_CAPTURE`): **sticky** — first error since last clear is captured; subsequent errors do not overwrite until software clears via any `ERR_STATUS[0..2]` RW1C write. All three ERR_STATUS event classes (`ecc_uncorr_err`, `route_par_err`, `axi_parity_err`) qualify as "an error" for sticky-capture purposes — whichever fires first wins until cleared. Rationale: prevents losing the original triggering error while system processes subsequent cascaded errors. Test in dv/plan TP19.
 
 ## §PENDING_R_COUNT Register (0x130) Field Layout
 
@@ -166,7 +163,7 @@ Per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW` and ToO §"Software quiesce flow".
 
 | Field | Bit | Width | Description | Reset |
 |-------|-----|-------|-------------|-------|
-| `quiesce_idle` | [0] | 1 | Asserts when `(QUIESCE_CTRL.quiesce_req=1) AND (PENDING_R_COUNT=0) AND (PENDING_W_COUNT=0)`. Combinational over `aclk_i`-domain values (no CDC). Software polls this bit after writing `quiesce_req=1` to know when reconfig is safe. Polling timeout SHOULD be ≥ `MAX_TXNS × TXN_TIMEOUT` aclk cycles per `protocol_rules.md` `NI_CFG_QUIESCE_LIVENESS` (default 320 000 cycles). Deasserts on the cycle `quiesce_req` is cleared (because the AND-condition's first term goes false). | 0x0 |
+| `quiesce_idle` | [0] | 1 | Asserts when `(QUIESCE_CTRL.quiesce_req=1) AND (PENDING_R_COUNT=0) AND (PENDING_W_COUNT=0)`. Combinational over `aclk_i`-domain values (no CDC). Software polls this bit after writing `quiesce_req=1` to know when reconfig is safe. Polling is best-effort — no NI-side liveness guarantee in v0.4.0. If a slave hangs, `quiesce_idle` never asserts and software handles upper-bounded retry / reset externally. Deasserts on the cycle `quiesce_req` is cleared (because the AND-condition's first term goes false). | 0x0 |
 | Reserved | [31:1] | 31 | — | 0x0 |
 
 ## §EXCLUSIVE_MONITOR_CTRL Register (0x144) Field Layout
@@ -195,7 +192,7 @@ All error counters and bin counters use **saturating arithmetic**: increment up 
 
 | Counter group | Clear mechanism |
 |---|---|
-| Error counters paired with `ERR_STATUS` bits (`ERR_COUNT`, `ECC_UNCORR_ERR_CNT`, `ROUTE_PAR_ERR_CNT`, `AXI_PARITY_ERR_CNT`) | Software writes 1 to the corresponding `ERR_STATUS[N]` bit; counter clears atomically with the bit. |
+| Error counters paired with `ERR_STATUS` bits (`ECC_UNCORR_ERR_CNT`, `ROUTE_PAR_ERR_CNT`, `AXI_PARITY_ERR_CNT`) | Software writes 1 to the corresponding `ERR_STATUS[N]` bit; counter clears atomically with the bit. |
 | Correctable-ECC informational counter (`ECC_CORR_ERR_CNT`) | **No clear path** — pure saturating, cumulative since hardware reset (`arst_ni`). Software polls and tracks deltas. Rationale: single-bit corrections do not gate any IRQ source and are not part of the RW1C-clear contract; offering a clear-via-RW1C bit would inflate `ERR_STATUS` for an event class software typically samples rather than reacts to. |
 | Packet Probe counters (`PKT_BYTE_COUNT`, `PKT_BANDWIDTH`) | Software writes `PKT_PROBE_EN = 0` then `PKT_PROBE_EN = 1`; on the 0→1 transition, counters reset to 0. |
 | Transaction Probe counters (`TXN_BIN_*_COUNT`, `TXN_TOTAL_COUNT`) | Same — `TXN_PROBE_EN` 1→0→1 transition resets all bin counters and TXN_TOTAL_COUNT to 0 |
@@ -205,10 +202,9 @@ All error counters and bin counters use **saturating arithmetic**: increment up 
 
 For QoS Generator behavior, see [Theory of Operation §QoSGen](./theory_of_operation.md#qos-generator).
 For ECC error counter triggering (ECC_UNCORR_ERR_CNT / ECC_CORR_ERR_CNT / ROUTE_PAR_ERR_CNT), see [Theory of Operation §ECC](./theory_of_operation.md#ecc).
-For NMU outstanding-transaction timeout → `ERR_STATUS[1]` triggering, see protocol_rules.md `AXI4_MST_TIMEOUT_SLVERR`.
-For AXI host-side parity check → `ERR_STATUS[3]` triggering, see protocol_rules.md `AXI4_MST_PARITY_CHECK` (NMU-side) and `AXI4_SLV_PARITY_CHECK` (NSU-side).
+For AXI host-side parity check → `ERR_STATUS[2]` triggering, see protocol_rules.md `AXI4_MST_PARITY_CHECK` (NMU-side) and `AXI4_SLV_PARITY_CHECK` (NSU-side).
 For IRQ assertion behaviour, see protocol_rules.md `NI_IRQ_LEVEL`.
 For Probe counter update timing, see protocol_rules.md `NI_CFG_PROBE_PKT_BYTE_COUNT` and `NI_CFG_PROBE_TXN_LATENCY` for cycle-level update specification.
 For NMU outstanding-transaction count exposure (`PENDING_R_COUNT` / `PENDING_W_COUNT`), see [Theory of Operation §Software quiesce flow](./theory_of_operation.md#software-quiesce-flow) and protocol_rules.md `NI_CFG_PENDING_COUNT_ACCURACY`.
-For NMU quiesce flow (`QUIESCE_CTRL` / `QUIESCE_STATUS`), see [Theory of Operation §Software quiesce flow](./theory_of_operation.md#software-quiesce-flow) and protocol_rules.md `NI_CFG_QUIESCE_FLOW` / `NI_CFG_QUIESCE_LIVENESS`.
+For NMU quiesce flow (`QUIESCE_CTRL` / `QUIESCE_STATUS`), see [Theory of Operation §Software quiesce flow](./theory_of_operation.md#software-quiesce-flow) and protocol_rules.md `NI_CFG_QUIESCE_FLOW`.
 For NSU Exclusive Monitor CSR clear / observability (`EXCLUSIVE_MONITOR_CTRL` / `EXCLUSIVE_MONITOR_STATUS`), see [Theory of Operation §NSU Exclusive Monitor](./theory_of_operation.md#nsu-exclusive-monitor-nsu-sub-block) and protocol_rules.md `NI_CFG_EXCLUSIVE_CLEAR_RACE` / `NI_CFG_EXCLUSIVE_OCCUPANCY_ACCURACY`.

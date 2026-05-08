@@ -93,11 +93,10 @@ Transaction API covers ~95% of typical tests (single-master single-slave, RoB or
 
 **Return value:**
 - `OK`: write completed; bresp=OKAY.
-- `SLVERR`: bresp=SLVERR (e.g., 4KB boundary violation, outstanding-transaction timeout per `protocol_rules.md` `AXI4_MST_TIMEOUT_SLVERR`, Exclusive monitor overflow, configured fault). Note: flit_ecc uncorrectable does NOT cause SLVERR — the corrupted flit is forwarded with `bresp=OKAY` and the error is observable only via CSR (`ECC_UNCORR_ERR_CNT`, `ERR_STATUS[0]`) plus `irq_o`; see ToO §ECC for the (B)-philosophy rationale.
+- `SLVERR`: bresp=SLVERR (e.g., 4KB boundary violation, Exclusive monitor overflow, configured fault). Note: flit_ecc uncorrectable does NOT cause SLVERR — the corrupted flit is forwarded with `bresp=OKAY` and the error is observable only via CSR (`ECC_UNCORR_ERR_CNT`, `ERR_STATUS[0]`) plus `irq_o`. See ToO §ECC for the (B)-philosophy rationale.
 - `DECERR`: bresp=DECERR.
 - `RESET_DURING_TRANSACTION`: arst_ni or noc_rst_ni asserted before completion.
 - `MODE_SWITCHED_TO_PASSIVE`: bfm_mode set to PASSIVE during call.
-- `TIMEOUT`: configurable timeout (default 10000 aclk cycles) elapsed before B response.
 
 **Error modes:**
 
@@ -107,7 +106,6 @@ Transaction API covers ~95% of typical tests (single-master single-slave, RoB or
 | DECERR | bresp=DECERR observed | yes |
 | RESET_DURING_TRANSACTION | Either reset asserted | yes |
 | MODE_SWITCHED_TO_PASSIVE | bfm_mode → PASSIVE during call | yes |
-| TIMEOUT | timeout elapsed | yes |
 
 **Example:**
 ```c
@@ -353,7 +351,7 @@ See active_passive_mode.md for full semantics.
 | Response fault one-shot flags | Cleared | |
 | `set_response_delay_axi` / `set_response_delay_noc` | Reset to (0, 0) | |
 | CSR file state (QOS_MODE / QOS_FIXED_VALUE / BANDWIDTH_LIMIT / BANDWIDTH_BUDGET / BASE_QOS / SOCKET_QOS_EN / SOCKET_QOS / PKT_PROBE_* / TXN_PROBE_* / TXN_THRESHOLD_*) | **Preserved** | Software-managed state; reset via wire-level reset or explicit csr_write, not via reset_state |
-| `ERR_STATUS` / `ERR_COUNT` / `ECC_UNCORR_ERR_CNT` / `ECC_CORR_ERR_CNT` / `ROUTE_PAR_ERR_CNT` / `AXI_PARITY_ERR_CNT` / `LAST_ERR_INFO` | **Preserved** | Same; clear via RW1C write to the corresponding `ERR_STATUS` bit (counters auto-clear with their paired bit). `ECC_CORR_ERR_CNT` has no clear path — saturating cumulative. |
+| `ERR_STATUS` / `ECC_UNCORR_ERR_CNT` / `ECC_CORR_ERR_CNT` / `ROUTE_PAR_ERR_CNT` / `AXI_PARITY_ERR_CNT` / `LAST_ERR_INFO` | **Preserved** | Same; clear via RW1C write to the corresponding `ERR_STATUS` bit (counters auto-clear with their paired bit). `ECC_CORR_ERR_CNT` has no clear path — saturating cumulative. |
 | Probe counters (`PKT_BYTE_COUNT`, `TXN_BIN_*_COUNT`, etc.) | **Preserved** | Same |
 | `bfm_mode` (ACTIVE/PASSIVE) | **Preserved** | Testbench-level config |
 
@@ -371,11 +369,11 @@ If only one of the two resets is asserted (partial reset): cross-domain transact
 
 When a test issues a new transaction while the BFM's outstanding tracker is already full (`total outstanding == MAX_TXNS`, or `outstanding count for id == MAX_TXNS_PER_ID`), the BFM **mirrors RTL back-pressure**: the `apply_axi_*` call holds `axi_awready_o`/`axi_arready_o` LOW (or, on the subordinate-port direction, holds `axi_awvalid_o`/`axi_arvalid_o` until the local slave's ready accepts) and blocks until a tracker slot frees (i.e., a previously-issued transaction's response is received and consumed). The call then resumes, drives the AW/AR phase, and continues to the response phase as usual.
 
-The `Preconditions` line `outstanding count for id < MAX_TXNS_PER_ID; total outstanding < MAX_TXNS` in `apply_axi_write` / `apply_axi_read` is a **performance / liveness guideline, not a hard contract violation**: a test that exceeds the limit will not return an error, but will see the API call stall until back-pressure relief arrives. If the test's slave path is also stalled (deadlock scenario), the call eventually returns `TIMEOUT` per the configured timeout default (10000 aclk cycles).
+The `Preconditions` line `outstanding count for id < MAX_TXNS_PER_ID; total outstanding < MAX_TXNS` in `apply_axi_write` / `apply_axi_read` is a **performance / liveness guideline, not a hard contract violation**: a test that exceeds the limit will not return an error, but will see the API call stall until back-pressure relief arrives. If the test's slave path is also stalled (deadlock scenario), the call hangs indefinitely — software-side test framework is responsible for upper-bounded watchdog detection.
 
 Behavior matches the RTL counterpart's `AXI4_MST_RoB_OUTSTANDING_LIMIT` rule in `protocol_rules.md` (NMU back-pressures `awready`/`arready` until a slot frees).
 
-There is no separate `OUTSTANDING_LIMIT_EXCEEDED` return enum — overflow manifests as either back-pressure-induced latency or, if back-pressure cannot be relieved, `TIMEOUT`.
+There is no separate `OUTSTANDING_LIMIT_EXCEEDED` return enum — overflow manifests as back-pressure-induced latency.
 
 ## Concurrency rules
 

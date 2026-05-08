@@ -16,7 +16,7 @@
 | Reconstructs NoC flits / packets from observed activity | yes | yes |
 | Generates response stimulus via Transaction API (`apply_*`, `set_response_*`, etc.) | yes | no — knobs accepted but no driving effect |
 | Reports protocol-rule violations per `protocol_rules.md` | yes | yes |
-| Updates error-status CSRs (`ERR_STATUS[3:0]`, paired counters, `LAST_ERR_INFO`) on detected violations | yes | yes — error logging is part of monitoring; PASSIVE accumulates the same evidence ACTIVE does |
+| Updates error-status CSRs (`ERR_STATUS[2:0]`, paired counters, `LAST_ERR_INFO`) on detected violations | yes | yes — error logging is part of monitoring; PASSIVE accumulates the same evidence ACTIVE does |
 | Contributes to coverage hooks per `dv/plan.md` | yes | yes |
 | `expect_*` methods work for monitoring | yes | yes |
 | ECC validation on inbound flits | yes | yes |
@@ -37,7 +37,7 @@
 
   **Exception — `irq_o` continues to be driven** by the function `OR(ERR_STATUS[i] AND IRQ_ENABLE[i])` (per `protocol_rules.md` `NI_IRQ_LEVEL`). This is intentional: PASSIVE mode preserves the monitoring + logging path, and IRQ is the wire-level surface for those logs. A passive monitor can still notify the testbench of detected violations without ever driving any other output.
 
-  In-flight Transaction API calls unblock with `MODE_SWITCHED_TO_PASSIVE`. The BFM continues to monitor and log violations (incl. updating `ERR_STATUS[3:0]`, paired counters, and `LAST_ERR_INFO`). Corresponds to `protocol_rules.md` `NI_CFG_MODE_SWITCH`.
+  In-flight Transaction API calls unblock with `MODE_SWITCHED_TO_PASSIVE`. The BFM continues to monitor and log violations (incl. updating `ERR_STATUS[2:0]`, paired counters, and `LAST_ERR_INFO`). Corresponds to `protocol_rules.md` `NI_CFG_MODE_SWITCH`.
 - **Effect of PASSIVE → ACTIVE**: BFM-driven outputs return to reset-deassertion values; configuration knobs (set during PASSIVE) become effective on the first transaction after the switch.
 - **Switching mid-transaction**: Permitted; BFM logs warning. Test author should call `reset_state()` before switching back to ACTIVE if mid-transaction state was non-trivial.
 
