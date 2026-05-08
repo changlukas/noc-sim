@@ -1,15 +1,15 @@
-# NI Presentation Outline (A5 wave, 2026-05-08)
+# NI Presentation Outline (A5 wave, 2026-05-08; rewrite v2)
 
-**Target deck:** 15 slides, AMD pg313 NoC Architecture chapter-aligned ordering.
+**Target deck:** 9 slides, AMD pg313 NoC Architecture chapter-aligned ordering, IP-datasheet style.
 
-**Audience assumption:** internal review — engineers familiar with AXI4 + general NoC concepts. Not Versal-specific.
+**Audience assumption:** internal review — engineers familiar with AXI4 + general NoC concepts. **This deck introduces the design at architectural level — it is not an implementation walkthrough.**
 
-**Scope fence:** out-of-scope AMD chapters (Multi-SLR Boot Paths, MC Interleaving, AXI4-Stream, NMU/NSU Versions, AXI ID Compression) are silently skipped — no scope-fence slide.
+**Style reference:** AMD pg313 §NoC Master Unit / §NoC Slave Unit. Each major component is presented as one cohesive description: bullet capability list ("What it provides") followed by flowing prose paragraphs covering data flow and sub-block hand-offs. Concrete numbers (counts / sizes / widths) belong on slides; internal names (parameters, register / signal / rule IDs, algorithm internals) stay out of the deck and live only in the spec docs.
 
-**AMD content reuse legend (used throughout this doc):**
-- **✓ Verbatim** — quote AMD text directly with attribution (`per AMD pg313 §<Section>`).
-- **⚠ Rephrase** — concept aligns but specific Versal numbers / terms differ; rewrite in our spec's terms.
-- **✗ Skip** — Versal-specific (PL / AI Engine / CIPS / HBM_NMU / 8×8 Switch / 24-token reg / DST-ID parity 7-bit map etc.) or design diverges.
+**AMD content reuse legend:**
+- ✓ Verbatim — quote AMD directly with `per AMD pg313 §<Section>` attribution.
+- ⚠ Rephrase — concept aligns; adapt Versal numbers to ours.
+- ✗ Skip — Versal-specific (PL / AI Engine / CIPS / HBM variants / 8×8 Switch / NMU-NSU variants / chopping / DDR interleave) or design diverges.
 
 ---
 
@@ -17,14 +17,13 @@
 
 ### Slide 1 — Title + Scope
 
-**Topic.** Title page; one-paragraph scope statement.
+**AMD pg313 ref.** —
 
-**Talking points.**
-- "AXI4-over-NoC Network Interface — design + spec walkthrough"
-- One NI per tile, single-chimney (NMU + NSU sharing one NoC link pair) — FlooNoC-aligned.
-- This deck covers NI scope only; NPS (router) is a separate spec.
+**What this slide covers.** Title page. Three-bullet scope statement: per-tile single-chimney; NI-only (router separate); chapter ordering follows AMD pg313 NoC Architecture.
 
-**AMD reuse.** None.
+**Visual asset.** None (title slide).
+
+**AMD content classification.** —
 
 ---
 
@@ -32,314 +31,194 @@
 
 **AMD pg313 ref.** §NoC Architecture / §NoC Components.
 
-**Spec source.** `README.md` §Description, `doc/theory_of_operation.md` §Block diagram.
+**What this slide covers.** What sits inside the NI block — NMU + NSU + CSR file + level-sensitive interrupt. Per-tile single-chimney pattern: NMU drives the egress request link and samples the ingress response link; NSU samples the ingress request link and drives the egress response link. Both halves can be independently enabled. Router fabric is adjacent (covered briefly on Slide 5).
 
-**Talking points.**
-- AXI master/slave DUTs ↔ NMU + NSU ↔ NoC Router (NPS) fabric.
-- NI = NMU (ingress) + NSU (egress) + CSR file + irq_o.
-- Per-tile single-chimney; NMU drives `noc_req_o` + samples `noc_rsp_i`; NSU samples `noc_req_i` + drives `noc_rsp_o`.
+**Visual asset.** NMU + NSU block diagrams shown side-by-side (Option B). Drift fix prereq — see §Open issues #1.
 
-**AMD reuse.**
-- ✓ AMD's high-level NMU/NSU/NPS role description is generic enough — usable.
-- ✗ Versal-specific component listing (PL master, AI Engine, CIPS coupling) — drop.
+**AMD content classification.**
+- ✓ Generic NMU/NSU/NPS role description.
+- ✗ Versal-specific component coupling (PL master / AI Engine / CIPS).
 
 ---
 
-### Slide 3 — NMU Architecture (block diagram)
+### Slide 3 — NMU (Network Manager Unit)
 
-**AMD pg313 ref.** §NoC Master Unit (Figure 1).
+**AMD pg313 ref.** §NoC Master Unit.
 
-**Spec source.** `images/NMU_block_diagram.md`, `doc/theory_of_operation.md` §NMU sub-blocks.
+**Slide structure** (per AMD §NMU pattern): "What it provides" bullet list + flowing prose paragraphs.
 
-**Talking points.**
-- 10 sub-blocks: AddrTrans, QoSGen, FlitPack, ECC Gen, Injection Buffer, VC Mapping, ECC Check, RoB, FlitUnpack, Outstanding-tx Timeout Tracker.
-- AXI on left / NoC on right (AMD layout convention).
-- Differences from AMD: added ECC Gen/Check (two-layer scheme), Outstanding-tx Timeout Tracker (sole AXI-rresp synth path), CSR file + irq_o.
+**Bullet topics** (~13 items, each one capability or concrete parameter value):
+async clock crossing · AXI4 ↔ NoC flit conversion · address translation (3 routing modes) · WRAP / INCR / FIXED burst · per-AXI-ID Reorder Buffer (3 modes) · write ordering (W-burst contiguity) · Ingress QoS (4 modes) · Exclusive Access support · data width 64 / 128 / 256 / 512 · up to 32+32 outstanding · wide flit / no chopping · two-layer integrity · timeout safety net.
 
-**AMD reuse.**
-- ⚠ AMD NMU functional list (clock crossing / rate matching / packetizing / address remap / RoB / write buffer / VC mapping) — the *concept names* align; rephrase in our terms ("FlitPack" not "Packetizing", "VC Mapping" not "VC Mapping with 24-token NPS scoping").
-- ✗ AMD's specific Versal numbers (RROB 64-entry × 32-byte, HBM 64-entry × 64-byte, 512B Write Buffer) — our defaults differ (`MAX_TXNS=32`, `MAX_RO_TXNS_PER_ID=32`); cite our values.
-- ✗ NMU Versions (NMU512 / HBM_NMU / NMU128) — Versal-specific, skip.
+**Prose narrative** (~5 short paragraphs): position + clock-domain split → packetizing path → RoB allocation → QoS + ECC + inject → response path + timeout safety net.
 
-**Drift TODO before drafting slide.** Fix `images/NMU_block_diagram.md` D1 (VC Arbiter → VC Mapping) + D3 (route_par 9-bit cover, not 16) per earlier audit.
+**Visual asset.** `images/NMU_block_diagram.md` — drift fix prereq (D1/D3/D5/D9/D11).
 
----
-
-### Slide 4 — NMU: AXI Memory Mapped Support + Burst handling
-
-**AMD pg313 ref.** §NoC Master Unit "AXI Memory Mapped Support".
-
-**Spec source.** `doc/signal_interface.md` §AXI4 Manager port, `doc/theory_of_operation.md` §FlitPack, `doc/protocol_rules.md` §AXI4 host-side rules.
-
-**Talking points.**
-- 5 AXI4 channels (AW / W / B / AR / R) in standard ARM IHI 0022 form.
-- Burst types: FIXED / INCR / WRAP all supported; AWLEN ≤ 255 (full AXI4 max); WRAP boundary enforced by AXI4 construction.
-- 4KB-boundary check on INCR bursts (`AXI4_SLV_AW_BURST_4KB_BOUNDARY`).
-- Wide flit physical channel: one AXI message → one flit cycle (no chopping in v0.4.0). **Diverges from AMD's 256-byte chopping.**
-
-**AMD reuse.**
-- ✓ "Asynchronous clock domain crossing and rate matching between the AXI master and the NoC" — verbatim, attributable.
-- ⚠ AMD burst-conversion rules — concept aligns, but our flit width avoids most chopping.
-- ✗ AMD's "256-byte aligned segments" chopping rule — we don't chop in v0.4.0.
+**AMD content classification.**
+- ✓ Verbatim: *"Asynchronous clock domain crossing and rate matching between the AXI master and the NoC."*
+- ⚠ Adapt: AMD WRAP-for-32/64/128-bit → our 64–512; AMD 64 outstanding → our 32; AMD RROB 64×32-byte → our parameterised RoB.
+- ✗ Skip: NMU Versions (NMU512 / HBM_NMU / NMU128); AXI4-Stream; DDR controller interleaving; 256-byte chopping; latency-optimized variant; 512B Write Buffer.
 
 ---
 
-### Slide 5 — NMU: Addressing + SAM + Destination ID
+### Slide 4 — NSU (Network Subordinate Unit)
 
-**AMD pg313 ref.** §NoC Master Unit "Addressing", "Address Decoding and System Address Map", "Destination ID".
+**AMD pg313 ref.** §NoC Slave Unit.
 
-**Spec source.** `doc/theory_of_operation.md` §AddrTrans, `doc/signal_interface.md` §Parameters (`Sam`, `XY_ADDR_OFFSET_X/Y`, `X_WIDTH`, `Y_WIDTH`, `ROUTE_ALGO`, `USE_ID_TABLE`).
+**Slide structure** (per AMD §NSU pattern): "What it provides" bullet list + flowing prose paragraphs.
 
-**Talking points.**
-- 3 routing modes: `XYRouting` / `SourceRouting` / `IDRouting` (`ROUTE_ALGO` parameter).
-- `dst_id = (X, Y)` — concatenation of `X_WIDTH` + `Y_WIDTH` bits (default 4+4=8).
-- SAM table = compile-time parameter `Sam` (FlooNoC `floo_axi_chimney.sv` aligned). Runtime modification out-of-scope in v0.4.0; no `SAM_RULE_*` CSR.
+**Bullet topics** (~10 items):
+async clock crossing (NoC ↔ AXI slave) · NoC flit ↔ AXI4 conversion · W-burst reassembly · data-width down-conversion · AXI4 Exclusive Access (per-AXI-ID monitor, software-clearable, up to 8 concurrent reservations) · read-response buffering · response-side integrity (per-hop parity + end-to-end SECDED on outbound flits) · QoS / ordering metadata inherited from request flit.
 
-**AMD reuse.**
-- ⚠ Concept of address-map / remap — aligns; rephrase as our `Sam` rule structure.
-- ✗ AMD's specific Master-Specified ID / Re-mapping / 7-bit address parity bit map — Versal-specific, skip.
+**Prose narrative** (~4 short paragraphs): position + clock-domain split → receive path (flit → unpack → reassemble → downsize → drive AXI slave) → Exclusive Monitor → response path (capture B/R → buffer → integrity → inject); MetaBuffer carries inherited request metadata for response.
 
----
+**Visual asset.** `images/NSU_block_diagram.md` — drift fix prereq (D2/D5/D9).
 
-### Slide 6 — NMU: Read Reorder Buffer
-
-**AMD pg313 ref.** §NoC Master Unit "Read Reorder Buffer".
-
-**Spec source.** `doc/theory_of_operation.md` §RoB allocator, §RoB variants, §`prev_dest` adaptive bypass.
-
-**Talking points.**
-- 3 modes per response channel: `NoRoB` / `SimpleRoB` / `NormalRoB` (FlooNoC-aligned naming). Independent for B and R via `B_ROB_TYPE` / `R_ROB_TYPE`.
-- NormalRoB: per-AXI-ID linked-list ordering + `prev_dest` adaptive bypass.
-- A5 designer-confirmed: lowest-index-first allocation; lower `rob_idx` releases first; tracker still allocated even when `rob_req=0`.
-
-**AMD reuse.**
-- ✓ "Read re-tagging via linked-list RROB structure to maintain AXI ordering compliance" — concept verbatim usable.
-- ⚠ AMD RROB 64-entry × 32-byte default — our `MAX_TXNS=32`, `MAX_RO_TXNS_PER_ID=32`; cite our values.
+**AMD content classification.**
+- ✓ Verbatim: *"Conversion of NoC packetized data (NPD) to and from AXI protocol data."* / *"buffered before forwarding to minimize bubbles."* / *"AXI exclusive access handling."*
+- ✗ Skip: NSU Versions (NSU512 / NSU128 / DDRMC-NSU / HBM_NSU); AXI ID Compression.
 
 ---
 
-### Slide 7 — NMU: Outstanding Tx + Write Response Tracker + Write Ordering
+### Slide 5 — NoC Packet Switch (adjacent / out-of-NI-scope)
 
-**AMD pg313 ref.** §NoC Master Unit "Outstanding Transaction Support", "Write Response Tracker", "Write Ordering".
+**AMD pg313 ref.** §NoC Packet Switch.
 
-**Spec source.** `doc/theory_of_operation.md` §Outstanding-tx Timeout, §AR-during-W ordering, `doc/protocol_rules.md` `NOC_MST_WORMHOLE_LOCK` + `AXI4_MST_TIMEOUT_SLVERR`.
+**What this slide covers.** Boundary slide. NoC fabric routers sit between NMU and NSU; their detailed spec is separate. Adjacent concerns relevant to NI:
+- Per-VC arbitration runs at cycle level inside the router; NI itself only does flit-construct-time VC mapping.
+- Per-hop routing-parity check happens at every router output; whole-flit SECDED is end-to-end (routers do not check).
+- Credit-based flow control is the inter-component contract — covered on Slide 6.
 
-**Talking points.**
-- `MAX_TXNS=32` outstanding (per-NMU) and `MAX_TXNS_PER_ID=32`.
-- `TXN_TIMEOUT` default 10000 aclk cycles → on timeout `bresp/rresp = SLVERR` + `ERR_STATUS[1] timeout_err` + `ERR_COUNT++`.
-- W-burst wormhole-lock: AR injection blocked while a W burst is in flight on the same `noc_req_o` link (FlooNoC-aligned).
-- A5 designer-confirmed: representative target 1.2 GHz noc_clk / 800 MHz aclk; integrators adjust.
+**Visual asset.** Simple block diagram: NMU → router(s) → NSU.
 
-**AMD reuse.**
-- ✓ "32 outstanding read and 32 outstanding write transactions" — number aligns with our default.
-- ✗ AMD "32-entry interleaved read tracker and 32-entry chop-merge write tracker" — we don't chop, so chop-merge tracker doesn't apply.
-- ⚠ Write ordering description — concept aligns; phrase as wormhole-lock (FlooNoC term).
+**AMD content classification.**
+- ✓ Verbatim (cite as router scope, out of NI): *"For every cycle, each output port performs Least Recently Used (LRU) arbitration on all virtual channels of the three input ports."*
+- ✗ Skip: 8×8 Switch internal; 24-token register; Differentiated QoS specifics.
 
 ---
 
-### Slide 8 — NMU: Error Conditions + IRQ
+### Slide 6 — Credit-Based Flow Control
 
-**AMD pg313 ref.** §NoC Master Unit "Error Conditions" + §Data Integrity (error reporting).
+**AMD pg313 ref.** §Credit-Based Flow Control.
 
-**Spec source.** `doc/registers.md` §`ERR_STATUS`, §`IRQ_ENABLE`, §`LAST_ERR_INFO`, `doc/theory_of_operation.md` §ECC.
+**Slide structure.** Heavy on the AMD verbatim paragraph (single highest-verbatim slide of the deck). Pair with operational implications.
 
-**Talking points.**
-- 4 event classes (RW1C-cleared bits in `ERR_STATUS[3:0]`): `ecc_uncorr_err` / `timeout_err` / `route_par_err` / `axi_parity_err`.
-- Each bit pairs with a saturating counter; software writes 1 to clear bit + counter atomically.
-- `irq_o = OR_i (ERR_STATUS[i] & IRQ_ENABLE[i])` — level-sensitive; default mask = all-zeros (all IRQs masked).
-- `LAST_ERR_INFO` sticky — first error captured; subsequent suppressed until cleared.
-- (B)-philosophy ECC scheme: log + IRQ, no SLVERR synthesis from ECC path. Aligns with AMD's "uncorrectable ECC errors result in a fatal interrupt" (no rresp synth).
+**Verbatim quote (entire AMD paragraph applies to our NI directly):**
+> *"Each NMU, NPS, and NSU source needs to have credit before it can send data to the receiver. After a reset, every NoC component has its source-credit reset to zero. The source unit connects to the destination unit using a bi-directional ready signal that indicates credit exchange is ready. Components wait until both directions are ready before starting the credit exchange. The destination unit can send up to one credit per cycle, per virtual channel, to the source unit. The source unit can send up to one data transaction per cycle to the destination unit."*
+> *— AMD pg313 §Credit-Based Flow Control*
 
-**AMD reuse.**
-- ✓ "Uncorrectable ECC errors result in a fatal interrupt" — verbatim; reinforces our (B)-philosophy is industry-aligned.
-- ✓ "By default, all interrupts are masked" — verbatim; matches our `IRQ_ENABLE` reset value.
-- ✗ AMD's "fatal interrupt" exception escalation policy — Versal SoC-specific, our IRQ is recoverable.
+**Operational implications (added by us):**
+- Bi-directional credit-init handshake at startup before any flits flow.
+- Per-VC credit accounting at the source; receiver returns one credit per VC per cycle.
+- A source asserts a flit only when ≥ 1 credit is held on the chosen VC.
+- Persistent credit starvation eventually escalates to the outstanding-transaction timeout path → AXI SLVERR (covered on Slide 3).
 
----
+**Visual asset.** Sequence diagram: post-reset → init handshake → credit exchange begins → flit injection → credit return.
 
-### Slide 9 — NSU Architecture (block diagram)
-
-**AMD pg313 ref.** §NoC Slave Unit (overview).
-
-**Spec source.** `images/NSU_block_diagram.md`, `doc/theory_of_operation.md` §NSU sub-blocks.
-
-**Talking points.**
-- 10 sub-blocks: ECC Check, W Reassembly, Downsize, FlitUnpack, MetaBuffer, Exclusive Monitor, R Response Buffer, ECC Gen, FlitPack B/R, VC Mapping.
-- MetaBuffer = response-path inheritance source (carries `rob_idx` / `src_id` / `qos` / `axi_id`).
-- AMD lumps "Rate Matching + Async Boundary Crossing" into one block; we explicitly separate W Reassembly, R Response Buffer, MetaBuffer, CDC FIFO.
-
-**AMD reuse.**
-- ✓ "Conversion of NoC packetized data (NPD) to and from AXI protocol data" — verbatim.
-- ✓ "Asynchronous clock domain crossing and rate-matching between the AXI slave and the NoC" — verbatim.
-- ✓ "Read responses are buffered before forwarding to minimize bubbles" — verbatim, justifies our R Response Buffer.
-- ✗ AMD's NSU Versions (NSU512 / NSU128 / DDRMC-NSU / HBM_NSU) — skip.
-
-**Drift TODO before drafting slide.** Fix `images/NSU_block_diagram.md` D2 (VC Arbiter → VC Mapping) + D5 (port_id removed) per earlier audit.
+**AMD content classification.**
+- ✓✓ Full paragraph verbatim — strongest reuse of the deck.
 
 ---
 
-### Slide 10 — NSU: Exclusive Monitor + Errors
+### Slide 7 — NoC Communication: Read / Write + QoS
 
-**AMD pg313 ref.** §NoC Slave Unit "Exclusive Monitor (AXI Exclusive Access)" + "Error Conditions".
+**AMD pg313 ref.** §NoC Communication §Read Transactions / §Write Transactions / §Quality of Service.
 
-**Spec source.** `doc/theory_of_operation.md` §NSU Exclusive Monitor, `doc/registers.md` §`EXCLUSIVE_MONITOR_CTRL` / §`EXCLUSIVE_MONITOR_STATUS`, `doc/protocol_rules.md` `NI_CFG_EXCLUSIVE_CLEAR_RACE` / `NI_CFG_EXCLUSIVE_OCCUPANCY_ACCURACY`.
+**What this slide covers.**
+- Read transaction flow (end-to-end): AXI master AR → NMU → request flit → router fabric → NSU → local AXI slave; response path mirror, ordered through the per-AXI-ID Reorder Buffer at the originating NMU.
+- Write transaction flow: AW + W flits per burst (W kept contiguous); B response routed back.
+- Ingress QoS — four modes (NMU only; NSU inherits via response metadata): bypass / fixed / bandwidth-limiter / urgency-regulator.
 
-**Talking points.**
-- `EXCLUSIVE_MONITOR_DEPTH=8` per-axi_id reservation slots.
-- AXI4 §A7 Exclusive Access semantics: `EXOKAY` on match, `OKAY` on miss.
-- Software-clearable via `EXCLUSIVE_MONITOR_CTRL.clear_all` (W1 self-clearing); `EXCLUSIVE_MONITOR_STATUS.occupancy` for live count.
-- Race semantics on simultaneous clear + AW match / new AR alloc / overlap-invalidate documented in `NI_CFG_EXCLUSIVE_CLEAR_RACE`.
+**Visual asset.** End-to-end transaction flow diagram (NMU → router → NSU and back).
 
-**AMD reuse.**
-- ✓ "AXI exclusive access handling" feature listing — verbatim concept usable.
-- ✗ AMD's per-version monitor size variation — Versal-specific, our default 8.
-- ✗ AMD's AXI ID Compression — we don't compress (different in/out ID widths via `IN_ID_WIDTH`/`OUT_ID_WIDTH` parameters, not compression).
+**AMD content classification.**
+- ⚠ Generic Read/Write transaction flow narrative usable.
+- ✗ Versal-specific Differentiated QoS / NPS-side QoS scoring.
 
 ---
 
-### Slide 11 — NoC Packet Switch (adjacent / out-of-scope)
+### Slide 8 — Data Integrity
 
-**AMD pg313 ref.** §NoC Packet Switch (overview only).
+**AMD pg313 ref.** §NoC Communication §Data Integrity / §Parity.
 
-**Spec source.** `doc/signal_interface.md` §VC Mapping notes, `doc/protocol_rules.md` `NOC_VC_*` rules.
+**Slide structure.** Two-layer fabric integrity scheme + AXI host-side parity + (B)-philosophy error reporting policy. Heavy on AMD verbatim (second-highest after Slide 6).
 
-**Talking points.**
-- NPS (router) is separate spec; this slide draws the boundary.
-- NI's job: **VC Mapping** at flit-construct time (Hybrid R/W × QoS, fixed at design time per `NOC_VC_MAPPING_HYBRID_RW_QOS`).
-- NPS's job: **cycle-level VC arbitration** (LRU across input ports), per-hop `route_par` check.
-- `NUM_VC` parameter: 1 (default) to 8 (`VC_ID_WIDTH=3` upper bound).
+**Layered scheme:**
+1. **Per-hop routing parity** — protects routing-critical fields (destination ID + last-flit indicator) at every router and at the destination NI sink. Mismatched flits are dropped at detection.
+2. **End-to-end whole-flit SECDED ECC** — covers the entire flit. Generated at the source NI, checked only at the destination NI sink. Routers do not check or regenerate.
+3. **AXI host-side parity** (optional sideband, on by default) — verified at the AXI boundary; logged but not enforced as SLVERR.
 
-**AMD reuse.**
-- ✓ AMD VC Arbitration paragraph: *"For every cycle, each output port performs Least Recently Used (LRU) arbitration on all virtual channels of the three input ports."* — verbatim, but cite as **NPS scope, out of NI**.
-- ✗ AMD 8×8 Switch / 24-token / 3-input-port specifics — Versal-specific, skip.
-- ✗ AMD Differentiated QoS (NPS-side) — separate router spec.
+**Verbatim quotes for the slide:**
+> *"SECDED ECC across the entire flit."* — AMD pg313 §Data Integrity
+>
+> *"No ECC checking is performed in the switch fabric."* — AMD pg313 §Data Integrity
+>
+> *"1 bit per byte for Data."* / *"1 bit per byte for AxAddress."* — AMD pg313 §Parity
+>
+> *"The NPP packet (DST ID + LAST) field is also protected by 1-bit even parity."* — AMD pg313 §Parity
+>
+> *"By default, all interrupts are masked."* — AMD pg313 §Data Integrity
+>
+> *"Uncorrectable ECC errors result in a fatal interrupt."* — AMD pg313 §Data Integrity
 
----
+**Error reporting policy (frame as design choice on slide):** Fabric ECC errors raise an interrupt and increment counters but never synthesize SLVERR on AXI rresp / bresp. The corrupted flit is forwarded with `OKAY`; downstream / application-level integrity (HBM ECC, software CRC) handles recovery. AXI rresp / bresp channels are reserved for end-to-end memory errors and the timeout-driven SLVERR path.
 
-### Slide 12 — Credit-Based Flow Control
+**Visual asset.** Two-layer schematic: per-hop parity check at each router; SECDED check only at destination NI; AXI parity check at host boundary.
 
-**AMD pg313 ref.** §NoC Packet Switch / §Credit Based Flow Control.
-
-**Spec source.** `doc/signal_interface.md` §NoC credit signals (incl. credit-init handshake), `doc/protocol_rules.md` `NOC_MST_FLIT_ON_CREDIT_ONLY`.
-
-**Talking points.**
-- Bi-directional `*_credit_init_ready_*` handshake at startup (per AMD §Credit-Based Flow Control verbatim).
-- Per-VC credit return on `noc_*_credit_*[NUM_VC-1:0]` (1 cycle / 1 credit max per VC, AMD verbatim).
-- Source must hold ≥1 credit on chosen VC before `noc_*_valid_o = 1`.
-- `CREDIT_TIMEOUT` = 10000 noc_clk default — credit starvation triggers outstanding-tx timeout path → SLVERR + `ERR_STATUS[1]`.
-
-**AMD reuse.**
-- ✓✓ **Strongest verbatim section.** Quote the full AMD paragraph:
-  > "Each NMU, NPS, and NSU source needs to have credit before it can send data to the receiver. After a reset, every NoC component has its source-credit reset to zero. The source unit connects to the destination unit using a bi-directional ready signal that indicates credit exchange is ready. Components wait until both directions are ready before starting the credit exchange. The destination unit can send up to one credit per cycle, per virtual channel, to the source unit. The source unit can send up to one data transaction per cycle to the destination unit."
-- This entire paragraph is generic AXI-NoC and matches our spec verbatim. Cite as `per AMD pg313 §Credit-Based Flow Control`.
+**AMD content classification.**
+- ✓✓ Multiple verbatim quotes directly applicable.
+- ✗ Skip: HBM_NMU per-32-bit/per-24-bit exception; address-remap 7-bit parity map; Data Poisoning.
 
 ---
 
-### Slide 13 — NoC Communication: Read / Write Tx + QoS
+### Slide 9 — Closing
 
-**AMD pg313 ref.** §NoC Communication §Read Transactions + §Write Transactions + §Quality of Service.
+**AMD pg313 ref.** —
 
-**Spec source.** `doc/theory_of_operation.md` §QoSGen, `doc/registers.md` §QoS family (`QOS_MODE`, `QOS_FIXED_VALUE`, `BANDWIDTH_LIMIT/BUDGET`, `BASE_QOS`, `URGENCY_STEP`, `SOCKET_QOS`).
+**What this slide covers.**
+- DV plan headline summary — protocol-rule count, testpoint count, ABV / FPV scope, framework choice (UVM 1.2).
+- Future work — atomics support deferred; v0.5.0 plugin-side Protocol Reference Library.
+- Q & A.
 
-**Talking points.**
-- End-to-end Read flow: AXI master → NMU FlitPack(AR) → noc_req_o → router → noc_req_i → NSU FlitUnpack → local AXI slave AR; response path mirror.
-- End-to-end Write flow: AW + W flits per burst (W wormhole-locked); B response routed back.
-- QoS Generator 4 modes (NMU-only): **Bypass** (passthrough AXI awqos/arqos) / **Fixed** (`QOS_FIXED_VALUE`) / **Limiter** (bandwidth cap → drop to LOW_PRIORITY when over) / **Regulator** (feedback-controlled urgency escalation, clamped at 15).
-- NSU does NOT recompute qos; inherits via MetaBuffer.
+**Visual asset.** Optional spec-deliverable summary table (rule count / testpoint count / coverage targets) as a tidy slide-end artifact.
 
-**AMD reuse.**
-- ⚠ AMD's high-level Read/Write flow ("AXI master sends read/write requests to a connected NoC access point (NMU). The NMU relays the requests through a set of NoC packet switches (NPSs) before the requests reach a destination (NoC slave unit NSU or output port)") — usable, generic enough.
-- ✗ AMD's specific Versal QoS (Differentiated QoS in NPS, virtual channel arbitration scoring) — Versal-specific.
-- ⚠ Our QoS modes (Bypass/Fixed/Limiter/Regulator) follow FlooNoC + custom design, not AMD's exact set; cite our spec, not AMD.
-
----
-
-### Slide 14 — NoC Communication: Data Integrity (two-layer ECC + AXI parity)
-
-**AMD pg313 ref.** §NoC Communication §Data Integrity / §Parity / (Data Poisoning N/A).
-
-**Spec source.** `doc/theory_of_operation.md` §ECC, §AXI parity handling, `doc/signal_interface.md` §Optional AXI parity sideband, `doc/protocol_rules.md` ECC + parity rules.
-
-**Talking points.**
-- **Two-layer integrity scheme:**
-  - Per-hop: 1-bit even parity `route_par` over `{dst_id, last}` (9-bit cover) — checked at every router output.
-  - End-to-end: whole-flit SECDED `flit_ecc` (10-bit syndrome over 396-bit) — checked **only** at destination NI sink (routers do not check).
-- AXI host-side parity (optional, `ENABLE_AXI_PARITY=true` default): 1 bit per byte for data, 1 bit per byte for address.
-- (B)-philosophy: corrupted flits forwarded with `bresp/rresp = OKAY`; observability via `ERR_STATUS` + IRQ + counters. No SLVERR synthesis from ECC/parity path — preserves AXI rresp channel for end-to-end (HBM/DDR) and timeout-driven errors only.
-- Parity regeneration: NMU regenerates `axi_rdata_par_o` **after** ECC check stage (AMD-aligned).
-
-**AMD reuse.**
-- ✓✓ **Multiple verbatim quotes available.** Use the following directly with `per AMD pg313 §Parity` / `§Data Integrity`:
-  > "1 bit per byte for Data" / "1 bit per byte for AxAddress"
-  >
-  > "The NPP packet (DST ID + LAST) field is also protected by 1-bit even parity."
-  >
-  > "Parity is checked in the NMU/NSU pipeline when an AXI field is consumed. When an AXI field is modified by NMU/NSU logic, parity is regenerated."
-  >
-  > "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol."
-  >
-  > "SECDED ECC across the entire flit."
-  >
-  > "No ECC checking is performed in the switch fabric."
-  >
-  > "Packet domain parity and ECC generation and checking is always enabled."
-  >
-  > "Correctable ECC errors are corrected on the fly, and the count of correctable errors is incremented. Uncorrectable ECC errors result in a fatal interrupt."
-- ✗ AMD's HBM_NMU "1 parity bit per 32 bits of data and 1 parity bit per 24 bits of address" exception — Versal HBM-specific; our scheme is uniform 1 bit per byte.
-- ✗ AMD's "address map/remap regenerates seven parity bits" 7-bit map — Versal-specific.
-- ✗ Data Poisoning sub-section (if applicable in pg313) — we don't implement poisoning.
-
-**This is the strongest AMD-aligned slide.** Lean into the verbatim quotes — they reinforce that our spec is industry-aligned, not arbitrary design choices.
-
----
-
-### Slide 15 — Standards (AXI Conversion) + Clocking + DV Plan + Q&A
-
-**AMD pg313 ref.** §Standards §AXI Conversion + §Clocking + closing.
-
-**Spec source.** `doc/signal_interface.md` §Parameters + §Protocol clock and reset, `doc/pin_level_reset.md`, `doc/theory_of_operation.md` §Width-conversion + §CDC, `dv/plan.md`.
-
-**Talking points.**
-- AXI conversion: AxSize/AxLen handling, NSU Downsize block (when `DATA_WIDTH > FLIT_PAYLOAD_WIDTH`), narrow transfer mechanism (per AMD AxCache[1]).
-- Dual-clock domain: `aclk_i` (AXI side) + `noc_clk_i` (NoC side); CDC via gray-counter pointer + 2FF synchronizer FIFOs (`CDC_FIFO_DEPTH=16` default, conservative for ratio range [0.1, 10]).
-- Reset: `arst_ni` + `noc_rst_ni`, async assertion / sync deassertion, ≥16 cycles hold; partial reset semantics in `pin_level_reset.md`.
-- DV summary: 138 protocol rules (128 FAIL + 10 RECOMMEND) → 138 ABV properties; 51 testpoints; UVM 1.2 (A5 designer-confirmed).
-- Future: ATOP_SUPPORT=1 (deferred ~3 weeks per A5 designer-confirm); v0.5.0 Protocol Reference Library (plugin-side, see `plan/BFM_MODE_DESIGN.md` §13).
-
-**AMD reuse.**
-- ⚠ AMD AxSize/AxLen conversion concept — usable as reference; specific examples are Versal Memory-Controller-targeted, our scope is fabric-only.
-- ✗ AMD address chopping examples (256-byte aligned segments) — we don't chop.
-- ⚠ Clocking concept (internal system clock + resets) — generic, usable.
+**AMD content classification.** —
 
 ---
 
 ## AMD content reuse cross-cut summary
 
-| AMD pg313 chapter | Verbatim quotable | Rephrase | Skip (Versal-specific) |
-|---|---|---|---|
-| §NoC Components | high-level NMU/NSU/NPS roles | — | PL / AI Engine / CIPS coupling |
-| §NoC Master Unit | clock-crossing/rate-matching tagline; outstanding-32 number; "fatal interrupt on uncorr ECC" | RoB / VC Mapping / Address remap concepts | NMU Versions; HBM 64×64; 256-byte chopping; 7-bit address parity map; Re-tagging Buffer |
-| §NoC Slave Unit | "Conversion of NPD ↔ AXI"; "async clock crossing + rate-matching"; "buffered before forwarding to minimize bubbles"; "AXI exclusive access handling" | Excl Monitor concept | NSU Versions; AXI ID Compression |
-| §NoC Packet Switch | (entire NPS) — out of NI scope, only context | — | 8×8 Switch; 24-token; Differentiated QoS specifics |
-| §Credit-Based Flow Control | **full paragraph** (highest reuse value) | — | — |
-| §Virtual Channel Arbitration | LRU one-liner (cite as NPS scope) | — | 24-token / 3-input-port specifics |
-| §Read/Write Transactions | high-level flow narration | QoS modes | Versal-specific QoS scoring |
-| §Data Integrity / §Parity | **8 verbatim sentences** (second-highest reuse) | — | HBM 32-bit/24-bit exception; address-remap 7-bit map; Data Poisoning |
-| §Standards / §AXI Conversion | AxSize/AxLen overview | Conversion concept | 256-byte chopping examples |
-| §Clocking | generic dual-clock concept | — | Internal System Clock specifics |
+| Slide | Strongest AMD verbatim leverage |
+|---|---|
+| 3 NMU | clock-crossing tagline; "32 outstanding reads + 32 outstanding writes" pattern |
+| 4 NSU | "Conversion of NPD ↔ AXI"; "buffered before forwarding to minimize bubbles"; "AXI exclusive access handling" |
+| 5 NPS context | LRU VC arbitration one-liner (cite as router scope, out of NI) |
+| 6 Credit | **full Credit Based Flow Control paragraph (highest verbatim density)** |
+| 7 Communication | high-level Read/Write narrative |
+| 8 Data Integrity | **8 verbatim sentences across §Parity + §Data Integrity (second-highest verbatim density)** |
 
-**Top 3 slides with strongest AMD verbatim leverage:** Slide 12 (Credit) > Slide 14 (Data Integrity) > Slide 8 (Errors / IRQ default-masked).
-
-**Slides where we deliberately diverge from AMD (call out as design choice, not gap):**
-- Slide 4 — no chopping (single-flit per AXI message).
-- Slide 8 — (B)-philosophy: log + IRQ, no SLVERR synth from ECC.
-- Slide 13 — QoS modes (Bypass/Fixed/Limiter/Regulator) follow FlooNoC + custom, not AMD's NPS-side Differentiated QoS.
+**Slides where we deliberately diverge from AMD (frame as design choice on slide):**
+- Slide 3 NMU — no chopping (single wide flit per AXI message); 32 outstanding (vs AMD's 64).
+- Slide 8 Data Integrity — fabric ECC errors raise interrupt only, never SLVERR (the (B)-philosophy lands here).
 
 ---
 
-## Open issues to resolve before drafting actual slides
+## Drafting progress
 
-1. **NMU/NSU block-diagram drift** — fix the 7 confirmed stale items + 3 coverage gaps (D1/D2 `VC Arbiter`→`VC Mapping` in NMU+NSU mermaid; D3 `route_par` 9-bit cover not 16; D5 `port_id` removed; D9 stamp `post-A4.5`→`post-A5`; NSU CSR-link missing; **D11 NMU mermaid header `Network Master Unit`→`Network Manager Unit`** [new, found Batch A review]; **D12 `doc/theory_of_operation.md:477` RTL block-diagram mermaid `VCARB_O / VCARB_S` use `VC Arbiter` while §sub-module description (line 508) uses `VC Mapping` — internal ToO inconsistency, touches source spec not only images** [new, found Batch B planning]). Otherwise Slides 3 / 9 will display stale info.
-2. **`flit_ecc` coverage** — ✓ resolved 2026-05-08: 396 bit correct per `doc/theory_of_operation.md:369-371` §ECC (`FLIT_DATA_WIDTH = FLIT_WIDTH − FLIT_ECC_WIDTH = 406 − 10`; Layer 2 SECDED excludes only `flit_ecc` itself, so `route_par` is deliberately covered by both Layer 1 per-hop parity and Layer 2 end-to-end SECDED — overlap is intentional on routing-critical bits). AMD pg313 §Data Integrity ("SECDED ECC across the entire flit" + DST-ID parity as "additional") aligns with this two-layer design.
-3. **Top-level NI block diagram** — Slide 2 currently uses NMU/NSU diagrams jointly. Could draw one combined top-level (drafted in earlier turn). Decision: include or skip.
-4. **DV plan slide depth** — Slide 15 currently bundles AXI conversion + clocking + DV + future. If audience wants DV detail, split into 2 slides (16-slide deck).
+| Batch | Slide | Status |
+|---|---|---|
+| A | 1 Title + 2 Components | pending |
+| B | 3 NMU | pending |
+| C | 4 NSU | pending |
+| D | 5 NPS + 6 Credit | pending |
+| E | 7 Communication + 8 Data Integrity | pending |
+| F | 9 Closing | pending |
+
+Old `SLIDES.md` (15-slide / 4-section meta-template version, slides 1-8 drafted) is superseded by this v2 plan. New `SLIDES.md` will overwrite the old content; old version is recoverable from git history if needed.
+
+---
+
+## Open issues
+
+1. **NMU/NSU block-diagram drift** — 7 confirmed stale items + 3 coverage gaps from cumulative audit (D1/D2 `VC Arbiter`→`VC Mapping` in NMU+NSU mermaid; D3 `route_par` 9-bit cover not 16; D5 `port_id` removed; D9 stamp `post-A4.5`→`post-A5`; NSU CSR-link missing; D11 NMU mermaid header `Network Master Unit`→`Network Manager Unit`; D12 `doc/theory_of_operation.md:477` RTL block-diagram mermaid `VCARB_O / VCARB_S` use `VC Arbiter` while §sub-module description (line 508) uses `VC Mapping` — internal ToO inconsistency, touches source spec not only images). Slides 3 / 4 visuals require drift fix before final render.
+2. **`flit_ecc` 396-bit coverage** — ✓ resolved 2026-05-08 (per `doc/theory_of_operation.md:369-371`).
