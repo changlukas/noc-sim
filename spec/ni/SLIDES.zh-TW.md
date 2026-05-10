@@ -77,7 +77,7 @@
 
 ## Slide 3 — NMU (Network Manager Unit) overview
 
-**Takeaway**：NMU 是 master 側的 protocol boundary — 收 AXI、注入 NoC，並處理 NoC 帶來的 ordering / integrity / flow control。
+**Takeaway**：NMU 進行 AXI to NoC protocol 轉換，負責 ordering / integrity / flow control 等。
 
 ### Why — NMU 在 master 端要做什麼
 
@@ -96,7 +96,7 @@
 - Ingress QoS control. *(→ Slide 5)*
 - Handling of the AXI exclusive access feature.
 - Configurable AXI data width: 64, 128, 256, or 512 bits. *(adapted: we drop 32-bit, AXI4-Stream not supported)*
-- Up to 32 outstanding AXI reads and 32 outstanding AXI writes. *(adapted: AMD says 64, ours is 32)*
+- Up to 32 outstanding AXI reads and 32 outstanding AXI writes. *(matches AMD pg313 default)*
 - Two-layer ECC integrity — per-hop routing parity + end-to-end whole-flit SECDED. *(→ Slide 6, our addition beyond AMD's NMU bullet list)*
 
 **AMD verbatim（inline）：** *"Asynchronous clock domain crossing and rate matching between the AXI master and the NoC."*（AMD pg313 §NoC Master Unit）
@@ -123,13 +123,13 @@ AXI Slave I/F                  NMU                        NoC
 - Response 路徑反向：`noc_rsp_i` → ECC Check → Read Re-Ordering（per-AXI-ID 順序）→ De-packetizing → AXI master。
 - 每個 sub-block 都是 registered stage，request-to-NoC critical path 短（幾個 cycle）+ async FIFO 過 NoC clock domain。
 
-**Speaker notes：** 走一遍資料流。AW/AR 從左邊進來 → Address Map 解出目的 tile 的 ID → Packetizing 組 flit payload → QoS Order Control 配上 per-flit qos 欄位 → ECC Gen 附上 per-hop routing parity bit 與 whole-flit SECDED syndrome → VC Mapping 選 egress virtual channel → flit 注入到 outbound request link。每個 sub-block 都是 registered stage，request-to-NoC 端到端 critical path 短（幾個 cycle），加上 async FIFO 過 NoC clock domain。Response path 反過來：inbound response flit → ECC Check（single-bit 沉默修正、double-bit 紀錄）→ Read Re-Ordering 強制 per-AXI-ID response 順序 → De-packetizing 還原 B/R 給 AXI master。我們在 outstanding count 上比較保守（32 vs AMD 的 64），且不 chop bursts — 一張 wide flit 把一個 AXI message 端到端帶完。我們的 wide flit 格式讓 AMD 的 256-byte chopping 沒必要。
+**Speaker notes：** 走一遍資料流。AW/AR 從左邊進來 → Address Map 解出目的 tile 的 ID → Packetizing 組 flit payload → QoS Order Control 配上 per-flit qos 欄位 → ECC Gen 附上 per-hop routing parity bit 與 whole-flit SECDED syndrome → VC Mapping 選 egress virtual channel → flit 注入到 outbound request link。每個 sub-block 都是 registered stage，request-to-NoC 端到端 critical path 短（幾個 cycle），加上 async FIFO 過 NoC clock domain。Response path 反過來：inbound response flit → ECC Check（single-bit 沉默修正、double-bit 紀錄）→ Read Re-Ordering 強制 per-AXI-ID response 順序 → De-packetizing 還原 B/R 給 AXI master。Outstanding count 與 AMD 一致（32）。不 chop bursts，一張 wide flit 把一個 AXI message 端到端帶完。Wide flit 格式讓 AMD 的 256-byte chopping 沒必要。
 
 ---
 
 ## Slide 4 — Address Map mechanism
 
-**Takeaway**：NMU 第一站把 AXI 地址解成「目的 tile 在哪、剩下 address bit 是 local」兩件事。3 種 routing mode 給整合者依 topology 選。
+**Takeaway**：NoC bus 需依賴座標將封包送到目的地。NI 內部提供 3 種 address-to-coordinate 轉換方式：XY-routed、Source-routed、ID-table。
 
 ### Why — 為什麼需要 address translation
 
@@ -139,11 +139,9 @@ AXI Slave I/F                  NMU                        NoC
 
 ### What — 三種 routing mode（設計階段選定）
 
-| Mode | 機制 | 適用情境 |
-|---|---|---|
-| **XY-routed**（預設）| 從 AXI `awaddr` / `araddr` bit 抽取 — 可配置 bit 欄位解碼成 (X, Y) mesh 座標 | 規則 2D mesh 部署 |
-| **Source-routed** | 預先計算的 flit-header route path | 靜態 / 設計階段路徑最佳化 |
-| **ID-table**（SAM）| System Address Map lookup — 把 address range 對到目的 tile ID | 多區段 address space，軟體定義 region 對應 |
+- **XY-routed**（預設）：抽 awaddr 的 X/Y bit → 直接成 dst_id — 規則 2D mesh
+- **Source-routed**：path 預先寫入 flit header — 靜態 topology / 設計階段最佳化
+- **ID-table**（SAM）：System Address Map lookup → dst_id — 多區段 address space / 軟體定義 region
 
 ### How — 預設配置 + bit-field 抽取
 
@@ -210,7 +208,7 @@ Bit-field 範例（XY-routed mode、預設 offsets）：
 
 **Visual asset（選擇性）：** Limiter / Regulator mode 的 bandwidth-vs-priority 趨勢圖 — 顯示超量時 priority 怎麼掉（Limiter）或不足量時 urgency 怎麼升（Regulator）。
 
-**Speaker notes：** 四種 QoS mode 涵蓋從純 passthrough（Bypass — 信任 AXI master 自己的 qos）到主動 shaping（Regulator — feedback loop）的光譜。典型 SoC 配置：CPU master 用 Bypass、DMA 用 Limiter、即時 accelerator 用 Regulator — 各 master 依自己的行為 profile 選 mode。Bypass 適合 AXI master 已經會給 well-behaved qos 的情境。Fixed 讓整合者能對某個 port 強制單一 priority — 適合測試或單純的低優先 master。Bandwidth-limiter 把吵的 master 限流，避免它餓死同 fabric 的別人。Urgency-regulator 最自適應 — 觀察實際 response bandwidth，當 master 落後 target 時升級 urgency（拉高 effective qos）。AMD Versal NoC 用不同模型 — per-NPS Differentiated QoS 加 cycle-level scoring — 是 router 端、Versal 專屬的。Wormhole-lock 互動：W-burst 的 HEAD flit 一旦在某仲裁點獲准，整個 burst 就鎖定該 output port 直到 `wlast`。中途到的 higher-QoS packet 不能搶 — 必須等 lock 釋放。
+**Speaker notes：** 四種 mode 對應四種 master 行為。Bypass 信任 master 自己給的 `axi_*qos`，適合 CPU 這類 well-behaved master。Fixed 對某個 port 強制單一 priority，常用於測試或低優先 master。Bandwidth-limiter 把吵的 master 限流，避免它餓死同 fabric 的別人。Urgency-regulator 自適應：觀察 response bandwidth，當 master 落後 target 就升級 urgency。典型 SoC 配置 CPU 用 Bypass、DMA 用 Limiter、即時 accelerator 用 Regulator。AMD Versal NoC 用不同模型（per-NPS Differentiated QoS 加 cycle-level scoring），是 router 端、Versal 專屬。Wormhole-lock 互動：W-burst 的 HEAD flit 一旦在某仲裁點獲准，整個 burst 鎖定該 output port 直到 `wlast`。中途到的 higher-QoS packet 必須等 lock 釋放。
 
 ---
 
@@ -269,7 +267,7 @@ AMD pg313 §Data Integrity *End-to-End Protection* 圖（X25510070521）— 檔�
 | ECC | Layer 2 end-to-end whole-flit SECDED |
 | DST ID Parity | Layer 1 per-hop routing parity |
 
-Caption 疊在 slide 上：*"Source: AMD pg313 §Data Integrity. AMD Data + Addr Parity = Layer 3，AMD ECC = Layer 2，AMD DST ID Parity = Layer 1."*
+Caption 疊在 slide 上：*"Source: AMD pg313 §Data Integrity. AMD Data + Addr Parity = Layer 3, AMD ECC = Layer 2, AMD DST ID Parity = Layer 1."*
 
 ### Trade-off — (B)-philosophy：fabric error 統一不從 AXI rresp 回報
 
@@ -281,7 +279,7 @@ Caption 疊在 slide 上：*"Source: AMD pg313 §Data Integrity. AMD Data + Addr
 
 Fabric ECC 與 parity error raise interrupt 加累加 counter，但**不會 synth SLVERR** 在 AXI rresp / bresp 上。受損 flit 用 `OKAY` forward 到目的，後續 application-level integrity（HBM endpoint ECC、軟體 CRC）負責 recovery。AXI rresp / bresp 留給 end-to-end memory error 用。**v0.4.0 沒有 fabric-driven SLVERR synthesis** — 把 AMD 對 uncorrectable ECC 的「fatal interrupt」立場乾淨地推廣到所有 fabric event。
 
-**Speaker notes：** 三層 integrity，每一層 scope 不同。Per-hop routing parity 是最便宜的 check — 對 destination-ID 與 last-flit-indicator 欄位做 1-bit XOR。Router 在每個 output port 都驗，parity 失敗就立刻 drop，避免誤送到錯的 tile。Whole-flit SECDED 是重量級 check — 涵蓋整張 flit（header 加 payload，不包 syndrome 自己），source NI 產生、只在目的端檢查。Router 不檢查的原因是這樣會多大概一個 cycle / hop 加一個數量級的 gate count，比 parity bit 貴太多。AXI host-side parity 是選用的第三層在 AXI 邊界，per-byte 涵蓋 data 跟 address — 驗但不 escalate 成 SLVERR。右邊那張 AMD 圖剛好就是這個 pattern，畫的是 Versal NoC，我們的 scheme 把每一 row 都實作了，差別只在 AMD 把 Data Parity 跟 Addr Parity 畫成兩 row，我們合成一個 AXI host-side parity 層。v0.4.0 的 error reporting policy 是統一的：fabric event 一律不 synth SLVERR 給 AXI master。所有 fabric-side error 走 CSR + IRQ 路徑。AXI rresp / bresp 留給 end-to-end memory error（HBM / DDR endpoint ECC 經由自然 rresp 傳回 master）。這跟 AMD 對 uncorrectable ECC 的立場一致 — 並且我們把這個立場乾淨地推廣到所有 fabric event。
+**Speaker notes：** 三層 integrity 各有不同 scope。Per-hop routing parity 是最便宜的 check，1-bit XOR 蓋 `{dst_id, last}`。Router 每個 output port 都驗，parity 失敗立刻 drop，避免誤送到錯的 tile。Whole-flit SECDED 是重量級 check，涵蓋整張 flit（header 加 payload，不包 syndrome 自己），source NI 產生、只在目的端檢查。Router 不檢查 SECDED：每跳重做要多一個 cycle、加一個數量級的 gate count，比 parity bit 貴太多。AXI host-side parity 是選用的第三層，per-byte 在 AXI 邊界蓋 data 與 address，驗但不 escalate 成 SLVERR。右邊 AMD 圖畫的是 Versal NoC，scheme 與我們對應，差別在 AMD 把 Data Parity 與 Addr Parity 畫成兩 row，我們合成一個 AXI host-side parity 層。v0.4.0 的 error reporting policy 統一：fabric event 不 synth SLVERR 給 AXI master，所有 fabric-side error 走 CSR + IRQ 路徑。AXI rresp / bresp 留給 end-to-end memory error（HBM / DDR endpoint ECC 經由自然 rresp 傳回 master）。AMD 對 uncorrectable ECC 也是同一立場，我們把它推廣到所有 fabric event。
 
 ---
 
@@ -329,7 +327,7 @@ NormalRoB 直接實作這個機制。
 
 **Visual asset：** RoB state machine — `FREE → ALLOCATED → RESPONSE_RECEIVED → READY_TO_RELEASE → FREE`。
 
-**Speaker notes：** RoB 的存在是因為 NoC 是 packet-switched — 不同 destination 的 response 可能因為 NoC 路徑不同、congestion 不同而 out-of-order 回到 NMU。但 AXI4 強制 same-AXI-ID 的 response 必須 in-order — 所以需要 RoB 在 NMU 端把 out-of-order 的 NoC response 重排成 in-order 的 AXI response。三 mode 在面積跟重排能力之間給整合者選擇：NoRoB 最便宜但要求 NoC 自己保證順序（適合 single-issue master 或單純 NoC topology），SimpleRoB 用單一 release pointer，跨 ID 也照 issue order release，會發生 cross-ID HoL 但結構簡單，NormalRoB 用 per-AXI-ID linked-list 加 adaptive bypass，最大面積但效能最佳。AMD Versal NoC RROB 預設 64×32-byte（HBM 變體 64×64），我們預設較保守。
+**Speaker notes：** RoB 處理 NoC packet-switched 與 AXI4 ordering 的衝突。NoC 不同路徑、不同 congestion 會讓 same-AXI-ID 的 response OoO 回到 NMU，AXI4 規範 same-AXI-ID response 必須 in-order，差距由 RoB 補。三 mode 在面積與重排能力之間給整合者選擇。NoRoB 最便宜，要求 NoC 自己保證順序，適合 single-issue master 或單純 topology。SimpleRoB 用單一 release pointer，跨 ID 仍按 issue order release，會 cross-ID HoL 但結構簡單。NormalRoB 用 per-AXI-ID linked-list 加 adaptive bypass，面積最大、效能最佳。AMD Versal NoC RROB 預設 64×32-byte（HBM 變體 64×64），我們預設較保守。
 
 ---
 
@@ -525,7 +523,7 @@ cycle N+7:  NMU credit_count[VC0] = 3，等 receiver 回 credit 才繼續送
 
 **Visual asset：** Sequence diagram — post-reset → init handshake → credit exchange begins → flit injection → credit return（時序圖樣式，類似上方範例）。
 
-**Speaker notes：** Credit-based flow control 是 NoC 整體的 flit 流量契約。Source（NMU 或 NSU）持有的 per-VC credit 計數代表 receiver 端還能容納多少 flit，source 每送一張 flit 就遞減該 VC 的 credit、receiver 每處理完一張就回 1 credit。Bi-directional credit-init handshake 是啟動序列：reset 後雙方都從 0 credit 開始，先互相確認彼此 ready 才開始 credit 交換。實際運作時，這保證 flit 不會 overflow receiver buffer。Persistent credit starvation：如果 receiver 端 hang 或 router 不回 credit，source 就在那條 VC 永久 stall — v0.4.0 不做自動 timeout escalation（曾考慮過 Outstanding-tx Timeout，後來決定不在初版做安全機制），由軟體透過 PENDING counter / IRQ 偵測並從外部處理。NPS scope：router 不在這份 spec 範圍，但 NoC 的整體運作離不開 router，這頁簡單帶過 router 在做什麼（per-VC arbitration、per-hop parity check）讓 audience 有完整 picture。AMD Versal NoC 的 8×8 switch、24-token register、Differentiated QoS scoring 等細節是 Versal-specific，我們不沿用。
+**Speaker notes：** Credit-based flow control 是 NoC 整體的 flit 流量契約。Source（NMU 或 NSU）持有的 per-VC credit 計數代表 receiver 端還能容納多少 flit，source 每送一張 flit 就遞減該 VC 的 credit、receiver 每處理完一張就回 1 credit。Bi-directional credit-init handshake 是啟動序列：reset 後雙方都從 0 credit 開始，先互相確認彼此 ready 才開始 credit 交換。實際運作時，這保證 flit 不會 overflow receiver buffer。Persistent credit starvation：receiver 端 hang 或 router 不回 credit 時，source 在那條 VC 永久 stall。v0.4.0 不做自動 timeout escalation，由軟體透過 PENDING counter / IRQ 偵測並從外部處理。NPS scope：router 不在這份 spec 範圍，但 NoC 的整體運作離不開 router，這頁簡單帶過 router 在做什麼（per-VC arbitration、per-hop parity check）讓 audience 有完整 picture。AMD Versal NoC 的 8×8 switch、24-token register、Differentiated QoS scoring 等細節是 Versal-specific，我們不沿用。
 
 ---
 
@@ -568,4 +566,4 @@ cycle N+7:  NMU credit_count[VC0] = 3，等 receiver 回 credit 才繼續送
 
 **Visual asset（選擇性）：** 上方 spec deliverable summary table 整潔放在最下、做 closing artifact。
 
-**Speaker notes：** 這頁是 deck 的 closing。DV plan 數字是 A5 wave 結算後的最終值：post-A5 的 protocol_rules.md 從 138 減到 136（移除 Outstanding-tx Timeout 路徑相關的 AXI4_MST_TIMEOUT_SLVERR 跟 NI_CFG_QUIESCE_LIVENESS）。51 個 testpoint 涵蓋 NMU、NSU、CSR、CDC、reset、QoS、ECC、Exclusive、credit、quiesce 等所有 NI 功能。ABV 是 protocol_rules.md 每個 FAIL severity rule 對應一個 SVA assert property。FPV scope 鎖在那些可以靜態驗證的關鍵正確性 — RoB no-deadlock、ECC SECDED 數學、CDC pointer 正確性。Framework 選 UVM 1.2 是設計者確認後決定（產業標準、in-house 已有）。Future work 把這次刻意簡化的部分列出來：ATOPs 我們 v0.4.0 只 sample 不執行，v0.5.0 plugin 側打算把標準 protocol rule 抽 library 減重，debug / safety 機制（包括我們這次刪掉的 Outstanding-tx Timeout）等系統 design 確定後再回頭評估。
+**Speaker notes：** DV plan 數字是 A5 wave 結算後的最終值。Protocol rule 從 138 減到 136，移除的兩條是 AXI4_MST_TIMEOUT_SLVERR 與 NI_CFG_QUIESCE_LIVENESS（兩條都是 Outstanding-tx Timeout 路徑相關）。51 個 testpoint 涵蓋 NMU、NSU、CSR、CDC、reset、QoS、ECC、Exclusive、credit、quiesce。ABV 是 protocol_rules.md 每個 FAIL rule 對應一個 SVA assert。FPV scope 鎖在可靜態驗證的關鍵正確性：RoB no-deadlock、ECC SECDED 數學、CDC pointer 正確性。Framework 選 UVM 1.2 由設計者確認（產業標準、in-house 已有）。Future work：ATOPs v0.4.0 只 sample 不執行，v0.5.0 plugin 側打算把標準 protocol rule 抽 library 減重，debug / safety 機制（包括 Outstanding-tx Timeout）等系統 design 確定後再回頭評估。
