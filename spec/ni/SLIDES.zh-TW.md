@@ -202,14 +202,14 @@ Bit-field 範例（XY-routed mode、預設 offsets）：
 
 ### How — qos 結果選 VC（NUM_VC 數值決定 partition 粒度）
 
-NMU 的 VC Mapping 是 `vc_id = f(R/W, qos)` 純函數。R/W bit 選 subset，subset 內用 qos 值選具體 VC。Partition 粒度依 `NUM_VC` 而定：
+NI 有 **2 條 physical channel pair**（`noc_req`、`noc_rsp`），每條 physical channel 各自獨立有 `NUM_VC` 個 VC。Flit 在自己 physical channel 內依 `qos` 選 VC。兩條 channel 的 VC 編號互相獨立、不共用。
 
-| NUM_VC | Request VCs | Response VCs | qos 在 VC 選擇上的角色 |
-|---|---|---|---|
-| 1（預設） | VC[0] shared | VC[0] shared | 對 VC 選擇無影響，只影響 router QoS arbitration |
-| 2 | VC[0] | VC[1] | R/W 分 VC，qos 仍只影響 router |
-| 4 | VC[0..1] | VC[2..3] | qos 高/低 → 兩個 request VC（response 同樣） |
-| 8 | VC[0..3] | VC[4..7] | qos 4 tier × R/W subset |
+| NUM_VC | 每個 physical channel 內的 QoS-tier 分區 | qos 在 VC 選擇上的角色 |
+|---|---|---|
+| 1（預設） | VC[0] 全用 | qos 對 VC 選擇無影響，只影響 router QoS arbitration |
+| 2 | VC[0..1]（2 tiers） | qos 高/低 → 不同 VC |
+| 4 | VC[0..3]（4 tiers） | qos 4 tier 分流 |
+| 8 | VC[0..7]（8 tiers） | qos 8 tier 分流 |
 
 預設 `NUM_VC=1` 配置下，qos 對 NMU 本地 VC 無影響，只在 router 端 QoS arbitration 起作用。
 

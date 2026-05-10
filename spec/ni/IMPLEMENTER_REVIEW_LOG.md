@@ -244,3 +244,35 @@ Updates to the 14-item list as items are closed by designer ruling, spec erratum
 **Implementation note**: both BFM and RTL elaborate-time check `ASSERT_INIT(NumVcNoRoBExclusive, NUM_VC == 1 || (R_ROB_TYPE != NoRoB && B_ROB_TYPE != NoRoB))`. Integrators selecting NoRoB and `NUM_VC > 1` simultaneously will fail elaboration; spec error message should direct them to either `SimpleRoB`/`NormalRoB` or `NUM_VC=1`.
 
 **v0.5.0 candidate**: re-evaluate whole architecture in light of FlooNoC's physical-channel direction (option (e)). Tracked in `plan/DOGFOOD_OBSERVATIONS_A5.md`.
+
+### 2026-05-10 — Bucket 2 extension: VC partition table architectural inconsistency (closed)
+
+**Issue surfaced during #6 walkthrough** (not in original Round 1+2 list, but follows the same architectural concern):
+
+`theory_of_operation.md` §VC Mapping had a partition policy table:
+
+```
+| NUM_VC | Request VCs | Response VCs |
+| 1      | VC[0] shared | VC[0] shared |
+| 2      | VC[0]        | VC[1]        |
+| 4      | VC[0..1]     | VC[2..3]     |
+| 8      | VC[0..3]     | VC[4..7]     |
+```
+
+implying VCs are partitioned across `noc_req` and `noc_rsp` from a single shared NUM_VC pool. This contradicted `signal_interface.md` which defines `noc_req_credit_i[NUM_VC-1:0]` and `noc_rsp_credit_i[NUM_VC-1:0]` as separate per-physical-channel credit arrays — i.e., each physical channel has its own independent NUM_VC VC pool.
+
+**Designer ruling (during walkthrough)**: each physical channel has independent NUM_VC VCs. Within each physical channel, VCs are partitioned by QoS tier. There is no shared VC numbering across `noc_req` and `noc_rsp`.
+
+**Spec edits applied**:
+
+- `theory_of_operation.md` §VC Mapping: full rewrite. Removed the "R/W subset" framing (R/W is determined by which physical channel a flit goes on, not by VC subsetting). New partition table describes per-physical-channel QoS-tier partition. New preamble explicitly states "Each physical channel's VC pool is independent — there is no shared VC numbering across `noc_req` and `noc_rsp`."
+
+- `protocol_rules.md` `NOC_VC_PARTITION` (RECOMMEND severity rule): rewrote rule body to describe per-physical-channel QoS-tier partition. The two physical channels carry the same partition independently.
+
+- `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS` (FAIL severity rule): rewrote rule body. `vc_id` is assigned by QoS-tier mapping within each physical channel. Mapping is a function of `qos` only (physical channel routing is determined separately). Added concrete bit-extract examples (`qos[3]` for NUM_VC=2, `qos[3:2]` for NUM_VC=4, `qos[3:1]` for NUM_VC=8). The "R/W" in the rule name preserved (rules are stable identifiers per CLAUDE.md), reinterpreted as "request and response see different physical-channel VC pools" not "R/W is part of qos→vc_id function".
+
+- `SLIDES.zh-TW.md` Slide 5: rewrote NUM_VC partition table to match per-physical-channel framing (the original slide table inherited the "Request VCs / Response VCs" mistake from ToO).
+
+**Why this matters**: this was a latent architectural inconsistency that both Round 1 implementer-review agents read but did not flag. They each accepted the partition table as-is without cross-checking signal_interface. This is a class of ambiguity neither reader-test nor single-paradigm implementer-review catches — it requires architectural cross-checking across multiple spec files. Surfaced here only because the user noticed during #6 walkthrough that "credit is per-VC but flit data line is shared".
+
+**Plugin lesson**: future implementer-review prompts should explicitly ask each agent to spot-check architectural consistency across `signal_interface.md` and `theory_of_operation.md` (or equivalent files). Tracked in `plan/DOGFOOD_OBSERVATIONS_A5.md` for future plugin enhancement.

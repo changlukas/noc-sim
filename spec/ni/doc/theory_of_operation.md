@@ -289,26 +289,30 @@ Out of scope (D8 alternative considered + rejected):
 
 #### VC Mapping
 
-The NoC links carry `NUM_VC` parallel virtual channels (parameter, range 1..8, default 1). NMU and NSU treat each VC as an independent flow with its own credit pool and per-VC injection FIFO inside the NI. The forward data link is shared. Per-flit `vc_id` in the flit header (see `02_flit.md` §1.2) identifies the owning VC.
+The NI has 2 physical channel pairs (`noc_req`, `noc_rsp`). Each physical channel carries `NUM_VC` parallel virtual channels with **independent** credit pools and per-VC injection / reception FIFOs inside the NI. The forward data link (`valid` + `flit`) is shared across all VCs on a given physical channel. Per-flit `vc_id` in the flit header (see `02_flit.md` §1.2) identifies the owning VC. Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`), one bit per VC.
 
-NMU performs two distinct VC functions, separately scoped:
+Each physical channel's VC pool is independent — there is no shared VC numbering across `noc_req` and `noc_rsp`. A flit's `vc_id` selects only within its target physical channel's VC pool.
 
-**1. VC Mapping (traffic → vc_id)**: at flit-construct time, NMU assigns each outbound flit to a VC using the **Hybrid R/W × QoS policy**. The R/W bit selects the subset (request vs response, per §VC partition policy below). Within the subset, the qos field selects which VC. Mapping is a pure function of `(R/W, qos)`. Policy is fixed at design time, no runtime alternative. Per `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS`.
+NMU performs three distinct VC functions, separately scoped:
 
-**2. Wormhole arbiter (per-cycle injection ordering)**: when multiple VCs have flits queued, an internal arbiter picks one VC per cycle to drive onto the shared link, respecting the wormhole-lock (per `NOC_FLIT_VC_HARDLOCK`). Local to NMU. Distinct from the cycle-level VC arbitration that runs in the network switch (NPS, per AMD pg313 §Virtual Channel Arbitration — out of NI scope).
+**1. VC Mapping (traffic → vc_id)**: at flit-construct time, NMU assigns each outbound flit to a VC within its target physical channel using QoS-tier mapping. Mapping is a pure function of the flit's `qos` field. Policy is fixed at design time, no runtime alternative. Per `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS`. The "R/W" in the rule name reflects that request flits and response flits each see their own physical-channel VC pool — but within a given physical channel, only `qos` selects which VC.
 
-**NMU input (per-VC demux)**: the inbound `noc_*_flit_i` carries the source's `vc_id`. NMU demuxes the inbound flit to one of `NUM_VC` per-VC reception FIFOs based on the header field.
+**2. Wormhole arbiter (per-cycle injection ordering)**: when multiple VCs on the same physical channel have flits queued, an internal arbiter picks one VC per cycle to drive onto the shared link, respecting the wormhole-lock (per `NOC_FLIT_VC_HARDLOCK`). Local to NMU. Distinct from the cycle-level VC arbitration that runs in the network switch (NPS, per AMD pg313 §Virtual Channel Arbitration — out of NI scope).
 
-**NSU output / input**: symmetric to NMU.
+**3. Per-VC demux (inbound)**: the inbound `noc_*_flit_i` carries the source's `vc_id`. NMU demuxes the inbound flit to one of `NUM_VC` per-VC reception FIFOs based on the header field. NSU symmetric.
 
-**VC partition policy**: NUM_VC ∈ {1, 2, 4, 8} are pre-validated. Recommended partition (from `protocol_rules.md` `NOC_VC_PARTITION`):
+**VC partition policy** (per physical channel — `noc_req` and `noc_rsp` each have an independent `NUM_VC` VC pool):
 
-| NUM_VC | Request VCs | Response VCs | Notes |
-|--------|-------------|--------------|-------|
-| 1 | VC[0] (shared) | VC[0] (shared) | No partition; relies on protocol-rules-level deadlock avoidance |
-| 2 | VC[0] | VC[1] | Standard request/response separation; deadlock-free by construction |
-| 4 | VC[0..1] | VC[2..3] | Allows QoS-tier within each subset (high/low per direction) |
-| 8 | VC[0..3] | VC[4..7] | Full QoS-tier × R/W cross-product |
+NUM_VC ∈ {1, 2, 4, 8} are pre-validated. Recommended QoS-tier partition within each physical channel (per `protocol_rules.md` `NOC_VC_PARTITION`):
+
+| NUM_VC | QoS-tier partition (within each of `noc_req` and `noc_rsp`) | Notes |
+|--------|------------------------------------------------------------|-------|
+| 1 | All flits share VC[0] | No QoS-tier isolation; relies on protocol-rules-level ordering rules and software discipline |
+| 2 | VC[0..1] (2 tiers) | Two-tier QoS isolation per physical channel |
+| 4 | VC[0..3] (4 tiers) | Four-tier QoS isolation per physical channel |
+| 8 | VC[0..7] (8 tiers) | Eight-tier QoS isolation per physical channel |
+
+Each physical channel applies the same partition independently. The exact `qos → vc_id` bit-extract function (e.g., `qos[3]` for NUM_VC=2, `qos[3:2]` for NUM_VC=4, `qos[3:1]` for NUM_VC=8) is specified in `NOC_VC_MAPPING_HYBRID_RW_QOS`.
 
 **Hard-lock rule**: once a VC's wormhole-arbiter wins for a packet, the full packet's flits must be served from that same VC at every NMU/router/NSU. No mid-packet VC switching (per `NOC_FLIT_VC_HARDLOCK` rule).
 
