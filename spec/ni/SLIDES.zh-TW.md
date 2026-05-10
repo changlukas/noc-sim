@@ -200,6 +200,19 @@ Bit-field 範例（XY-routed mode、預設 offsets）：
 | 即時 accelerator（real-time SLA）| Urgency-regulator | 需要自適應 priority 才能達 bandwidth target |
 | 測試 / debug | Fixed | 固定 priority 方便重現 |
 
+### How — qos 結果選 VC（NUM_VC 數值決定 partition 粒度）
+
+NMU 的 VC Mapping 是 `vc_id = f(R/W, qos)` 純函數。R/W bit 選 subset，subset 內用 qos 值選具體 VC。Partition 粒度依 `NUM_VC` 而定：
+
+| NUM_VC | Request VCs | Response VCs | qos 在 VC 選擇上的角色 |
+|---|---|---|---|
+| 1（預設） | VC[0] shared | VC[0] shared | 對 VC 選擇無影響，只影響 router QoS arbitration |
+| 2 | VC[0] | VC[1] | R/W 分 VC，qos 仍只影響 router |
+| 4 | VC[0..1] | VC[2..3] | qos 高/低 → 兩個 request VC（response 同樣） |
+| 8 | VC[0..3] | VC[4..7] | qos 4 tier × R/W subset |
+
+預設 `NUM_VC=1` 配置下，qos 對 NMU 本地 VC 無影響，只在 router 端 QoS arbitration 起作用。
+
 ### Trade-off — QoS 不會 preempt wormhole-locked W-burst
 
 - HEAD flit 一旦 grant，整個 burst 鎖定 output port 直到 `wlast`。
