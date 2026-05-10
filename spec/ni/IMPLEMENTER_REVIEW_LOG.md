@@ -276,3 +276,62 @@ implying VCs are partitioned across `noc_req` and `noc_rsp` from a single shared
 **Why this matters**: this was a latent architectural inconsistency that both Round 1 implementer-review agents read but did not flag. They each accepted the partition table as-is without cross-checking signal_interface. This is a class of ambiguity neither reader-test nor single-paradigm implementer-review catches — it requires architectural cross-checking across multiple spec files. Surfaced here only because the user noticed during #6 walkthrough that "credit is per-VC but flit data line is shared".
 
 **Plugin lesson**: future implementer-review prompts should explicitly ask each agent to spot-check architectural consistency across `signal_interface.md` and `theory_of_operation.md` (or equivalent files). Tracked in `plan/DOGFOOD_OBSERVATIONS_A5.md` for future plugin enhancement.
+
+### 2026-05-10 — Bucket 3 #13 wormhole RR pointer reset + advancement (closed)
+
+**Designer ruling**: pointer resets to 0 on `noc_rst_ni`. Pointer advances by 1 on the cycle the packet's `last=1` flit is granted (per-packet, not per-flit). Pointer held fixed during the lock interval.
+
+**FlooNoC alignment**: `floo_wormhole_arbiter.sv` instantiates `rr_arb_tree` with `LockIn=1, FairArb=1, ExtPrio=0`. Reset and advancement semantics inherit from the standard `rr_arb_tree` IP behavior. The same arbiter pattern is used at two places in the NMU: (a) AW/W/AR request output arbiter (per #9 ruling), (b) per-VC wormhole arbiter on each physical channel (this item).
+
+**Spec edit applied**:
+
+- `theory_of_operation.md` §VC Mapping §"2. Wormhole arbiter": appended pointer-state semantics (reset value, per-packet advancement rule, lock-interval behavior) and FlooNoC reference. Cross-link to §RoB allocator (where the same arbiter pattern was specified for AW/W/AR tie-break in #9).
+
+### 2026-05-10 — Bucket 3 #5 NSU MetaBuffer indexing (closed)
+
+**Designer ruling**: index by master `axi_id` (FlooNoC `id_queue` pattern). System-level integrator constraint: AXI IDs are guaranteed non-overlapping across multi-NMU traffic to the same NSU.
+
+**FlooNoC research findings** (`floo_meta_buffer.sv`):
+
+- FlooNoC uses `id_queue` IP (PULP common_cells) keyed by AXI ID (`inp_id_i = axi_req_i.aw.id`).
+- `id_queue` is essentially per-ID FIFOs: each unique AXI ID has its own ordering chain. Cross-ID transactions are independent.
+- FlooNoC adds an offset (`MaxAtomicTxns`) to outbound AXI ID for atomic-transaction ID space management. For non-atomic, the offset is 0 (simple pass-through).
+- FlooNoC has an implicit assumption that AXI IDs are unique within a tile's NSU view. Multi-NMU collision is not handled at the chimney level.
+
+**Designer's system-level guarantee**: each NMU uses non-overlapping AXI IDs. This makes FlooNoC's pattern directly applicable. Spec records this as an integrator constraint.
+
+**Why option (α) over (β) slot-direct-lookup or (γ) composite key**:
+
+- (α) is the simplest and FlooNoC-aligned.
+- (β) and (γ) addressed multi-NMU AXI ID collisions, which the designer ruling now explicitly forbids at system level.
+- Pushing the disambiguation to integrator is consistent with FlooNoC's stance.
+
+**Spec edit applied**:
+
+- `theory_of_operation.md` §MetaBuffer: added new §Indexing paragraph specifying axi_id-keyed `id_queue` indexing, FlooNoC alignment, and the system-level integrator constraint that AXI IDs MUST be non-overlapping across multi-NMU traffic to any given NSU.
+
+### 2026-05-10 — Bucket 3 #8 CUT_AX / CUT_RSP spill register placement (closed)
+
+**Designer ruling**: `CUT_AX=1` spills at AXI ingress (pre-AddrTrans). `CUT_RSP=1` spills at AXI egress (post-FlitUnpack). Symmetric placement.
+
+**Rationale (FlooNoC alignment)**: FlooNoC `floo_axi_chimney.sv` places `CutAx` at AXI ingress (immediately after `axi_in_req_i`). Standard pattern: spill at the boundary between AXI master and the internal pipeline (AddrTrans + QoSGen + FlitPack chain). RSP placement is symmetric — spill at the boundary between internal pipeline (FlitUnpack + RoB release) and AXI master B/R handshake.
+
+**Spec edit applied**:
+
+- `theory_of_operation.md` §RTL pipeline / timing: added new "`CUT_AX` / `CUT_RSP` spill register placement" sub-section explicitly stating the placement and FlooNoC alignment.
+
+### 2026-05-10 — Bucket 3 #14 prev_dest arming / disarming (closed)
+
+**Designer ruling**: write `prev_dest[axi_id]` unconditionally on every AW / AR push. Bypass decision uses previous-cycle value (`prev_dest_q`); next-cycle value (`prev_dest_d`) updated after the decision. `prev_dest` never explicitly cleared.
+
+**FlooNoC research findings** (`floo_rob.sv` lines 395-468):
+
+- Line 417-420: `prev_dest_d[ax_id_i] = ax_dest_i` on every `ax_push_i && ax_gnt_o`. Unconditional update.
+- Line 423-433: bypass logic uses `prev_dest_q` (current cycle, pre-update) compared against new `ax_dest_i`. Three-way decision: empty queue → `rob_req=0`; non-empty + same-dst → `rob_req=0` (fast-path); else → `rob_req=1` (start reorder).
+- Line 437-441: only `ax_rob_req_q[id]` clears when the per-id queue empties. `prev_dest_q[id]` retains its last value (no explicit clear path; stale data is harmless because bypass logic gates on queue occupancy first).
+
+**Race analysis**: `prev_dest_q` (read-side) and `prev_dest_d` (write-side) are separate FF stages within the same cycle. Combinational logic reads `prev_dest_q` for bypass decision, then computes `prev_dest_d` for next cycle. Read-before-write within cycle is intrinsic to the FF model. No race.
+
+**Spec edit applied**:
+
+- `theory_of_operation.md` §RoB allocator §`prev_dest` adaptive bypass: appended new "`prev_dest` arming and disarming" sub-section detailing the unconditional update, race-free read-before-write semantics, and no-explicit-clear behavior. FlooNoC reference cited.

@@ -85,6 +85,12 @@ Holds at minimum:
 
 Capacity: equal to NSU outstanding-transaction limit (`MAX_TXNS`-bounded). Implements one entry per outstanding NSU request; FREE entries reused after corresponding response injected.
 
+**Indexing**: MetaBuffer is indexed by master AXI ID (the `axi_id` field of the request payload). Implementation matches FlooNoC `floo_meta_buffer.sv` pattern — `id_queue` IP (PULP common_cells) with `ID_WIDTH = IN_ID_WIDTH`, `CAPACITY = MAX_TXNS`. Each unique `axi_id` has its own FIFO ordering chain within the queue. Same-ID transactions release in issue order naturally. Cross-ID transactions release in slave-side arrival order.
+
+NSU drives the local AXI slave with the master's original `axi_id` (no internal ID translation). Slave returns B / R with that same `axi_id`. NSU uses it to look up MetaBuffer at response generation time.
+
+**System-level integrator constraint**: AXI IDs MUST be unique across all NMUs targeting any given NSU. The system either assigns disjoint `axi_id` ranges per NMU, or relies on NMU-side ID re-tagging before NoC injection. This guarantee permits indexing by `axi_id` alone without disambiguation by `src_id`. **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): index by axi_id following FlooNoC id_queue pattern; system-level non-overlapping axi_id is integrator's responsibility.**
+
 ### NSU Read response buffer (NSU sub-block)
 
 Per-AXI-ID elastic buffer at the NSU that absorbs R response data flits arriving from the local AXI subordinate before they are packed into NoC R flits and injected. Distinct from MetaBuffer (which holds request metadata only).
@@ -227,6 +233,16 @@ When `prev_dest` differs (cross-destination same-`axi_id`), the standard linked-
 
 Rationale for adaptive bypass: same-destination same-ID is the common case (CPU re-fetches from same memory region); cross-destination same-ID is rare (only if the master uses a pathological ID assignment). Adaptive bypass cuts the common-case release-decision path from ~3 cycles (linked-list walk) to ~1 cycle.
 
+**`prev_dest` arming and disarming**:
+
+- `prev_dest[axi_id]` is updated unconditionally on every AW / AR push into RoB. There is no separate "arming" condition — the per-axi-id slot is overwritten with the new request's `dst_id` every push.
+
+- Adaptive-bypass decision compares the new request's `dst_id` against `prev_dest[axi_id]` **as of the previous cycle** (`prev_dest_q`, before this cycle's update). The next-cycle value (`prev_dest_d`) is written after the bypass decision is consumed. Race-free by construction (read-before-write within the cycle).
+
+- `prev_dest[axi_id]` is never explicitly cleared. When the per-axi-id RoB queue empties (last response pops), the "needs reordering" flag (`ax_rob_req_q`) clears, but `prev_dest_q` retains its last-stored `dst_id`. Stale `prev_dest` is harmless because the bypass logic uses queue occupancy as the primary guard — empty queue takes the first-push branch which ignores `prev_dest`.
+
+Aligned with FlooNoC `floo_rob.sv` `prev_dest_q` / `prev_dest_d` semantics (lines 395-468). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): unconditional write on push, race-free read-before-write, never explicitly cleared.**
+
 #### RoB area-reduction techniques
 
 R-RoB sizing dominates total RoB area. At maximum-config `R_ROB_TYPE=NormalRoB, MAX_TXNS=32, DATA_WIDTH=256, MAX_BURST_LEN=256` the worst-case R-RoB storage is `32 × 256 × 256 = 2 Mbits`. At default `MAX_BURST_LEN=16` the same NormalRoB drops to `32 × 16 × 256 = 128 Kbits` — the typical-deployment number. B-RoB is much smaller (metadata-only when `ONLY_METADATA_B=true`).
@@ -297,7 +313,7 @@ NMU performs three distinct VC functions, separately scoped:
 
 **1. VC Mapping (traffic → vc_id)**: at flit-construct time, NMU assigns each outbound flit to a VC within its target physical channel using QoS-tier mapping. Mapping is a pure function of the flit's `qos` field. Policy is fixed at design time, no runtime alternative. Per `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS`. The "R/W" in the rule name reflects that request flits and response flits each see their own physical-channel VC pool — but within a given physical channel, only `qos` selects which VC.
 
-**2. Wormhole arbiter (per-cycle injection ordering)**: when multiple VCs on the same physical channel have flits queued, an internal arbiter picks one VC per cycle to drive onto the shared link, respecting the wormhole-lock (per `NOC_FLIT_VC_HARDLOCK`). Local to NMU. Distinct from the cycle-level VC arbitration that runs in the network switch (NPS, per AMD pg313 §Virtual Channel Arbitration — out of NI scope).
+**2. Wormhole arbiter (per-cycle injection ordering)**: when multiple VCs on the same physical channel have flits queued, an internal arbiter picks one VC per cycle to drive onto the shared link, respecting the wormhole-lock (per `NOC_FLIT_VC_HARDLOCK`). Implemented as fair round-robin via `rr_arb_tree` with `LockIn=1, FairArb=1, ExtPrio=0`, matching FlooNoC `floo_wormhole_arbiter.sv`. Round-robin pointer state: resets to 0 on `noc_rst_ni`. The pointer advances by 1 on the cycle the packet's `last=1` flit is granted (per-packet, not per-flit). The pointer is held fixed during the lock interval (between the first granted flit of a packet and the `last=1` flit). Local to NMU; the same arbiter pattern is reused at the NMU AW/W/AR request output (per §RoB allocator §"Tie-breaking when AW and AR arrive in the same cycle"). Distinct from the cycle-level VC arbitration that runs in the network switch (NPS, per AMD pg313 §Virtual Channel Arbitration — out of NI scope). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): rr_arb_tree fair, ExtPrio=0, LockIn=1, FairArb=1; pointer reset = 0; advance per granted packet.**
 
 **3. Per-VC demux (inbound)**: the inbound `noc_*_flit_i` carries the source's `vc_id`. NMU demuxes the inbound flit to one of `NUM_VC` per-VC reception FIFOs based on the header field. NSU symmetric.
 
@@ -514,6 +530,13 @@ Sub-modules:
 - RoB entry lifecycle: 1 cycle ALLOCATED → traffic round trip → 1 cycle to release.
 
 Fixed timing (no runtime configurability beyond `CUT_AX` / `CUT_RSP` synthesis parameters). The BFM's `set_response_delay_*` knobs are testbench-only and have no RTL equivalent.
+
+**`CUT_AX` / `CUT_RSP` spill register placement**:
+
+- `CUT_AX=1`: spill register inserted at AXI ingress, between the master's AW / AR handshake and the AddrTrans / QoSGen / FlitPack chain. 1 `aclk_i` cycle of latency added on AW / AR observable at `axi_*_i`. Aligned with FlooNoC `floo_axi_chimney.sv` `CutAx` placement.
+- `CUT_RSP=1`: spill register inserted at AXI egress, between FlitUnpack (and RoB release) and the master's B / R handshake. 1 `aclk_i` cycle of latency added on B / R observable at `axi_*_i`. Symmetric to `CUT_AX`.
+
+**Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): `CUT_AX` spills at AXI ingress (pre-AddrTrans); `CUT_RSP` spills at AXI egress (post-FlitUnpack). FlooNoC-aligned placement.**
 
 ### RTL reset behavior
 
