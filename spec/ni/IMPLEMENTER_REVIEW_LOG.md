@@ -143,3 +143,104 @@ Each agent received the OTHER agent's Round 1 output and produced a peer review.
   - **10 items** deferred to combined D1→D2 transition planning meeting (flit_layout.h publish, vc_id mapping table, credit-init epoch, MetaBuffer indexing, CDC flush algorithm, CUT_AX/CUT_RSP placement, RR pointer reset, ECC counter widths, prev_dest arming, NoRoB single-VC pinning).
 
 The 14 items must be resolved before either C-model or RTL implementation work proceeds at D2, or each ambiguity will encode a different assumption in the two implementations and bit-equivalence testing will surface them as silent divergence.
+
+## Resolution log
+
+Updates to the 14-item list as items are closed by designer ruling, spec erratum, or deferral. The table above is the snapshot at run time. This section is the audit trail.
+
+### 2026-05-10 — Bucket 1 mechanical erratum (closed)
+
+- **#10 `axi_rready_o` reset/operational contradiction**: closed via `pin_level_reset.md` §Post-reset transitions edit. Previous "held at 1 (always-ready to drain)" grouped row was a defect inherited from the pre-LINT-BFM-001 grouped-table form. Now split: `axi_bready_o` truly always-1 (B has no NSU back-pressure path); `axi_rready_o` 1 by default but drops to 0 when NSU R-buffer is full per ToO §NSU Read response buffer.
+- **#11 ECC counter widths**: closed via `registers.md` edit — added `ERR_COUNTER_WIDTH bits` to the three counter rows (`ECC_UNCORR_ERR_CNT`, `ROUTE_PAR_ERR_CNT`, `AXI_PARITY_ERR_CNT`) that previously stated only "saturating". `ECC_CORR_ERR_CNT` was already correct.
+
+### 2026-05-10 — Bucket 2 #2 Hsiao vs Hamming SECDED (closed by designer ruling)
+
+**Designer ruling**: **Hsiao SECDED**.
+
+**Rationale**:
+
+- AMD pg313 §Data Integrity verbatim says "SECDED ECC across the entire flit" — generic, does not specify matrix variant. Aligning with Hsiao does not violate AMD reference.
+- FlooNoC and OpenTitan both ship Hsiao. We already reference FlooNoC for the wormhole arbiter, so aligning the SECDED matrix is consistent.
+- Hsiao has marginal technical advantages: equal column weight, one fewer XOR gate level in decode, slightly better double-bit detection probability.
+- Spec author's original intent (per `dv/plan.md` and `protocol_rules.md NI_CFG_INJECT_ECC_ERROR`) was Hsiao. The "Hamming" wording in three other spec sites was inadvertent.
+
+**Spec edits applied** (6 matrix-variant + 2 mathematical):
+
+- `theory_of_operation.md:351` — "SECDED Hamming code" → "SECDED Hsiao code"
+- `theory_of_operation.md:493` — "whole-flit SECDED Hamming over flit" → "whole-flit SECDED Hsiao over flit"
+- `theory_of_operation.md:527` — RTL-vs-BFM equivalence row "whole-flit SECDED Hamming" → "whole-flit SECDED Hsiao"
+- `protocol_rules.md:206` — prose "whole-flit SECDED Hamming" → "whole-flit SECDED Hsiao"
+- `protocol_rules.md:212` — `NOC_FLIT_HDR_FLIT_ECC_GEN` rule body "Compute SECDED Hamming code" → "Compute SECDED Hsiao code"
+- `dv/plan.md:123` — "flit_ecc SECDED Hamming gen + check" → "flit_ecc SECDED Hsiao gen + check"
+- `signal_interface.md:303` — "SECDED Hamming bound" → "SECDED bit-count bound", with parenthetical noting bound is matrix-variant-agnostic
+- `theory_of_operation.md:353` — "Derivation: Hamming SEC over `k` data bits" → "Derivation: a SEC (single-error-correcting) code over `k` data bits", plus added note that the bound applies to both Hsiao and classical Hamming SECDED
+
+`protocol_rules.md:295` (`NI_CFG_INJECT_ECC_ERROR` test-knob row) already said Hsiao; no change required. The Round 2 disagreement between c-bfm (Hsiao) and rtl (Hamming) is closed in favour of c-bfm's reading.
+
+**Implementation note for both teams**: pick a published Hsiao parity-check matrix for `FLIT_DATA_WIDTH=396, FLIT_ECC_WIDTH=10`. Recommend FlooNoC's `floo_secded_*.sv` family or OpenTitan's `prim_secded_hsiao_*.sv` family as starting point. Both implementations must consume the same H-matrix or wire-equivalence fails.
+
+### 2026-05-10 — Bucket 2 #9 same-cycle AW+AR allocation order (closed by designer ruling)
+
+**Designer ruling**: **fair round-robin, no W/R bias**.
+
+**Rationale (FlooNoC-derived)**:
+
+- FlooNoC's `floo_axi_chimney.sv` request arbiter is `rr_arb_tree` with `ExtPrio=0, LockIn=1, FairArb=1` — pure fair round-robin between AxiAw, AxiW, AxiAr inputs. Verified by reading `hw/floo_wormhole_arbiter.sv` lines 35-42 and `hw/floo_axi_chimney.sv` lines 672-675.
+- AW-first or AR-first would create long-term bias against the deferred channel, harming average latency for the deferred class.
+- Standard IP (`rr_arb_tree`, ~50-line module from PULP common_cells) implements the policy; both BFM and RTL can consume the same reference.
+
+**Spec edit applied**:
+
+- `theory_of_operation.md` §RoB allocator: added new "Tie-breaking when AW and AR arrive in the same cycle" paragraph stating fair round-robin policy, citing FlooNoC reference, marked "Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10)".
+
+**Implementation note**: both BFM and RTL teams use `rr_arb_tree` with `ExtPrio=0, LockIn=1, FairArb=1` parameters. Round-robin pointer state at reset must agree (typically pointer = 0 post-reset, advances on each granted packet).
+
+### 2026-05-10 — Bucket 2 #12 quiesce_idle CDC drain (closed as false positive + clarification added)
+
+**Re-examination ruling**: **spec is correct as-is. Round 2 reviewer's concern was based on misreading PENDING counter semantics.**
+
+**Re-analysis**:
+
+- C-bfm Round 2 reviewer claimed `quiesce_idle` could assert while a request flit is mid-CDC.
+- The claim implicitly assumed `PENDING_W` decrements when the request flit enters the CDC FIFO. This is wrong.
+- Spec (`theory_of_operation.md` §Software quiesce flow) defines: `PENDING_W` decrements only when AXI master receives `B` (the response handshake at `axi_*_i`).
+- `B` reaching master requires the full round-trip: master → NMU AXI → CDC FIFO → NoC → NSU → slave → NSU → NoC → CDC → NMU → master.
+- Therefore `PENDING_W = 0` implies every CDC FIFO (request-side AND response-side) has fully drained for previously-issued writes. Same argument for reads.
+- `quiesce_idle = 1` therefore implicitly covers full CDC drain — no separate `noc_clk`-domain empty indicator needed.
+
+**Spec edit applied** (clarification, not a behavioral fix):
+
+- `theory_of_operation.md` §Software quiesce flow: added a paragraph after the PENDING counter definition explicitly walking through why `PENDING_W = 0` guarantees CDC drain. The reasoning was implicit before; the new paragraph makes it explicit so future reviewers do not raise the same false positive.
+
+**FlooNoC borrow**: zero. FlooNoC has no quiesce / drain mechanism (fabric module, no CSR or runtime control). They rely on master-side discipline. Out of FlooNoC's scope; our use case is spec-specific.
+
+### 2026-05-10 — Bucket 2 #6 NoRoB + Hybrid VC mapping ordering bug (closed by designer ruling)
+
+**Designer ruling**: **NoRoB and `NUM_VC > 1` mutually exclusive** (option (d) — elaborate-time hard constraint).
+
+**Bug summary**:
+
+- NoRoB assumes NoC preserves response order.
+- NoC actually only guarantees same-`(src_id, dst_id, vc_id)` order (`NOC_FLIT_INORDER_PER_VC`).
+- Hybrid R/W × QoS VC-mapping routes same-`axi_id` traffic to different VCs when `qos` varies.
+- Different VCs have no inter-VC ordering → responses can return OoO.
+- NoRoB has no reorder buffer → AXI4 same-ID-ordering silently violated.
+
+**FlooNoC research findings**:
+
+- FlooNoC's main `floo_axi_chimney.sv` has no VC concept — they rely on physical channels (separate req/rsp links) plus AXI sub-channel arbitration via wormhole arbiter.
+- FlooNoC's `deprecated/floo_nw_vc_chimney.sv` (1598 lines) had a VC implementation with `FixedWormholeVC=1, WormholeVCId=0` pattern — packets requiring intra-packet ordering are pinned to VC[0]. This pattern would have backed our option (a) "pin NoRoB traffic to fixed VC".
+- FlooNoC eventually deprecated the VC chimney and moved to physical-channel architecture, citing "Routing resources are plentiful in modern technologies" and VC complexity outweighing benefit.
+
+**Why (d) over (a)**: NoRoB users typically want simple deployment. Combining NoRoB (smallest area) with multi-VC (qos-tier separation) is a contradictory configuration. (d) hard-constrains the combination at elaborate time, simpler than (a)'s NMU mux logic. (a) would still be valid but adds complexity for a use case that doesn't exist in practice.
+
+**Why not (e)**: (e) was the "switch entire NoC to physical channel architecture" option, paralleling FlooNoC's evolution. That is a v0.5.0+ architectural redesign, out of scope for this round.
+
+**Spec edits applied**:
+
+- `signal_interface.md` §Parameters `NUM_VC` row: Constraint column extended to `1 ≤ x ≤ 8; when x > 1, both R_ROB_TYPE and B_ROB_TYPE MUST be != NoRoB (see ToO §RoB allocator §"NoRoB single-VC restriction")`.
+- `theory_of_operation.md` §RoB allocator: new "NoRoB single-VC restriction" sub-section after the RoB variants bullets, explaining the constraint, its rationale, and the elaborate-time `ASSERT_INIT` enforcement. Marked "Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10)".
+
+**Implementation note**: both BFM and RTL elaborate-time check `ASSERT_INIT(NumVcNoRoBExclusive, NUM_VC == 1 || (R_ROB_TYPE != NoRoB && B_ROB_TYPE != NoRoB))`. Integrators selecting NoRoB and `NUM_VC > 1` simultaneously will fail elaboration; spec error message should direct them to either `SimpleRoB`/`NormalRoB` or `NUM_VC=1`.
+
+**v0.5.0 candidate**: re-evaluate whole architecture in light of FlooNoC's physical-channel direction (option (e)). Tracked in `plan/DOGFOOD_OBSERVATIONS_A5.md`.

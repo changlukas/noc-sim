@@ -52,13 +52,13 @@ CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-con
 | 0x09C | `TXN_TOTAL_COUNT` | RO | 0x0 | 總 transaction 數 (saturating). |
 | **Error Status / IRQ** |||||
 | 0x100 | `ERR_STATUS` | RW1C | 0x0 | 錯誤狀態 — write 1 to clear bit and the associated saturating counter. See §ERR_STATUS. <!-- source: 06_qos.md §4.1, post-fix RW1C --> |
-| 0x108 | `ECC_UNCORR_ERR_CNT` | RO | 0x0 | ECC uncorrectable 錯誤計數 (saturating). Cleared via `ERR_STATUS[0]` write-1 (ecc_uncorr_err). |
+| 0x108 | `ECC_UNCORR_ERR_CNT` | RO | 0x0 | ECC uncorrectable 錯誤計數 (saturating, `ERR_COUNTER_WIDTH` bits). Cleared via `ERR_STATUS[0]` write-1 (ecc_uncorr_err). |
 | 0x10C | `LAST_ERR_INFO` | RO | 0x0 | 最近錯誤資訊 (sticky semantics; see §LAST_ERR_INFO for field layout). |
 | 0x110 | (reserved for `LAST_ERR_INFO_HI`) | — | — | Allocated for compile-time `LAST_ERR_INFO` extension when total field width exceeds 32 bits (e.g., `AXI_ID_WIDTH=16` with extended `X_WIDTH+Y_WIDTH`). Unused at default parameters; reads as DECERR until activated. |
 | 0x114 | `IRQ_ENABLE` | RW | 0x0 | Per-bit IRQ mask, layout 1:1 with `ERR_STATUS`. `irq_o = OR over i of (ERR_STATUS[i] & IRQ_ENABLE[i])`. Default 0 = all IRQs masked; software opts in. See §IRQ_ENABLE for field layout. |
 | 0x118 | `ECC_CORR_ERR_CNT` | RO | 0x0 | flit_ecc 單位元（已修正）錯誤累計 (saturating, `ERR_COUNTER_WIDTH` bits). Pure informational; cumulative since hardware reset; no software clear path. Software polls and tracks deltas for health-monitoring purposes. |
-| 0x11C | `ROUTE_PAR_ERR_CNT` | RO | 0x0 | route_par mismatch (flit dropped at router/sink) 累計 (saturating). Cleared via `ERR_STATUS[1]` write-1 (route_par_err). |
-| 0x120 | `AXI_PARITY_ERR_CNT` | RO | 0x0 | AXI host-side parity mismatch 累計 (saturating); covers both NMU-side `axi_*_i_par_i` checks and NSU-side `axi_rdata_par_i` checks. Cleared via `ERR_STATUS[2]` write-1 (axi_parity_err). |
+| 0x11C | `ROUTE_PAR_ERR_CNT` | RO | 0x0 | route_par mismatch (flit dropped at router/sink) 累計 (saturating, `ERR_COUNTER_WIDTH` bits). Cleared via `ERR_STATUS[1]` write-1 (route_par_err). |
+| 0x120 | `AXI_PARITY_ERR_CNT` | RO | 0x0 | AXI host-side parity mismatch 累計 (saturating, `ERR_COUNTER_WIDTH` bits). Covers both NMU-side `axi_*_i_par_i` checks and NSU-side `axi_rdata_par_i` checks. Cleared via `ERR_STATUS[2]` write-1 (axi_parity_err). |
 | **Runtime control** |||||
 | 0x130 | `PENDING_R_COUNT` | RO | 0x0 | NMU live outstanding read transactions. Width = `ceil(log2(MAX_TXNS+1))`. AXI-edge-defined per `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY`. See §PENDING_R_COUNT. |
 | 0x134 | `PENDING_W_COUNT` | RO | 0x0 | NMU live outstanding write transactions. Same width formula and contract as `PENDING_R_COUNT`. See §PENDING_W_COUNT. |

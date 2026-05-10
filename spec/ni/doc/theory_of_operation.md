@@ -202,11 +202,19 @@ Per source-doc 04_network_interface.md §FR-05. State machine: `FREE → ALLOCAT
 
 **RoB behavior when `rob_req = 0` in the flit header (i.e., master indicates it doesn't need RoB)**: NMU still allocates a tracker entry (to back-pressure on RoB-full), but releases responses immediately on receive without waiting for in-order release. Equivalent to "fast-path" / NoRoB-effective semantics for that transaction. **Designer-confirmed (A5 wave 2026-05-08): NMU allocates a tracker even when rob_req=0.**
 
+**Tie-breaking when AW and AR arrive in the same cycle (both contend for the lowest-index FREE entry)**: fair round-robin between AW and AR. Neither has fixed priority. The round-robin pointer state advances per granted packet — over time, AW and AR allocations alternate. Aligned with FlooNoC `floo_axi_chimney.sv` request arbiter (`rr_arb_tree` instantiated with `ExtPrio=0, LockIn=1, FairArb=1`). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): fair round-robin, no W/R bias.**
+
 **RoB variants** (FlooNoC-aligned naming; chosen *per response channel* via two independent build-time parameters `B_ROB_TYPE` and `R_ROB_TYPE`, each in `{NoRoB, SimpleRoB, NormalRoB}`):
 
 - **NoRoB** (default for both B and R): never allocate. Used when the local master is single-issue or guaranteed to receive responses in-order from the NoC fabric. Smallest area footprint; relies on the network to preserve order.
 - **SimpleRoB**: allocate one entry per outstanding request, release strictly in issue order. Naive but small. Single shared release-pointer; no per-AXI-ID tracking.
 - **NormalRoB**: per-AXI-ID linked-list ordering with `prev_dest` adaptive bypass (see below). Largest but most performant.
+
+**NoRoB single-VC restriction** (`R_ROB_TYPE = NoRoB` and / or `B_ROB_TYPE = NoRoB` requires `NUM_VC = 1`):
+
+NoRoB assumes the NoC fabric preserves response order. The fabric's actual guarantee is `NOC_FLIT_INORDER_PER_VC` — same `(src_id, dst_id, vc_id)` triple arrives in injection order. When `NUM_VC > 1`, the Hybrid R/W × QoS VC-mapping policy (see §"VC Mapping" §1) routes same-`axi_id` traffic to different VCs whenever the master varies `qos` between transactions. Different VCs have no inter-VC ordering guarantee — responses can return out-of-order. NoRoB does not buffer responses, so the master observes AXI4 same-ID-ordering violations. Restricting NoRoB deployments to `NUM_VC = 1` eliminates this scenario by construction.
+
+Implementation: enforced as an elaborate-time `ASSERT_INIT` over the parameter set (`NUM_VC == 1 || (R_ROB_TYPE != NoRoB && B_ROB_TYPE != NoRoB)`). Integrators wanting both NoRoB-area-footprint AND multi-VC traffic separation must select a non-NoRoB variant (`SimpleRoB` minimally; `NormalRoB` for full multi-destination reordering). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10).**
 
 The B and R RoBs are independent because B is metadata-only (`bid` + `bresp` + `buser`) — far smaller per entry than R (which carries `MAX_BURST_LEN × DATA_WIDTH` payload). Typical configuration: `R_ROB_TYPE = NormalRoB` (large but needed for read-burst reordering across destinations), `B_ROB_TYPE = SimpleRoB` (single-beat metadata; ID-tracker complexity rarely justified). The `ONLY_METADATA_B` parameter further enables data-SRAM elision for B-RoB.
 
@@ -329,6 +337,8 @@ Software polling protocol: write `quiesce_req=1`, poll `quiesce_idle` until set,
 
 `PENDING_R_COUNT` / `PENDING_W_COUNT` (RO CSRs per `registers.md`) increment on AXI master-side AW/AR handshake completion at `axi_*_i`, decrement on B / R-with-`rlast` handshake completion at `axi_*_i`. Both counters are `aclk_i`-domain native (no CDC); the AXI-edge increment/decrement contract is the software-observable definition (formalised in `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY`). Counter width = `ceil(log2(MAX_TXNS+1))` per direction; saturation at `MAX_TXNS` is impossible by construction (NMU back-pressures `awready`/`arready` before exceed).
 
+Per the AXI-edge contract above, `PENDING_W_COUNT = 0` implies the master has received `B` for every previously-issued write. Because `B` traverses the full round-trip (NMU AXI side → CDC FIFO → NoC link → NSU → local AXI slave → NSU → NoC → CDC → NMU AXI side → master), `PENDING_W_COUNT = 0` therefore guarantees both directions of every CDC FIFO are drained for write-path transactions. Same argument for reads via `PENDING_R_COUNT`. `quiesce_idle = 1` thus implicitly covers full CDC drain — no separate `noc_clk`-domain empty indicator is needed in the AND formula.
+
 Reset interaction: `arst_ni` clears `quiesce_req` and the outstanding tracker → `quiesce_idle` returns to 0 because both quiesce_req and the (now-zero) PENDING counts make the AND-condition's `quiesce_req=1` term false. Any in-progress quiesce is therefore abandoned by reset.
 
 Formalised in `protocol_rules.md` `NI_CFG_QUIESCE_FLOW` (steady-state contract).
@@ -348,9 +358,9 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 
 **Layer 2 — `flit_ecc` (whole-flit SECDED at endpoint)**:
 
-- SECDED Hamming code computed over the entire flit (header + payload, *excluding* the `flit_ecc` field itself).
+- SECDED Hsiao code computed over the entire flit (header + payload, *excluding* the `flit_ecc` field itself).
 - Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits for the 396-bit protected payload at default parameters).
-- SECDED bound: `FLIT_ECC_WIDTH` (= `p`) must satisfy `2^(p-1) ≥ FLIT_DATA_WIDTH + p + 1`, where `FLIT_DATA_WIDTH = FLIT_WIDTH - FLIT_ECC_WIDTH` is the protected-bits count. Derivation: Hamming SEC over `k` data bits requires `r` check bits with `2^r ≥ k + r + 1`. SECDED adds one overall-parity bit, so total `p = r + 1`. The canonical bound is therefore `2^(p-1) ≥ k + p`. The spec uses the slightly stricter `2^(p-1) ≥ k + p + 1` form (one bit of margin against future flit-format growth that may push `k` to the boundary). Default config: `FLIT_DATA_WIDTH = 396, p = 10` → `2^9 = 512 ≥ 396 + 10 + 1 = 407` ✓. This formula is shared verbatim with `signal_interface.md` §Parameter constraints and `docs/design/02_flit.md` §3.6.
+- SECDED bound: `FLIT_ECC_WIDTH` (= `p`) must satisfy `2^(p-1) ≥ FLIT_DATA_WIDTH + p + 1`, where `FLIT_DATA_WIDTH = FLIT_WIDTH - FLIT_ECC_WIDTH` is the protected-bits count. Derivation: a SEC (single-error-correcting) code over `k` data bits requires `r` check bits with `2^r ≥ k + r + 1`. SECDED adds one overall-parity bit, so total `p = r + 1`. The canonical bound is therefore `2^(p-1) ≥ k + p`. The spec uses the slightly stricter `2^(p-1) ≥ k + p + 1` form (one bit of margin against future flit-format growth that may push `k` to the boundary). The bound is matrix-variant-agnostic — Hsiao SECDED (used here) and classical Hamming SECDED both satisfy it. Default config: `FLIT_DATA_WIDTH = 396, p = 10` → `2^9 = 512 ≥ 396 + 10 + 1 = 407` ✓. This formula is shared verbatim with `signal_interface.md` §Parameter constraints and `docs/design/02_flit.md` §3.6.
 - Generated at NMU/NSU injection (whole flit). Checked **only at the destination NI sink** — NOT at intermediate routers. Routers neither check nor regenerate `flit_ecc`; they trust it end-to-end.
 - Purpose: catch single-bit (correct) and double-bit (detect) errors anywhere in the flit (header or payload) over the entire NoC traversal.
 
@@ -490,7 +500,7 @@ Sub-modules:
 - **VC Mapping / Demux**: per-NMU/NSU VC mapping block. NMU assigns `vc_id` to each outbound flit per Hybrid R/W × QoS policy (fixed at design time per `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS`). Cycle-level VC arbitration is a NPS (switch) function, not NI, per AMD pg313 §Virtual Channel Arbitration.
 - **Async FIFOs**: gray-counter pointer + 2FF synchronizer; depth synthesis-time parameter.
 - **InjectionBuffer (NMU)**: small per-VC FIFO (`NMU_BUFFER_DEPTH` from `NocConfig`, default 2 in BFM). RTL uses the same default (2 entries) per BFM-RTL behavioral equivalence; **Designer-confirmed (A5 wave 2026-05-08): RTL default 2 entries (BFM-RTL behavioral equivalence).**
-- **FlitECC Gen / Check**: whole-flit SECDED Hamming over flit (header + payload) plus 1-bit `route_par` parity over `{dst_id, last}` (per AMD pg313 §Parity). Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits). See §ECC.
+- **FlitECC Gen / Check**: whole-flit SECDED Hsiao over flit (header + payload) plus 1-bit `route_par` parity over `{dst_id, last}` (per AMD pg313 §Parity). Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits). See §ECC.
 
 ### RTL pipeline / timing
 
@@ -524,7 +534,7 @@ Cross-domain partial reset → CDC FIFO is in inconsistent state; integrator mus
 | `apply_axi_*` / `expect_axi_*` / `expect_noc_*` | **Test-only.** RTL is the DUT (in some scenarios) or the AXI responder (in others); it has no method API. |
 | `get_observed_*` lists | **Test-only.** RTL has no observation buffers; observation happens via the BFM (in passive mode) or external scoreboards. |
 | CSR-mapped QoS / Probe / Error registers | **Identical between BFM and RTL.** Software accesses the same CSR memory map (per `registers.md`). The BFM models the same CSR file; RTL implements it as actual flop-based registers. |
-| ECC generation / validation | **Identical at the wire level.** Same two-layer scheme: whole-flit SECDED Hamming on `flit_ecc` field (parameterised `FLIT_ECC_WIDTH`, default 10 bits) checked end-to-end at the destination NI; 1-bit `route_par` even-parity over `{dst_id, last}` checked per-hop at every router (per AMD pg313 §Parity). |
+| ECC generation / validation | **Identical at the wire level.** Same two-layer scheme: whole-flit SECDED Hsiao on `flit_ecc` field (parameterised `FLIT_ECC_WIDTH`, default 10 bits) checked end-to-end at the destination NI. 1-bit `route_par` even-parity over `{dst_id, last}` checked per-hop at every router (per AMD pg313 §Parity). |
 | RoB ordering | **Identical at the wire level.** Same per-AXI-ID order release; same back-pressure on `awready` / `arready` when full. |
 
 ### RTL implementation notes

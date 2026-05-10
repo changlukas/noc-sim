@@ -419,7 +419,8 @@ Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the w
 After the first cycle, several wires transition over time as the BFM enables stimulus:
 
 - `axi_awready_o`, `axi_wready_o`, `axi_arready_o`: 0 → 1 once NMU tracker reset is complete (1 cycle latency in active mode).
-- `axi_bready_o`, `axi_rready_o`: held at 1 (always-ready to drain).
+- `axi_bready_o`: held at 1 (always-ready to drain — B is metadata-only, no NSU back-pressure path).
+- `axi_rready_o`: 1 by default; drops to 0 when NSU R-buffer is full (per `theory_of_operation.md` §NSU Read response buffer). NSU back-pressures the local AXI slave on this signal.
 - BFM-driven `*valid_o` outputs (manager-port responses `axi_bvalid_o`, `axi_rvalid_o`; subordinate-port requests `axi_awvalid_o`, `axi_wvalid_o`, `axi_arvalid_o`; NoC `noc_req_valid_o`, `noc_rsp_valid_o`; CSR `csr_bvalid_o`, `csr_rvalid_o`): 0 → asserted only when a transaction is ready to drive.
 - `noc_req_credit_init_ready_o`, `noc_rsp_credit_init_ready_o`: 0 → 1 once the NMU/NSU is ready to start credit exchange (per AMD pg313 §Credit-Based Flow Control bi-directional handshake).
 - `irq_o`: 0 → 1 on the `aclk_i` edge any unmasked `ERR_STATUS` bit asserts; deasserts on the cycle software RW1C clears all set+enabled bits.

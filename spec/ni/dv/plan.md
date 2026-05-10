@@ -120,7 +120,7 @@ D3 coverage closure goal: 100% bin hits on every covergroup.
 
 **FPV** — formal verification scope:
 - RoB allocator state machine (FREE → ALLOCATED → RESPONSE_RECEIVED → READY_TO_RELEASE → FREE) — verify no deadlock, no entry stuck, per-id ordering.
-- flit_ecc SECDED Hamming gen + check round-trip — formally verify single-bit correction for all single-bit error patterns. Verify double-bit detection for representative patterns (full enumeration is infeasible at 406-bit flit, sampled). Verify the (B)-philosophy invariant: when SECDED reports double-bit, the flit is forwarded **without** modification of the AXI rresp/bresp value.
+- flit_ecc SECDED Hsiao gen + check round-trip — formally verify single-bit correction for all single-bit error patterns. Verify double-bit detection for representative patterns (full enumeration is infeasible at 406-bit flit, sampled). Verify the (B)-philosophy invariant: when SECDED reports double-bit, the flit is forwarded **without** modification of the AXI rresp/bresp value.
 - route_par parity — formally verify XOR-reduction over `{dst_id, last}` (per AMD pg313 §Parity NPP packet DST ID + LAST coverage) and the drop-on-mismatch behaviour.
 - IRQ assertion function — formally verify `irq_o = OR_i(ERR_STATUS[i] & IRQ_ENABLE[i])` is purely combinational (no glitches under simultaneous bit transitions, no deadlock between RW1C clear and re-assert).
 - CDC async FIFO — verify no data loss / corruption / pointer divergence across all clock-ratio extremes.
