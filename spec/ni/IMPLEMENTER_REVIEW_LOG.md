@@ -335,3 +335,132 @@ implying VCs are partitioned across `noc_req` and `noc_rsp` from a single shared
 **Spec edit applied**:
 
 - `theory_of_operation.md` §RoB allocator §`prev_dest` adaptive bypass: appended new "`prev_dest` arming and disarming" sub-section detailing the unconditional update, race-free read-before-write semantics, and no-explicit-clear behavior. FlooNoC reference cited.
+
+### 2026-05-10 — Bucket 3 #3 vc_id mapping default function (closed)
+
+**Designer ruling**: default mapping is **magnitude-tier division**. Split the 16-value `qos[3:0]` space into `NUM_VC` equal-sized tiers by magnitude; tier number = `vc_id`. High-qos flits land on high-numbered VCs (monotonic, priority-preserving). Compact form: `vc_id = qos >> (4 - log2(NUM_VC))`.
+
+**Rationale**:
+
+- Magnitude-tier preserves priority isolation: high-qos flits share a VC, low-qos flits share a separate VC, no cross-contention for credits within a tier.
+- Monotonic mapping is intuitive: integrator can read "qos increases → vc_id increases" without consulting the bit-extract spec.
+- Mathematically equivalent to high-bit extract for power-of-2 NUM_VC (qos[3] for NUM_VC=2, qos[3:2] for NUM_VC=4, qos[3:1] for NUM_VC=8) but the magnitude framing is more intuitive in spec prose.
+
+**Anti-patterns explicitly rejected in spec**:
+
+- `vc_id = qos % NUM_VC` (modulo): scatters same-priority flits across VCs, defeats isolation. e.g., qos=8 and qos=12 are both high-priority but land on different VCs.
+- Low-bit extract `qos[log2(NUM_VC)-1:0]`: same scattering problem.
+
+**FlooNoC borrow**: zero. FlooNoC's `floo_axi_chimney.sv` (current) has no VC concept; `floo_nw_vc_chimney.sv` (deprecated) used direction-based VC selection (`OutputDir`-driven) rather than qos-based. Our qos-tier mapping is our own design choice. The user (designer) pushed back on "high-bit extract" framing — observed that it's mathematically equivalent to "compare overall magnitude" and the magnitude framing is more intuitive. Spec text reframed accordingly.
+
+**Spec edit applied**:
+
+- `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS` rule body: replaced "exact qos bit-extract function (e.g., qos[3] for NUM_VC=2 ...) is integrator-configurable; the default mapping is the BFM-modeled function" with a concrete magnitude-tier specification + anti-patterns list. The BFM-modeled default is now spec-pinned (not just example).
+- `theory_of_operation.md` §VC Mapping: updated cross-reference to use the magnitude-tier phrasing instead of bit-extract framing.
+
+### 2026-05-10 — Bucket 3 #4 credit-init epoch precise cycle (closed)
+
+**Designer ruling**: 3-cycle sequence pinned. T = first cycle both `*_credit_init_ready_o` and `*_credit_init_ready_i` sampled HIGH. T+1 = credit counter seed updates. T+2 = earliest `noc_*_valid_o = 1`.
+
+**Rationale**: follows from the fully-registered output discipline (per ToO §Driver). Every output is a flop. Each condition observed on cycle X becomes a driven signal on cycle X+1. The 3-step pipeline (handshake-observed → credit-seeded → valid-driven) is a direct consequence, not a separate design choice.
+
+**FlooNoC borrow**: zero. FlooNoC's chimney does not implement the bi-directional `credit_init_ready` handshake from AMD pg313 — they simplified credit-init away. Our spec inherited it verbatim from pg313 §Credit-Based Flow Control. The precise cycle pinning is our designer ruling, not a FlooNoC pattern.
+
+**Spec edit applied**:
+
+- `signal_interface.md` §NoC credit signals §Behaviour summary: added a new bullet "Credit-init handshake precise cycle timing" walking through cycle T / T+1 / T+2 explicitly, with rationale referencing the fully-registered output discipline.
+
+### 2026-05-10 — Bucket 3 #7 CDC flush_on_full_reset algorithm (closed by spec retraction)
+
+**Designer ruling**: retract the `flush_on_full_reset` chimney-level mechanism. No automatic partial-reset recovery is implemented. Cross-domain partial-reset recovery is integrator responsibility.
+
+**FlooNoC alignment**: `floo_cdc.sv` is a 62-line thin wrapper around PULP common_cells `cdc_fifo_gray`. There is no flush logic at the chimney level. FlooNoC implicitly relies on integrator coordination (the same path our spec already documents in §Reset entry sequencing item 4).
+
+**Why the original spec text was wrong**: claimed `flush_on_full_reset` mechanism without specifying the algorithm (trigger condition, post-flush state, "align" definition). C-bfm Round 2 reviewer flagged this — the claim was an unverifiable promise.
+
+**Spec edit applied**:
+
+- `pin_level_reset.md` §CDC FIFO reset: full rewrite. New text aligns with FlooNoC pattern (cdc_fifo_gray wrapping, no chimney-level flush). Cross-domain partial-reset is explicitly stated as not-automatically-recoverable. Integrator responsibility is stated with two acceptable coordination patterns (simultaneous reset hold, or system-level coordination signal). The earlier `flush_on_full_reset` wording is explicitly retracted with rationale.
+
+### 2026-05-10 — Bucket 3 #1 Flit bit-layout (closed by vendoring 02_flit.md into spec/ni/doc/)
+
+**Designer ruling**: vendor `02_flit.md` from `noc-sim/docs/design/02_flit.md` into `spec/ni/doc/02_flit.md`. The flit-format authoritative reference now lives inside the spec tree.
+
+**Rationale**: both Round 1 implementer-review agents flagged this as the #1 highest-priority ambiguity. The flit bit-layout is the contract every implementation must agree on bit-for-bit, but it lived in a separate file outside `spec/ni/`. Either implementer reading just `spec/ni/` would lack the authoritative bit layout. Two options were considered:
+
+- (a) Publish a `flit_layout.h` header file (SV pkg + C struct) checked into `spec/ni/`.
+- (b) Vendor the existing `02_flit.md` from `docs/design/` into `spec/ni/doc/`.
+
+Option (b) chosen because:
+- `02_flit.md` (614 lines, 37 KB) already contains the authoritative bit-layout from the v0.4.0 flit format restructure. Re-publishing as a header would duplicate the source of truth.
+- Per `memory/project_noc_sim_design_doc_priority.md`, only `02_flit.md` is the authoritative design doc going forward. Bringing it into the spec tree aligns with that priority decision.
+- Cross-references from `theory_of_operation.md`, `signal_interface.md`, `pin_level_reset.md`, `channel_handshake.md`, `protocol_rules.md` now resolve to a local file inside `spec/ni/doc/`, removing the cross-repo dependency.
+
+**Spec edits applied**:
+
+- Copied `noc-sim/docs/design/02_flit.md` → `noc-sim/spec/ni/doc/02_flit.md` (614 lines, identical content).
+- Mirror updated: `hw-spec-author-plugin/dogfood/noc-sim-ni-bfm/doc/02_flit.md` synced.
+- `theory_of_operation.md`: updated 2 explicit cross-repo paths (`docs/design/02_flit.md §ECC` and `docs/design/02_flit.md §3.6`) → `02_flit.md §ECC` / `02_flit.md §3.6` (local).
+- `signal_interface.md` line 5: updated "See `02_flit.md` in noc-sim source repo for flit format details" → "See `./02_flit.md` for flit format details (vendored from `noc-sim/docs/design/02_flit.md` per `IMPLEMENTER_REVIEW_LOG.md` #1 resolution)".
+
+Other cross-refs in the spec that say just `02_flit.md §1.2` (no path) now resolve locally without text changes.
+
+**Maintenance contract**: when `02_flit.md` updates upstream in `docs/design/`, the spec/ni/doc/ copy MUST be re-vendored. Tracked via simple `diff` of the two paths during D1+ gate reviews. Alternative for future: convert to a symlink (Windows-incompatible) or a build-time copy step in spec verification workflow.
+
+**Bucket 3 status post-#1**: 8/8 ambiguities closed. D1→D2 ambiguity triage complete for the implementer-review surfaced items. Bucket 4 (architecture: BFM language, NMU/NSU shell evolution, DV scaffolding, coverage plan) remains, deferred to dedicated session.
+
+### 2026-05-10 — Round 2 cross-paradigm peer review (post-Bucket-3 spec re-read)
+
+After all Bucket 1/2/3 + partition-table + 02_flit.md vendoring resolutions landed, a fresh Round 2 was run: each implementer agent (c-bfm, rtl) read the OTHER's Round 1 (the post-triage independent re-read) and produced a peer review. Plus `/spec-lint` was run for mechanical consistency cross-check.
+
+**Lint result**: 0 blocking, 4 LINT-002 hygiene (TBD wording in vendored 02_flit.md — fixed in-session).
+
+**Round 2 cross-review NEW DISCOVERIES** (not in Round 1):
+
+- **A. `02_flit.md` has 5 stale v0.3.0 SLVERR mentions** that contradict the (B)-philosophy expressed in ToO + protocol_rules + signal_interface. c-bfm Round 1 found 4; RTL Round 2 spot-check found a 5th (the R-flit specific paragraph at line 367). The vendoring did not scrub upstream's pre-v0.4.0 wording.
+- **B. `INPUT_BUFFER_DEPTH` / `CREDIT_DELAY` undeclared**. After user clarification, these are router-side parameters; their absence from NI spec is correct. Router spec is not yet written. **Dropped from action list** as not-a-NI-spec-bug.
+- **C. ATOP termination point ambiguous**. NMU local SLVERR synthesis vs NoC traversal then NSU termination. Wire-visible difference (`noc_req_o` carries ATOP flit or not).
+- **D. `prev_dest_q` reset value undefined**. Reset to 0 collides with legitimate dst `(0,0)`. Mitigated by empty-queue first-push guard.
+- **E. Hsiao H-matrix not pinned**. "Hsiao SECDED" is a family; specific matrix determines syndrome bits. BFM/RTL must consume identical matrix.
+
+**Round 2 DISAGREEMENTS**:
+
+- **F. NSU R buffer clock domain**. c-bfm Round 1 wrote "straddles aclk/noc_clk"; RTL Round 2 spot-checked ToO §96-108 and argued "purely aclk-domain". RTL's reading is supported by spec text (buffer "decouples local AXI slave's R-response timing from NoC injection back-pressure" — implies aclk-side accumulation before CDC). Designer ruling: aclk-only.
+- **G. PENDING decrement point**. RTL Round 2 worried it might be ambiguous. Spot-check of `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY` (line 297) shows the rule body already explicit: "decrements on B handshake completion at axi_*_i". Confirmed not actually ambiguous — RTL agent overlooked the rule body wording. No spec edit needed.
+
+**Round 2 cross-review RESOLVED** (Round 1 ambiguities dropped after spot-check):
+
+- RTL Round 1 #3 (B-payload over-pad): c-bfm Round 2 cited `02_flit.md:132/301` mandating zero-padding — resolved.
+- RTL Round 1 #6 (PENDING width contradiction): c-bfm Round 2 cited `registers.md:140` "always within 32-bit register" — resolved.
+- RTL Round 1 #4 (QOS_MODE reset disagreement): c-bfm spot-check found no actual disagreement — withdrawn.
+
+### 2026-05-10 — Round 2 resolutions applied
+
+**A. 02_flit.md SLVERR scrub** (4 edit sites; the 5th at line 367 covered by the §3.4 edit):
+
+- Line 88 (`ECC_FAIL_WIDTH` retired note): rewrote to state (B)-philosophy explicitly — uncorrectable ECC forwards flit as-is with `bresp=OKAY`, surfaces via CSR + IRQ.
+- Lines 348-353 (W ECC uncorrectable description): replaced "直接以 `bresp=SLVERR` in-band 回報" with (B)-philosophy text matching ToO §ECC.
+- Line 367 (R ECC uncorrectable description): same replacement for R-direction.
+- Line 420 (ECC failures bullet): "2-bit→`bresp/rresp = SLVERR`" replaced with "forward as-is with `bresp/rresp = OKAY` ((B)-philosophy, no SLVERR synthesis)".
+
+Upstream `noc-sim/docs/design/02_flit.md` synced to match.
+
+**E. Hsiao H-matrix source-of-truth mandate**:
+
+- `protocol_rules.md` `NOC_FLIT_HDR_FLIT_ECC_GEN` rule body extended: parity-check matrix MUST be a shared artifact between BFM and RTL. Recommended source: OpenTitan `util/design/secded_gen.py` Hsiao generator for the `(FLIT_DATA_WIDTH, FLIT_ECC_WIDTH)` tuple, with generated SV header checked into the project as single source of truth. Alternative: FlooNoC `floo_secded_*.sv` family.
+
+**C. ATOP termination point**:
+
+- `theory_of_operation.md` §ATOPs scope: added explicit paragraph stating NMU locally synthesises B response with `bresp=SLVERR` when `axi_awatop_i != 0`; no AW or W flit injected on `noc_req_o`; downstream NSU never observes ATOP traffic.
+
+**F. NSU R buffer clock domain**:
+
+- `theory_of_operation.md` §NSU Read response buffer: added "Clock domain" paragraph explicitly stating the buffer is single-clock-domain (`aclk_i` only); R beats accumulate on AXI side, then pack into wide R flits in the same domain, then traverse the standard `aclk_i → noc_clk_i` CDC FIFO before injection.
+
+**D. `prev_dest_q` reset value**:
+
+- `theory_of_operation.md` §RoB allocator §`prev_dest` arming and disarming: added "Reset value" bullet stating `prev_dest_q[i] = 0` on `arst_ni`. Reset collision with legitimate dst `(0,0)` is harmless because the empty-queue first-push guard ignores `prev_dest_q` on the first push per axi_id.
+
+**G. PENDING decrement point**: no edit needed. `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY` (line 297) already explicitly states decrement happens at master B/R handshake at `axi_*_i`. Confirmed not actually ambiguous.
+
+**Status after Round 2**: 14 original implementer-review ambiguities + 1 architectural partition issue + 6 Round 2 cross-review NEW DISCOVERIES = 21 items total triaged. Spec is internally consistent. Round 2 verifies that the Round 1 + triage pass produced a spec where two paradigm-paired implementers can produce wire-equivalent implementations on the load-bearing decisions (with the H-matrix source-of-truth artifact as the next concrete deliverable).

@@ -2,7 +2,7 @@
 
 **Protocols:**
 - AXI side: AXI4 (ARM IHI 0022)
-- NoC side: custom flit-based packet protocol. Flit width `FLIT_WIDTH` bits (default 406 in v0.4.0). Header `HEADER_WIDTH` bits (default 54 in v0.4.0). See `02_flit.md` in noc-sim source repo for flit format details.
+- NoC side: custom flit-based packet protocol. Flit width `FLIT_WIDTH` bits (default 406 in v0.4.0). Header `HEADER_WIDTH` bits (default 54 in v0.4.0). See `./02_flit.md` for flit format details (vendored from `noc-sim/docs/design/02_flit.md` per `IMPLEMENTER_REVIEW_LOG.md` #1 resolution).
 - CSR side: AXI4-Lite (subset of AXI4) for software-visible configuration and monitoring registers.
 
 **Role:** Both manager and subordinate. NMU (Network Manager Unit) acts as AXI subordinate on the host side (receives AXI requests from local master) and initiates flits on the NoC. NSU (Network Subordinate Unit) receives flits from the NoC and acts as AXI manager on the host side (drives AXI requests to local slave).
@@ -172,6 +172,7 @@ After reset, source-credit counters initialise to 0 per VC. Both ends must compl
 - Source-credit counters initialise to 0 per VC at reset deassertion.
 - Credit exchange begins only after both ends raise their respective `*_credit_init_ready_*` signals (bi-directional handshake).
 - Once exchange begins, credit counters are seeded with `INPUT_BUFFER_DEPTH / NUM_VC` per VC (where `INPUT_BUFFER_DEPTH` is the receiver's per-link buffer depth, a router-side parameter the integrator must communicate).
+- **Credit-init handshake precise cycle timing**: let cycle T be the first `noc_clk_i` edge where both `noc_*_credit_init_ready_o` and `noc_*_credit_init_ready_i` are sampled HIGH simultaneously. (a) Cycle T — both ready signals first observed HIGH together. (b) Cycle T+1 — credit counter seed updates to `INPUT_BUFFER_DEPTH / NUM_VC` per VC (flop next-edge update). (c) Cycle T+2 — earliest cycle on which `noc_*_valid_o = 1` can appear (registered valid output, requires credit > 0 condition sampled on cycle T+1). The 1-cycle latency at each step follows directly from the fully-registered output discipline (per `theory_of_operation.md` §Driver) — every output is a flop, so each condition observed on cycle X becomes a driven signal on cycle X+1. **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): T / T+1 / T+2 sequence.**
 - Credit return latency is `CREDIT_DELAY` cycles (router-side parameter, default 1).
 - Credit starvation: if the receiver returns no credits, the source is permanently stalled on that VC until credits resume. There is no automatic timeout / SLVERR escalation in v0.4.0 — software detects via PENDING counters / IRQ and handles recovery externally.
 

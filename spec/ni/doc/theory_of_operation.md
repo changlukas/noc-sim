@@ -105,6 +105,8 @@ Capacity: `NSU_R_BUFFER_DEPTH` parameter (default 16 entries; each entry is one 
 
 When full, NSU back-pressures the local AXI slave's R channel by holding `axi_rready_o = 0`, propagating back-pressure naturally to the slave.
 
+**Clock domain**: this buffer is **single-clock-domain** (entirely `aclk_i`). NSU accumulates AXI R beats from the slave on the AXI side, packs them into wide NoC R flits in the same domain, then traverses the standard `aclk_i → noc_clk_i` CDC FIFO before injection on `noc_rsp_o`. The buffer is not domain-straddling; only `arst_ni` reset applies. **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): aclk-only buffer.**
+
 Reset behavior: cleared on `arst_ni` (AXI domain).
 
 ### NSU Exclusive Monitor (NSU sub-block)
@@ -241,7 +243,9 @@ Rationale for adaptive bypass: same-destination same-ID is the common case (CPU 
 
 - `prev_dest[axi_id]` is never explicitly cleared. When the per-axi-id RoB queue empties (last response pops), the "needs reordering" flag (`ax_rob_req_q`) clears, but `prev_dest_q` retains its last-stored `dst_id`. Stale `prev_dest` is harmless because the bypass logic uses queue occupancy as the primary guard — empty queue takes the first-push branch which ignores `prev_dest`.
 
-Aligned with FlooNoC `floo_rob.sv` `prev_dest_q` / `prev_dest_d` semantics (lines 395-468). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): unconditional write on push, race-free read-before-write, never explicitly cleared.**
+- **Reset value**: `prev_dest_q[i]` resets to 0 on `arst_ni` for all `i`. The reset value can coincide with a legitimate destination ID `(0, 0)`, but this is harmless because the empty-queue first-push guard above ignores `prev_dest_q` for the first push on each `axi_id`. No sentinel bit is required.
+
+Aligned with FlooNoC `floo_rob.sv` `prev_dest_q` / `prev_dest_d` semantics (lines 395-468). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): unconditional write on push, race-free read-before-write, never explicitly cleared, reset value 0.**
 
 #### RoB area-reduction techniques
 
@@ -328,7 +332,7 @@ NUM_VC ∈ {1, 2, 4, 8} are pre-validated. Recommended QoS-tier partition within
 | 4 | VC[0..3] (4 tiers) | Four-tier QoS isolation per physical channel |
 | 8 | VC[0..7] (8 tiers) | Eight-tier QoS isolation per physical channel |
 
-Each physical channel applies the same partition independently. The exact `qos → vc_id` bit-extract function (e.g., `qos[3]` for NUM_VC=2, `qos[3:2]` for NUM_VC=4, `qos[3:1]` for NUM_VC=8) is specified in `NOC_VC_MAPPING_HYBRID_RW_QOS`.
+Each physical channel applies the same partition independently. The `qos → vc_id` mapping function — magnitude-tier division splitting the 16-value `qos[3:0]` space into `NUM_VC` equal tiers, high-qos landing on high-VC — is specified by `NOC_VC_MAPPING_HYBRID_RW_QOS`.
 
 **Hard-lock rule**: once a VC's wormhole-arbiter wins for a packet, the full packet's flits must be served from that same VC at every NMU/router/NSU. No mid-packet VC switching (per `NOC_FLIT_VC_HARDLOCK` rule).
 
@@ -365,7 +369,7 @@ Formalised in `protocol_rules.md` `NI_CFG_QUIESCE_FLOW` (steady-state contract).
 
 #### ECC
 
-Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see `docs/design/02_flit.md` §ECC). Replaces the v0.3.0 per-granule scheme.
+Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see `02_flit.md` §ECC). Replaces the v0.3.0 per-granule scheme.
 
 **Layer 1 — `route_par` (per-hop routing parity)**:
 
@@ -380,7 +384,7 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 
 - SECDED Hsiao code computed over the entire flit (header + payload, *excluding* the `flit_ecc` field itself).
 - Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits for the 396-bit protected payload at default parameters).
-- SECDED bound: `FLIT_ECC_WIDTH` (= `p`) must satisfy `2^(p-1) ≥ FLIT_DATA_WIDTH + p + 1`, where `FLIT_DATA_WIDTH = FLIT_WIDTH - FLIT_ECC_WIDTH` is the protected-bits count. Derivation: a SEC (single-error-correcting) code over `k` data bits requires `r` check bits with `2^r ≥ k + r + 1`. SECDED adds one overall-parity bit, so total `p = r + 1`. The canonical bound is therefore `2^(p-1) ≥ k + p`. The spec uses the slightly stricter `2^(p-1) ≥ k + p + 1` form (one bit of margin against future flit-format growth that may push `k` to the boundary). The bound is matrix-variant-agnostic — Hsiao SECDED (used here) and classical Hamming SECDED both satisfy it. Default config: `FLIT_DATA_WIDTH = 396, p = 10` → `2^9 = 512 ≥ 396 + 10 + 1 = 407` ✓. This formula is shared verbatim with `signal_interface.md` §Parameter constraints and `docs/design/02_flit.md` §3.6.
+- SECDED bound: `FLIT_ECC_WIDTH` (= `p`) must satisfy `2^(p-1) ≥ FLIT_DATA_WIDTH + p + 1`, where `FLIT_DATA_WIDTH = FLIT_WIDTH - FLIT_ECC_WIDTH` is the protected-bits count. Derivation: a SEC (single-error-correcting) code over `k` data bits requires `r` check bits with `2^r ≥ k + r + 1`. SECDED adds one overall-parity bit, so total `p = r + 1`. The canonical bound is therefore `2^(p-1) ≥ k + p`. The spec uses the slightly stricter `2^(p-1) ≥ k + p + 1` form (one bit of margin against future flit-format growth that may push `k` to the boundary). The bound is matrix-variant-agnostic — Hsiao SECDED (used here) and classical Hamming SECDED both satisfy it. Default config: `FLIT_DATA_WIDTH = 396, p = 10` → `2^9 = 512 ≥ 396 + 10 + 1 = 407` ✓. This formula is shared verbatim with `signal_interface.md` §Parameter constraints and `02_flit.md` §3.6.
 - Generated at NMU/NSU injection (whole flit). Checked **only at the destination NI sink** — NOT at intermediate routers. Routers neither check nor regenerate `flit_ecc`; they trust it end-to-end.
 - Purpose: catch single-bit (correct) and double-bit (detect) errors anywhere in the flit (header or payload) over the entire NoC traversal.
 
@@ -582,5 +586,7 @@ When NMU has a W burst in flight on `noc_req_o`, may it inject an AR flit betwee
 ## ATOPs scope
 
 AXI4 atomic operations (ATOPs) — single-token CAS / SWAP / LOAD-STORE — are **out of scope** for this NI revision. The `awatop` field is sampled and recorded for monitor mode but the BFM and RTL both terminate ATOPs with `bresp=SLVERR` and a single B response (no ATOP read-response generation).
+
+**ATOP termination point**: when `axi_awatop_i != 0` (ATOP transaction detected at NMU AXI ingress), the **NMU MUST locally synthesise the B response with `bresp=SLVERR`** without injecting any AW or W flit on `noc_req_o`. The local AXI slave at the destination NSU never observes ATOP traffic. Wire-level consequence: `noc_req_o` never carries `awatop != 0` payload; downstream NSU never sees ATOP-flagged AW; BFM `noc_req_o` monitor expectations align (no ATOP flit ever observed). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): NMU local SLVERR synthesis; ATOPs never enter NoC.**
 
 **Designer-confirmed (A5 wave 2026-05-08): ATOP_SUPPORT=0. ATOP_SUPPORT=1 path deferred to a future revision (~3 weeks of design + DV).**

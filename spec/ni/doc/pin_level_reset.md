@@ -446,9 +446,16 @@ For wires driven by external DUTs (rows showing `as driven by DUT`, `as driven b
 
 ## CDC FIFO reset
 
-Internal async FIFOs at the AXI ↔ NoC boundary use the following reset semantics (not externally visible but documented for RTL reference):
+Internal async FIFOs at the AXI ↔ NoC boundary use the following reset semantics (FlooNoC `floo_cdc.sv` aligned — wraps PULP common_cells `cdc_fifo_gray`):
 
-- Write-side pointer resets on the writer's domain reset.
-- Read-side pointer resets on the reader's domain reset.
-- Empty signal asserts on read side when both pointers are at 0 (post-reset baseline).
-- Cross-domain partial reset can leave the FIFO in an inconsistent state where one pointer is 0 and the other is not. The FIFO must self-recover when both resets eventually align — `flush_on_full_reset` mechanism. RTL implementation MUST be behaviourally equivalent to the BFM here (same flush trigger, same post-flush pointer state); equivalence is enforced at D2 cross-check per `stage_gates.md` `D2.bfm.self_check`.
+- Write-side pointer resets on writer's domain reset (gray-counter cleared to 0).
+- Read-side pointer resets on reader's domain reset (gray-counter cleared to 0).
+- Empty signal asserts on read side when both synced gray pointers compare equal (post-reset baseline = both 0).
+
+**Cross-domain partial reset**: when one side's reset asserts while the other side's clock is running, the side that resets clears its pointer. The other side may see a stale / non-empty status that does not match the data state. This condition is not automatically recoverable at the chimney level.
+
+**Integrator responsibility**: cross-domain partial reset MUST be avoided by system-level reset coordination. Either (a) assert both resets simultaneously and hold for at least `max(16 aclk_i cycles, 16 noc_clk_i cycles)` per §Reset entry sequencing item 4, OR (b) provide a system-level coordination signal that prevents one side from resuming traffic while the other is mid-reset.
+
+Earlier revisions promised an automatic `flush_on_full_reset` mechanism in the chimney. That claim is retracted — no automatic chimney-level recovery is implemented. FlooNoC's CDC (`floo_cdc.sv`) also relies on integrator coordination, not chimney-level flush logic.
+
+**Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): no automatic flush; partial-reset recovery is integrator responsibility.**
