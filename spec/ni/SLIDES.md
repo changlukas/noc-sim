@@ -18,7 +18,7 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
   - Section order follows AMD pg313 NoC Architecture.
   - Reviewers familiar with Versal NoC can cross-reference section by section.
 - **Design inspiration**
-  - **AMD pg313 (Versal NoC):** two-layer ECC, Data Integrity policy, (B)-philosophy error reporting.
+  - **AMD pg313 (Versal NoC):** two-layer ECC, Data Integrity policy, log-and-forward fabric error reporting.
   - **Arteris FlexNoC:** 4-mode QoS Generator and the heterogeneous traffic class taxonomy.
   - **FlooNoC (PULP / ETH):** single-chimney structure, wormhole arbiter, RoB and MetaBuffer pattern.
 
