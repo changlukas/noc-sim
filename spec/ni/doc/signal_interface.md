@@ -44,8 +44,8 @@ The Wire table excludes the protocol clocks and resets (listed in §Protocol clo
 |--------|-----------|-------|--------|-------------|-------------|----------|--------------|-------|
 | `axi_wvalid_i` | input | 1 | H | pos aclk | §AXI in W row 1 | no | yes |  |
 | `axi_wready_o` | output | 1 | H | pos aclk | §AXI in W row 2 | no | yes |  |
-| `axi_wdata_i` | input | DATA_WIDTH | — | pos aclk | §AXI in W row 3 | no | yes |  |
-| `axi_wstrb_i` | input | DATA_WIDTH/8 | — | pos aclk | §AXI in W row 4 | no | yes | Byte strobes |
+| `axi_wdata_i` | input | NOC_DATA_WIDTH | — | pos aclk | §AXI in W row 3 | no | yes |  |
+| `axi_wstrb_i` | input | NOC_DATA_WIDTH/8 | — | pos aclk | §AXI in W row 4 | no | yes | Byte strobes |
 | `axi_wlast_i` | input | 1 | H | pos aclk | §AXI in W row 5 | no | yes | Asserted on the last beat of the burst |
 | `axi_wuser_i` | input | USER_WIDTH | — | pos aclk | §AXI in W row 6 | yes | yes |  |
 
@@ -84,7 +84,7 @@ The Wire table excludes the protocol clocks and resets (listed in §Protocol clo
 | `axi_rvalid_o` | output | 1 | H | pos aclk | §AXI in R row 1 | no | yes |  |
 | `axi_rready_i` | input | 1 | H | pos aclk | §AXI in R row 2 | no | yes |  |
 | `axi_rid_o` | output | IN_ID_WIDTH | — | pos aclk | §AXI in R row 3 | no | yes |  |
-| `axi_rdata_o` | output | DATA_WIDTH | — | pos aclk | §AXI in R row 4 | no | yes |  |
+| `axi_rdata_o` | output | NOC_DATA_WIDTH | — | pos aclk | §AXI in R row 4 | no | yes |  |
 | `axi_rresp_o` | output | 2 | — | pos aclk | §AXI in R row 5 | no | yes |  |
 | `axi_rlast_o` | output | 1 | H | pos aclk | §AXI in R row 6 | no | yes |  |
 | `axi_ruser_o` | output | USER_WIDTH | — | pos aclk | §AXI in R row 7 | yes | yes |  |
@@ -236,13 +236,13 @@ Coverage:
 |--------|-----------|-------|--------|-------------|-------------|-------|
 | `axi_awaddr_par_i[ADDR_WIDTH/8-1:0]` | input | ADDR_WIDTH/8 | H | pos aclk | §AXI parity row 1 | Per-byte even parity over `axi_awaddr_i`. Sampled when `axi_awvalid_i=1`. |
 | `axi_araddr_par_i[ADDR_WIDTH/8-1:0]` | input | ADDR_WIDTH/8 | H | pos aclk | §AXI parity row 2 | Per-byte even parity over `axi_araddr_i`. Sampled when `axi_arvalid_i=1`. |
-| `axi_wdata_par_i[DATA_WIDTH/8-1:0]` | input | DATA_WIDTH/8 | H | pos aclk | §AXI parity row 3 | Per-byte even parity over `axi_wdata_i`. Sampled when `axi_wvalid_i=1`. |
+| `axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0]` | input | NOC_DATA_WIDTH/8 | H | pos aclk | §AXI parity row 3 | Per-byte even parity over `axi_wdata_i`. Sampled when `axi_wvalid_i=1`. |
 
 **AXI Manager port (axi_*_o) parity outputs (when `EN_MGR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------------|-------|
-| `axi_rdata_par_o[DATA_WIDTH/8-1:0]` | output | DATA_WIDTH/8 | H | pos aclk | §AXI parity row 8 | Per-byte even parity over `axi_rdata_o` (NMU-generated). NMU regenerates this **after** the `flit_ecc` check stage when converting the NoC packet back to AXI protocol — aligned with AMD pg313 §Parity: "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." |
+| `axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0]` | output | NOC_DATA_WIDTH/8 | H | pos aclk | §AXI parity row 8 | Per-byte even parity over `axi_rdata_o` (NMU-generated). NMU regenerates this **after** the `flit_ecc` check stage when converting the NoC packet back to AXI protocol — aligned with AMD pg313 §Parity: "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." |
 
 **AXI Subordinate port (axi_*_o) parity outputs (when `EN_SBR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
@@ -250,8 +250,8 @@ Coverage:
 |--------|-----------|-------|--------|-------------|-------------|-------|
 | `axi_awaddr_par_o[ADDR_WIDTH/8-1:0]` | output | ADDR_WIDTH/8 | H | pos aclk | §AXI parity row 4 | Per-byte even parity over `axi_awaddr_o` (NSU-generated). |
 | `axi_araddr_par_o[ADDR_WIDTH/8-1:0]` | output | ADDR_WIDTH/8 | H | pos aclk | §AXI parity row 5 | Per-byte even parity over `axi_araddr_o` (NSU-generated). |
-| `axi_wdata_par_o[DATA_WIDTH/8-1:0]` | output | DATA_WIDTH/8 | H | pos aclk | §AXI parity row 6 | Per-byte even parity over `axi_wdata_o` (NSU-generated). |
-| `axi_rdata_par_i[DATA_WIDTH/8-1:0]` | input | DATA_WIDTH/8 | H | pos aclk | §AXI parity row 7 | Per-byte even parity over `axi_rdata_i` (from local slave). NSU verifies on R reception. |
+| `axi_wdata_par_o[NOC_DATA_WIDTH/8-1:0]` | output | NOC_DATA_WIDTH/8 | H | pos aclk | §AXI parity row 6 | Per-byte even parity over `axi_wdata_o` (NSU-generated). |
+| `axi_rdata_par_i[NOC_DATA_WIDTH/8-1:0]` | input | NOC_DATA_WIDTH/8 | H | pos aclk | §AXI parity row 7 | Per-byte even parity over `axi_rdata_i` (from local slave). NSU verifies on R reception. |
 
 **Behaviour:**
 
@@ -278,7 +278,8 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | Name | Type | Default | Constraint | Description |
 |------|------|---------|------------|-------------|
 | `ADDR_WIDTH` | int | 64 | 32 ≤ x ≤ 64 | AXI address width on host side |
-| `DATA_WIDTH` | int | 256 | 64 / 128 / 256 / 512 | AXI data width. **32-bit not supported** at NMU/NSU per AMD pg313 §AXI Support and Restrictions. master width < NoC width → narrow transfer (per AxCache[1]). master width > NoC width → downsize at NMU. |
+| `AXI_DATA_WIDTH` | int | 256 | 32 / 64 / 128 / 256 / 512 | **External Width Bridge parameter — not used by the NI core.** The local AXI master/slave-side data width handled by the bolt-on Width Bridge (see ToO §Data Width Conversion). The NI core's own AXI port operates at `NOC_DATA_WIDTH`. Interface width 32 to 512 per AMD pg313 §AXI Support and Restrictions Table 1; 1024 not supported. |
+| `NOC_DATA_WIDTH` | int | 256 | 64 / 128 / 256 / 512 | NoC flit data-lane width (the `wdata` / `rdata` field inside a flit, see `02_flit.md` §3.2, §3.4) **and the NI core's AXI port width** — the NI port is fixed at this width. The external Width Bridge adapts the local master/slave `AXI_DATA_WIDTH` to it. |
 | `USER_WIDTH` | int | 8 | 1 ≤ x ≤ 32 | AXI user signal width |
 | `IN_ID_WIDTH` | int | 8 | 1 ≤ x ≤ 16 | AXI manager (incoming) txnID width |
 | `OUT_ID_WIDTH` | int | 8 | 1 ≤ x ≤ 16 | AXI subordinate (outgoing) txnID width |
@@ -314,7 +315,7 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `NUM_VC` | int | 1 | 1 ≤ x ≤ 8; when x > 1, both `R_ROB_TYPE` and `B_ROB_TYPE` MUST be != `NoRoB` (see `theory_of_operation.md` §RoB allocator §"NoRoB single-VC restriction") | Number of virtual channels per NoC link. Upper bound 8 matches `VC_ID_WIDTH = 3` in flit header (see `02_flit.md` §1.2 Group 2). Forward data link is shared (single 1-bit `valid` + 1× FLIT_WIDTH `flit`). Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`). `NUM_VC=1` (default) collapses to single-VC operation. `NUM_VC > 1` adds VC mapping at NMU per `theory_of_operation.md` §"VC Mapping" (Hybrid R/W × QoS policy at flit-construct time) and cycle-level VC arbitration at the network switch per `06_qos.md §5` (NPS scope, out of NI). Deadlock-free routing across VCs is the integrator's responsibility. |
 | `CDC_FIFO_DEPTH` | int | 16 | 4 ≤ x ≤ 64 (power-of-2 recommended) | Internal AXI ↔ NoC async-FIFO depth (gray-counter pointer + 2FF synchroniser). Sized to absorb `2 × max_round_trip_cycles × max(aclk_period, noc_clk_period) / min(aclk_period, noc_clk_period) + 2`; default 16 is conservative for ratio range [0.1, 10]. |
 | `MAX_OUTSTANDING` | int | 8 | 1 ≤ x ≤ MAX_TXNS | Test-author-configurable (BFM knob via `transaction_api.md`) or compile-time parameter (RTL); **not CSR-accessible** (no `MAX_OUTSTANDING` CSR exists in `registers.md`). Caps concurrent outstanding transactions below the `MAX_TXNS` hardware ceiling for stress-testing scenarios. Default 8 when set as compile-time parameter. |
-| `MAX_BURST_LEN` | int | 16 | 1 ≤ x ≤ 256 | Maximum AXI burst length the NMU/NSU supports per transaction. Bounds the NSU W-reassembly buffer depth. Tests issuing `len + 1 > MAX_BURST_LEN` violate `apply_burst_write` precondition (per `transaction_api.md`); BFM returns `BURST_LEN_EXCEEDS_MAX`. |
+| `MAX_BURST_LEN` | int | 16 | 1 ≤ x ≤ 256 | BFM W-reassembly buffer-depth limit — a capacity bound, **not** an AXI4 legality check (`awlen` up to 255 is legal AXI4). A burst with `len + 1 > MAX_BURST_LEN` exceeds the configured buffer (raise the parameter). The BFM returns `BURST_LEN_EXCEEDS_MAX`. See `transaction_api.md`. |
 | `ECC_GRANULE_WIDTH` | retired | — | — | (v0.3.0) Per-granule SECDED scheme retired in v0.4.0 in favour of whole-flit SECDED via `FLIT_ECC_WIDTH`. |
 | `ECC_PER_GRANULE_WIDTH` | retired | — | — | (v0.3.0) Per-granule ECC width parameter retired with the per-granule scheme. |
 | `ECC_FAIL_WIDTH` | retired | — | — | (v0.3.0) `ecc_fail` B-payload field dropped in v0.4.0. The NoC fabric no longer signals uncorrectable ECC via AXI rresp/bresp; visibility is via `ERR_STATUS[0] ecc_uncorr_err` + `ECC_UNCORR_ERR_CNT` + `irq_o` (per `protocol_rules.md` `NOC_FLIT_HDR_FLIT_ECC_CHECK`). The corrupted flit is forwarded as-is. |

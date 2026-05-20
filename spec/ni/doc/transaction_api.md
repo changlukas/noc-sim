@@ -159,11 +159,11 @@ end_phase_R_IN()
 
 `len` is awlen (0..255 per AXI4); `data` and `strb` arrays have len+1 entries.
 
-**Preconditions:** Same as apply_axi_write + `len + 1 ≤ MAX_BURST_LEN`.
+**Preconditions:** Same as apply_axi_write. `len + 1 ≤ MAX_BURST_LEN` is a BFM buffer-capacity bound, not an AXI4 legality limit (see Maximum burst length below).
 
 **Burst-type support:** `burst_type ∈ {FIXED, INCR, WRAP}` are all accepted. FIXED holds the address constant on every beat (per AXI4 §A3.4.1); the NMU passes the constant address to the NoC layer unchanged. INCR and WRAP semantics as below.
 
-**Maximum burst length (`MAX_BURST_LEN`):** parameter that bounds the NSU's W-reassembly buffer depth. Default `MAX_BURST_LEN = 16` (sufficient for awlen ≤ 15 = 16 beats). To support full AXI4 max-length bursts (`awlen = 255` = 256 beats per `signal_interface.md` §"Optional features in / out of scope"), set `MAX_BURST_LEN ≥ 256` at BFM instantiation. The default 16-beat ceiling is a conservative choice for typical CPU-driven workloads; integrators with DMA-style bulk-transfer workloads should override. Tests that issue `len + 1 > MAX_BURST_LEN` violate the precondition and the BFM returns `BURST_LEN_EXCEEDS_MAX`.
+**Maximum burst length (`MAX_BURST_LEN`):** parameter that bounds the NSU's W-reassembly buffer depth. Default `MAX_BURST_LEN = 16` (sufficient for awlen ≤ 15 = 16 beats). To support full AXI4 max-length bursts (`awlen = 255` = 256 beats per `signal_interface.md` §"Optional features in / out of scope"), set `MAX_BURST_LEN ≥ 256` at BFM instantiation. The default 16-beat ceiling is a conservative choice for typical CPU-driven workloads. Integrators with DMA-style bulk-transfer workloads should override. `MAX_BURST_LEN` is a BFM W-reassembly buffer-depth limit, **not** an AXI4 legality check — `awlen` up to 255 is legal AXI4. A test issuing `len + 1 > MAX_BURST_LEN` exceeds the BFM's configured buffer capacity (raise `MAX_BURST_LEN`), so the BFM returns `BURST_LEN_EXCEEDS_MAX` to signal the capacity limit, not a protocol violation. Full per-burst-type AXI4 legality checking (NI-WIDTH-11) is Width Bridge spec scope, not basic-version NI core.
 
 **Side effects:**
 - Drives one AW phase + (len+1) W phases. wlast asserts on beat len+1 only.
@@ -173,7 +173,7 @@ end_phase_R_IN()
 - NMU injects 1 AW flit + (len+1) W flits onto `noc_req_o`. NoC routers may interleave with other traffic but W burst itself is wormhole-locked at NSU reassembly.
 
 **Return value / Error modes:** Same as apply_axi_write, plus one additional enum:
-- `BURST_LEN_EXCEEDS_MAX`: `len + 1 > MAX_BURST_LEN` (caller violated precondition).
+- `BURST_LEN_EXCEEDS_MAX`: `len + 1 > MAX_BURST_LEN` (exceeds configured BFM buffer capacity — raise `MAX_BURST_LEN`; not an AXI4 protocol violation).
 
 **Example:**
 ```c

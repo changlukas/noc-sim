@@ -38,7 +38,7 @@ NoC 基本傳輸單元。所有欄位寬度透過 symbol 參數表達，預設�
 | `X_WIDTH` | 4 | X coordinate width (max 16 columns) |
 | `Y_WIDTH` | 4 | Y coordinate width (max 16 rows) |
 
-`src_id` 與 `dst_id` 寬度為 `X_WIDTH + Y_WIDTH`（預設 8 bits），編碼 `[X_WIDTH-1:0]=x`、`[X_WIDTH+Y_WIDTH-1:X_WIDTH]=y`。每個 tile 對應一個 chimney (NI)，`(x, y)` 為其唯一識別。多 IP 共享一個 tile 的場景由 NI 上游 AXI crossbar 處理（per `04_network_interface.md`），不在 flit format scope。
+`src_id` 與 `dst_id` 寬度為 `X_WIDTH + Y_WIDTH`（預設 8 bits），編碼 `[X_WIDTH-1:0]=x`、`[X_WIDTH+Y_WIDTH-1:X_WIDTH]=y`。每個 tile 對應一個 chimney (NI)，`(x, y)` 為其唯一識別。多 IP 共享一個 tile 的場景由 NI 上游 AXI crossbar 處理（per `theory_of_operation.md`），不在 flit format scope。
 
 #### Group 2 — Header Fields
 
@@ -63,7 +63,7 @@ NoC 基本傳輸單元。所有欄位寬度透過 symbol 參數表達，預設�
 |-----------|---------|-------------|
 | `AXI_ADDR_WIDTH` | 64 | AXI address |
 | `AXI_ID_WIDTH` | 8 | AXI transaction ID |
-| `AXI_DATA_WIDTH` | 256 | AXI data (32 bytes) |
+| `NOC_DATA_WIDTH` | 256 | NoC flit data-lane width (32 bytes), `wdata` / `rdata` field. Fixed by flit format. Equals the NI core's AXI port width. The external Width Bridge's `AXI_DATA_WIDTH` (master/slave side) is a separate parameter. |
 | `AXI_USER_WIDTH` | 8 | AXI user signal |
 | `AXI_LEN_WIDTH` | 8 | Burst length |
 | `AXI_SIZE_WIDTH` | 3 | Burst size |
@@ -98,7 +98,7 @@ The legacy ECC parameters are retained as documentation aliases (no functional r
 
 | Parameter | Default | Formula |
 |-----------|---------|---------|
-| `WSTRB_WIDTH` | 32 | `AXI_DATA_WIDTH / 8` |
+| `WSTRB_WIDTH` | 32 | `NOC_DATA_WIDTH / 8` |
 | `HEADER_WIDTH` | 54 | Σ Group 1+2 fields (見 §2.1). Was 48 in v0.3.0 (per-granule ECC era), 56 in pre-(δ) v0.4.0 (with `port_id` field) |
 | `HEADER_DATA_WIDTH` | 44 | `HEADER_WIDTH - FLIT_ECC_WIDTH`; bits of header protected by `flit_ecc` |
 | `AW_PAYLOAD_WIDTH` | 108 | Σ AW fields (見 §3.1) |
@@ -325,7 +325,7 @@ AW 與 AR 結構相同，以下以 AW 為例。AR 各欄位將 `aw` 前綴替換
 |-------|--------------|---------------|-------------|
 | wlast | `AXI_LAST_WIDTH` | [0] | Last beat marker |
 | wuser | `AXI_USER_WIDTH` | [8:1] | AXI user signal |
-| wdata | `AXI_DATA_WIDTH` | [264:9] | Write data |
+| wdata | `NOC_DATA_WIDTH` | [264:9] | Write data |
 | wstrb | `WSTRB_WIDTH` | [296:265] | Write strobe (per-byte enable) |
 | w_rsvd | derived (55) | [351:297] | Reserved |
 | | **W_PAYLOAD_WIDTH** | | |
@@ -361,7 +361,7 @@ Application-layer integrity（HBM endpoint ECC、軟體 CRC）負責真正的 re
 | rid | `AXI_ID_WIDTH` | [8:1] | Read transaction ID |
 | rresp | `AXI_RESP_WIDTH` | [10:9] | Read response status |
 | ruser | `AXI_USER_WIDTH` | [18:11] | AXI user signal |
-| rdata | `AXI_DATA_WIDTH` | [274:19] | Read data |
+| rdata | `NOC_DATA_WIDTH` | [274:19] | Read data |
 | r_rsvd | derived (77) | [351:275] | Reserved |
 | | **R_PAYLOAD_WIDTH** | | |
 
@@ -376,7 +376,7 @@ W 與 R channel 採用相同欄位排列慣例：control fields → data → res
 | Transaction ID | N/A (AXI4 removed WID) | rid (`AXI_ID_WIDTH`) |
 | Response status | N/A | rresp (`AXI_RESP_WIDTH`) |
 | Byte enable | wstrb (`WSTRB_WIDTH`) | N/A |
-| Data | wdata (`AXI_DATA_WIDTH`) | rdata (`AXI_DATA_WIDTH`) |
+| Data | wdata (`NOC_DATA_WIDTH`) | rdata (`NOC_DATA_WIDTH`) |
 | ECC | (moved to header `flit_ecc`) | (moved to header `flit_ecc`) |
 
 ### 3.6 ECC Design (whole-flit SECDED + route parity)
@@ -590,7 +590,7 @@ VC identification 由 header `vc_id` 欄位攜帶。NMU 的 VC mapping 政策見
 
 - **Dual Physical Network** — Req/Rsp link (`LINK_WIDTH` each)
   - 獨立 full-duplex link，消除 Req-Rsp circular dependency（protocol deadlock avoidance）
-  - 每方向每 cycle `AXI_DATA_WIDTH/8` bytes（預設 32），Req/Rsp 對稱且 flit 寬度統一（預設 406b）
+  - 每方向每 cycle `NOC_DATA_WIDTH/8` bytes（預設 32），Req/Rsp 對稱且 flit 寬度統一（預設 406b）
 
 - **Reserved for Future Extension** — `rsvd_commtype` (`RSVD_COMMTYPE_WIDTH`), `multicast` (`MULTICAST_WIDTH`), `rsvd_mc_status` (`RSVD_MC_STATUS_WIDTH`), W/R/B `*_rsvd`
   - Header 預留 10 bits（commtype 2 + multicast 8）、B payload 預留 2 bits（mc_status）供未來通訊類型 / multicast 擴展使用
@@ -608,8 +608,10 @@ VC identification 由 header `vc_id` 欄位攜帶。NMU 的 VC mapping 政策見
 
 ## Related Documents
 
+> 註：下列連結指向 noc-sim 完整 design doc set（本 `02_flit.md` 由該處 vendored）。`06_qos.md` / `03_router.md` / `05_physical_channel.md` 不在本 BFM doc tree 內，為外部參照。NI 與寬度轉換說明見本 tree 的 `theory_of_operation.md`。
+
 - [QoS Design](06_qos.md)
 - [Router Specification](03_router.md)
-- [Network Interface Specification](04_network_interface.md)
+- [Network Interface — Theory of Operation](theory_of_operation.md)
 - [Physical Channel Architecture](05_physical_channel.md)
-- [Width Converter](10_width_converter.md)
+- [Width conversion — see Theory of Operation §Data Width Conversion (external bolt-on Width Bridge; full Width Bridge spec pending, NI-WIDTH-08)](theory_of_operation.md)

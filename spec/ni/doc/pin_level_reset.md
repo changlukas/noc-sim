@@ -201,12 +201,12 @@ All address and data parity signals are per-byte (1 bit per byte), aligned with 
 |---------|--------|--------------------|-------|
 | AW_IN | axi_awaddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
 | AR_IN | axi_araddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| W_IN | axi_wdata_par_i[DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| R_IN | axi_rdata_par_o[DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MGR_PORT=1`. |
+| W_IN | axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
+| R_IN | axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MGR_PORT=1`. |
 | AW_OUT | axi_awaddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Held 0 while reset. Requires `EN_SBR_PORT=1`. |
 | AR_OUT | axi_araddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
-| W_OUT | axi_wdata_par_o[DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
-| R_OUT | axi_rdata_par_i[DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SBR_PORT=1`. |
+| W_OUT | axi_wdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
+| R_OUT | axi_rdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SBR_PORT=1`. |
 
 Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list (matches AMD pg313 §Data Integrity default-on stance). Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MGR_PORT` / `EN_SBR_PORT`.
 
@@ -405,12 +405,12 @@ All address and data parity signals are per-byte (1 bit per byte), aligned with 
 |---------|--------|--------------------|-------|
 | AW_IN | axi_awaddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
 | AR_IN | axi_araddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| W_IN | axi_wdata_par_i[DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| R_IN | axi_rdata_par_o[DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MGR_PORT=1`. |
+| W_IN | axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
+| R_IN | axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MGR_PORT=1`. |
 | AW_OUT | axi_awaddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Held 0 while reset. Requires `EN_SBR_PORT=1`. |
 | AR_OUT | axi_araddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
-| W_OUT | axi_wdata_par_o[DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
-| R_OUT | axi_rdata_par_i[DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SBR_PORT=1`. |
+| W_OUT | axi_wdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
+| R_OUT | axi_rdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SBR_PORT=1`. |
 
 Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list (matches AMD pg313 §Data Integrity default-on stance). Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MGR_PORT` / `EN_SBR_PORT`.
 

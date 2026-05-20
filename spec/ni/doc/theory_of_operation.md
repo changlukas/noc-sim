@@ -98,7 +98,6 @@ Per-AXI-ID elastic buffer at the NSU that absorbs R response data flits arriving
 Purpose:
 
 - **Decouples** local AXI slave's R-response timing from NoC injection back-pressure. A slow downstream NoC link must not stall the local AXI slave's R channel.
-- **Repacks** narrow AXI R beats into wider NoC R flits when DATA_WIDTH < FLIT_PAYLOAD_WIDTH (full/narrow transfer; see §NSU Downsize / Full-narrow transfer).
 - **Reorders within a single AXI ID** is NOT performed here — AXI4 mandates in-order R per ID, and the buffer preserves issue order. Cross-ID reordering happens implicitly via flit injection arbitration.
 
 Capacity: `NSU_R_BUFFER_DEPTH` parameter (default 16 entries; each entry is one NoC R flit's worth of data).
@@ -224,7 +223,7 @@ NoRoB assumes the NoC fabric preserves response order. The fabric's actual guara
 
 Implementation: enforced as an elaborate-time `ASSERT_INIT` over the parameter set (`NUM_VC == 1 || (R_ROB_TYPE != NoRoB && B_ROB_TYPE != NoRoB)`). Integrators wanting both NoRoB-area-footprint AND multi-VC traffic separation must select a non-NoRoB variant (`SimpleRoB` minimally; `NormalRoB` for full multi-destination reordering). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10).**
 
-The B and R RoBs are independent because B is metadata-only (`bid` + `bresp` + `buser`) — far smaller per entry than R (which carries `MAX_BURST_LEN × DATA_WIDTH` payload). Typical configuration: `R_ROB_TYPE = NormalRoB` (large but needed for read-burst reordering across destinations), `B_ROB_TYPE = SimpleRoB` (single-beat metadata; ID-tracker complexity rarely justified). The `ONLY_METADATA_B` parameter further enables data-SRAM elision for B-RoB.
+The B and R RoBs are independent because B is metadata-only (`bid` + `bresp` + `buser`) — far smaller per entry than R (which carries `MAX_BURST_LEN × NOC_DATA_WIDTH` payload). Typical configuration: `R_ROB_TYPE = NormalRoB` (large but needed for read-burst reordering across destinations), `B_ROB_TYPE = SimpleRoB` (single-beat metadata; ID-tracker complexity rarely justified). The `ONLY_METADATA_B` parameter further enables data-SRAM elision for B-RoB.
 
 **`prev_dest` adaptive bypass** (NormalRoB only): when a new request arrives with the same `axi_id` as the most recent prior outstanding request to the **same destination NSU** (`dst_id` equal), and the prior request has not yet returned, NormalRoB enters a fast-path where:
 
@@ -249,48 +248,48 @@ Aligned with FlooNoC `floo_rob.sv` `prev_dest_q` / `prev_dest_d` semantics (line
 
 #### RoB area-reduction techniques
 
-R-RoB sizing dominates total RoB area. At maximum-config `R_ROB_TYPE=NormalRoB, MAX_TXNS=32, DATA_WIDTH=256, MAX_BURST_LEN=256` the worst-case R-RoB storage is `32 × 256 × 256 = 2 Mbits`. At default `MAX_BURST_LEN=16` the same NormalRoB drops to `32 × 16 × 256 = 128 Kbits` — the typical-deployment number. B-RoB is much smaller (metadata-only when `ONLY_METADATA_B=true`).
+R-RoB sizing dominates total RoB area. At maximum-config `R_ROB_TYPE=NormalRoB, MAX_TXNS=32, NOC_DATA_WIDTH=256, MAX_BURST_LEN=256` the worst-case R-RoB storage is `32 × 256 × 256 = 2 Mbits`. At default `MAX_BURST_LEN=16` the same NormalRoB drops to `32 × 16 × 256 = 128 Kbits` — the typical-deployment number. B-RoB is much smaller (metadata-only when `ONLY_METADATA_B=true`).
 
 For deployments where R-RoB area is still too large, the following techniques (FlooNoC-derived) trade performance for area:
 
 - **Reduce `MAX_TXNS`**: from 32 to 16 → 50% area reduction. Trade-off: `MAX_TXNS_PER_ID` upper bound also drops, lowering achievable per-ID outstanding throughput.
-- **Cap `MAX_BURST_LEN`**: bound the parameter range upper bound at 64 instead of 256 → 4× reduction in worst-case payload accumulator. Trade-off: long bursts (`awlen ≥ 64`) require master-side splitting; the NI does not chop bursts internally (per D8 no-chop policy).
+- **Cap `MAX_BURST_LEN`**: bound the parameter range upper bound at 64 instead of 256 → 4× reduction in worst-case payload accumulator. Trade-off: long bursts (`awlen ≥ 64`) require master-side splitting. The NI core does not chop bursts internally (chop is a deferred Width Bridge function, NI-WIDTH-08).
 - **Switch `R_ROB_TYPE` from `NormalRoB` to `SimpleRoB`**: drops per-AXI-ID tracker (~10% area). Trade-off: cross-ID HoL blocking — a slow response on one ID blocks responses on all others until released.
 - **Switch `R_ROB_TYPE` to `NoRoB`** (the parameter default): eliminate RoB area entirely. Trade-off: requires same-VC same-source-same-dest in-order delivery guarantees from the NoC and a master that does not need response reordering. NoRoB is appropriate for I/O peripheral-class masters and the default for the NI parameter.
 - **SRAM-backed RoB storage** (RTL-only, integrator option): for `MAX_TXNS ≥ 64`, replace flop-array RoB with single-port SRAM macro. ~4× area reduction at high entry counts; adds 1 cycle pipeline read latency. Not modelled in the BFM (BFM uses unbounded behavioural arrays; the RTL counterpart picks the implementation).
 
-#### NMU Upsize / NSU Downsize (data-width conversion)
+#### Data Width Conversion (Upsize / Downsize)
 
-The internal NoC data width (`FLIT_PAYLOAD_WIDTH`, derived) is a parameter, default 256-bit. The local AXI port's `DATA_WIDTH` (range `{64, 128, 256, 512}`) may differ. The NI bridges this gap inline at the AXI ↔ flit boundary via two complementary blocks.
+Width conversion is performed by an external **Width Bridge**, bolted on at the AXI ↔ NI boundary (between the local AXI master/slave and the NI's AXI port). The NI core (NMU/NSU) does **not** convert width internally. The NI's own AXI port operates at `NOC_DATA_WIDTH` (default 256-bit). The Width Bridge adapts the local master/slave width `AXI_DATA_WIDTH` (range `{32, 64, 128, 256, 512}`) to `NOC_DATA_WIDTH`.
 
-**NMU Upsize** (AXI narrower than NoC, `DATA_WIDTH < FLIT_PAYLOAD_WIDTH`):
+> **Divergence from AMD PG313 (structural).** AMD places the upsize and downsize blocks inside the NMU and NSU (AMD §AXI Conversion Overview: "There are upsize and downsize blocks in both request and response directions"). This design factors them into a separate bolt-on Width Bridge. The two are functionally equivalent — the same AxSize, chop, transfer-mode, and interrupt contract applies. Only the structural location differs. **Basic version**: neither the NI RTL nor the BFM models the Width Bridge — the NI port is fixed at `NOC_DATA_WIDTH`. If a Width Bridge is integrated later, the RTL and BFM counterparts MUST model it at the same revision to preserve wire-equivalence.
 
-- AW path: `awsize` and `awlen` are passed through unchanged on the flit header. NMU records the AXI master's burst geometry for use by the W path.
-- W path: NMU accumulates W beats from the local master into a wide flit-payload buffer until either a full flit's worth is collected, the burst ends (`wlast=1`), or a 4KB boundary is reached. The accumulated payload is injected as one wide W flit on the NoC.
-- W beat-to-flit lane mapping: the AXI byte address (lower bits of `awaddr` plus per-beat offset from `awsize`) selects which lane(s) in the wide flit each AXI W beat populates. Unpopulated lanes carry zero in the data field; their `wstrb` bits in the regenerated wide-flit `wstrb` field are 0 (see §Over-fetch and WSTRB regeneration).
-- AR path: `arsize`, `arlen`, `araddr` pass through. NMU records geometry for the R path.
-- R path: NMU receives wide R flits from the NoC, and **repacks** them back into narrow AXI R beats matching the original master's `arsize`. Only the lanes addressed by the original `araddr` + per-beat offset are forwarded; other lanes are discarded. Each AXI R beat has the original `arid`. The final beat carries `rlast=1`.
+The Width Bridge handles both directions:
 
-Latency cost: AXI-W-beat-to-NoC-W-flit injection waits for a full wide flit to fill (worst case `FLIT_PAYLOAD_WIDTH / DATA_WIDTH` AXI cycles). For a 64-bit AXI master to a 256-bit NoC, that is up to 4 cycles of accumulation per flit. R repack is single-cycle per AXI beat (registered).
+- **Upsize** — master/slave narrower than the NoC (`AXI_DATA_WIDTH < NOC_DATA_WIDTH`): narrow AXI beats are widened toward `NOC_DATA_WIDTH`.
+- **Downsize** — master/slave wider than the NoC (`AXI_DATA_WIDTH > NOC_DATA_WIDTH`): wide AXI beats are split toward `NOC_DATA_WIDTH`.
+- **No-conversion** (`AXI_DATA_WIDTH == NOC_DATA_WIDTH`): the bridge degenerates to pass-through.
 
-**NSU Downsize** (AXI wider than NoC at the slave side, `DATA_WIDTH > FLIT_PAYLOAD_WIDTH`):
+Placement: conversion is an AXI-domain operation (AxSize is an AXI attribute), so the bridge sits on the AXI side (AXI ↔ NI). It cannot sit between the NI and the router, where the data is already flits and AxSize no longer exists.
 
-Symmetric to NMU Upsize. NSU receives wide W flits from the NoC and **breaks them down** into multiple narrow AXI W beats matching the local slave's `DATA_WIDTH`. R direction: NSU accumulates multiple AXI R beats from the slave into wide R flits before injection.
+The conversion mechanics — full / narrow transfer (§Full / narrow transfer mechanism), over-fetch and WSTRB regeneration (§Over-fetch and WSTRB regeneration), chop, and AxSize rewrite — are properties of the Width Bridge, not of NMU/NSU internals.
 
-**No-conversion case** (`DATA_WIDTH == FLIT_PAYLOAD_WIDTH`): both blocks degenerate to pass-through (1 beat ↔ 1 flit, lanes copied verbatim).
-
-Per-port `DATA_WIDTH` is fixed by the NI parameter and does not change at runtime.
+`AXI_DATA_WIDTH` is fixed per bridge instance at design time and does not change at runtime.
 
 #### Full / narrow transfer mechanism
 
-AXI4 supports `awsize` / `arsize` smaller than `DATA_WIDTH` ("narrow transfer", e.g., a 32-bit beat on a 256-bit bus). The NI honours this:
+> **Scope — external Width Bridge (bolt-on). Out of basic-version NI-core scope.** The behaviour below belongs to the Width Bridge, not the NMU/NSU core. Read "NI" / "NMU" / "NSU" in this section as the co-located master-side / slave-side Width Bridge instance. AMD-aligned chop / AxSize rewrite (NI-WIDTH-06/07/08/11) is pending in the Width Bridge spec. See §Data Width Conversion.
 
-- **Narrow transfer (AxSIZE < log2(DATA_WIDTH/8))**: only the addressed lanes carry data. Unaddressed lanes use `wstrb=0` on writes; on reads, the slave is expected to only return data on the addressed lanes (other lanes' read data is don't-care).
-- **Full transfer (AxSIZE == log2(DATA_WIDTH/8))**: all lanes are valid; `wstrb` is all-ones for non-final beats (last beat may be partial if address is unaligned).
-- **AxLEN handling**: passed through unchanged. NI does **not** chop bursts into shorter ones (D8: no-chop policy, FlooNoC-aligned). For `awlen=255` (max AXI4 burst), the entire 256-beat burst traverses as one wormhole-locked W-burst.
+AXI4 supports `awsize` / `arsize` smaller than `AXI_DATA_WIDTH` ("narrow transfer", e.g., a 32-bit beat on a 256-bit bus). The Width Bridge honours this:
+
+- **Narrow transfer (AxSIZE < log2(AXI_DATA_WIDTH/8))**: only the addressed lanes carry data. Unaddressed lanes use `wstrb=0` on writes; on reads, the slave is expected to only return data on the addressed lanes (other lanes' read data is don't-care).
+- **Full transfer (AxSIZE == log2(AXI_DATA_WIDTH/8))**: all lanes are valid; `wstrb` is all-ones for non-final beats (last beat may be partial if address is unaligned).
+- **AxLEN handling (NI core)**: the NI core does not chop. At the fixed `NOC_DATA_WIDTH` port one AXI beat maps to one flit, so `awlen` passes through unchanged — `awlen=255` (max AXI4 burst) traverses as one wormhole-locked W-burst. AMD-aligned chop is a deferred Width Bridge function (NI-WIDTH-08), not rejected.
 - **AxBURST handling**: `INCR` (most common) and `WRAP` (cache-line refill) are supported; `FIXED` is supported but with the AXI4 restriction that NI cannot resize FIXED bursts (see §`AXI4_SLV_NSU_AW_BURST_FIXED_REPLAY` in protocol_rules.md). For Exclusive bursts, AXI4 mandates single-beat (`awlen=0`).
 
 #### Over-fetch and WSTRB regeneration
+
+> **Scope — external Width Bridge (bolt-on). Out of basic-version NI-core scope.** The behaviour below belongs to the Width Bridge, not the NMU/NSU core. Read "NI" / "NMU" / "NSU" in this section as the co-located master-side / slave-side Width Bridge instance. The over-fetch + WSTRB-regen scheme described here is the current (pre-AMD-alignment) approach; the AMD-aligned chop / AxSize rewrite (NI-WIDTH-08) is pending in the Width Bridge spec. See §Data Width Conversion.
 
 A consequence of upsize at NMU: when narrow AXI W beats are accumulated into a wide W flit, *the lanes not driven by the master are still part of the flit*. We call this **over-fetch** at the NoC layer. The NSU receives the full wide flit but must respect the original master's intent (only commit the addressed lanes to the slave).
 
@@ -302,10 +301,10 @@ Why this works without needing per-lane data clearing: AXI4 `wstrb` is the canon
 
 Over-fetch read direction is **not** an issue: NSU reads the entire wide flit's worth from the slave (slave returns full lanes), and NMU discards unaddressed lanes when repacking back to the narrow master.
 
-Out of scope (D8 alternative considered + rejected):
+Deferred to the Width Bridge spec — the NI core does neither. These are AMD-aligned Width Bridge functions, pending (see §Data Width Conversion and NI-WIDTH-08). The over-fetch + WSTRB-regen description above is the current pre-AMD-alignment approach.
 
-- **Bus chopping** (NMU breaks long bursts into shorter ones to interleave around DDR open-page boundaries) — rejected for v0.4.0; would require Chop Trackers per outstanding burst, complex re-merge at NSU, and only benefits DDR-controller-fronting traffic, not our typical NI use case (router → switch → endpoint slave).
-- **AxSIZE conversion** (NMU promotes narrow beats to a single wide beat) — rejected; the over-fetch + per-flit `wstrb` regen scheme already gives one wide flit per AXI beat group, no AxSIZE rewrite needed on the wire.
+- **Bus chopping** (chop long bursts at the chop-size address boundary) — a Width Bridge function. The NI core does not chop.
+- **AxSIZE rewrite** (rewrite master AxSize to the NoC AxSize) — a Width Bridge function. The NI core does not rewrite AxSize.
 
 #### VC Mapping
 
@@ -421,7 +420,7 @@ Independent of NoC-fabric `flit_ecc` / `route_par`, the AXI host boundaries carr
 
 **NMU manager-side parity flow (request path)**:
 
-1. AXI master drives `axi_awaddr_par_i[ADDR_WIDTH/8-1:0]`, `axi_araddr_par_i[ADDR_WIDTH/8-1:0]`, `axi_wdata_par_i[DATA_WIDTH/8-1:0]` per AMD §Parity convention.
+1. AXI master drives `axi_awaddr_par_i[ADDR_WIDTH/8-1:0]`, `axi_araddr_par_i[ADDR_WIDTH/8-1:0]`, `axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0]` per AMD §Parity convention.
 2. NMU verifies parity at AW/AR/W handshake. Mismatch → log `ERR_STATUS[2]` + `AXI_PARITY_ERR_CNT` + `LAST_ERR_INFO`. Transaction proceeds.
 3. NMU forwards address into AddrTrans (which may rewrite upper bits via address-map / SAM lookup). When NMU modifies an address byte, the corresponding parity byte is regenerated (per AMD §Parity: "When an AXI field is modified by NMU/NSU logic, parity is regenerated"). Bytes the NMU does not modify carry source parity through.
 4. Once data enters the NoC fabric, `flit_ecc` (whole-flit SECDED) takes over. AXI parity does not propagate inside the NoC.
@@ -429,7 +428,7 @@ Independent of NoC-fabric `flit_ecc` / `route_par`, the AXI host boundaries carr
 **NMU manager-side parity flow (response path) — A4.6 addition**:
 
 1. NMU receives R flit on `noc_rsp_i`, runs `flit_ecc` SECDED check (1-bit silent correct, 2-bit forward + log).
-2. **After the `flit_ecc` check stage**, NMU regenerates per-byte parity over the corrected `axi_rdata_o` bytes and drives `axi_rdata_par_o[DATA_WIDTH/8-1:0]` back to the AXI master.
+2. **After the `flit_ecc` check stage**, NMU regenerates per-byte parity over the corrected `axi_rdata_o` bytes and drives `axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0]` back to the AXI master.
 3. AXI master verifies `axi_rdata_par_o` per byte at its R handshake.
 
 This regeneration point is the verbatim AMD pg313 §Parity prescription: "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." Formalised in `protocol_rules.md` `AXI4_MST_PARITY_GEN_R`.
@@ -481,10 +480,12 @@ The RTL implementation follows the same external functional decomposition as the
 
 ```mermaid
 flowchart TB
+    subgraph WBRIDGE[Width Bridge — bolt-on, external to NI]
+        WB[AXI width up/downsize<br>AXI_DATA_WIDTH ↔ NOC_DATA_WIDTH<br>chop/AxSize per AMD: pending]
+    end
     subgraph NMU_RTL[NMU RTL]
         ATX[AddrTrans<br>combinational lookup]
         QGEN[QoSGen<br>per-mode logic]
-        UPSZ[Upsize<br>narrow→wide W accum,<br>wide→narrow R repack]
         FPK[FlitPack AW/W/AR<br>combinational + register]
         EGEN[FlitECC Gen<br>whole-flit SECDED + route_par]
         ROB_RTL[RoB Storage<br>flop array, MAX_TXNS entries]
@@ -500,7 +501,6 @@ flowchart TB
         FUP_S[FlitUnpack AW/W/AR]
         MBF[MetaBuffer<br>flop array]
         EXCMON[Exclusive Monitor<br>EXCLUSIVE_MONITOR_DEPTH entries]
-        DNSZ[Downsize<br>wide→narrow W split,<br>narrow→wide R accum]
         RRSP[R Response Buffer<br>NSU_R_BUFFER_DEPTH entries]
         ECHK_S[FlitECC Check]
         FPK_S[FlitPack B/R]
@@ -515,7 +515,7 @@ flowchart TB
 Sub-modules:
 - **AddrTrans (NMU)**: combinational; AXI awaddr / araddr → (dst_id, local_addr) per ROUTE_ALGO and USE_ID_TABLE config.
 - **QoSGen (NMU)**: per-mode (Bypass / Fixed / Limiter / Regulator). Stateful for Limiter / Regulator (bandwidth_counter, urgency_level).
-- **Upsize (NMU) / Downsize (NSU)**: data-width converter at the AXI ↔ flit boundary; degenerates to pass-through when `DATA_WIDTH == FLIT_PAYLOAD_WIDTH`. See §NMU Upsize / NSU Downsize.
+- **Width Bridge (bolt-on, external to NI)**: AXI-to-AXI width up/downsize between the local master/slave width `AXI_DATA_WIDTH` and `NOC_DATA_WIDTH`. Not part of the NMU/NSU RTL. Degenerates to pass-through when `AXI_DATA_WIDTH == NOC_DATA_WIDTH`. See §Data Width Conversion (Upsize / Downsize).
 - **FlitPack / FlitUnpack**: combinational logic + 1 pipeline register; `CUT_AX` / `CUT_RSP` parameters add spill register.
 - **RoB Storage (NMU)**: flop-based array of `MAX_TXNS` entries, each carrying state, axi_id, rob_idx, response data accumulator. Per-AXI-ID linked-list tracking with `prev_dest` adaptive bypass (NormalRoB variant).
 - **MetaBuffer (NSU)**: per-outstanding-NSU-request snapshot of request-flit metadata (rob_idx, src_id, qos, axi_id). FlooNoC `floo_meta_buffer.sv` aligned.
