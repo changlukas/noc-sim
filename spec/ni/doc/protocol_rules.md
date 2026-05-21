@@ -35,7 +35,7 @@ Rule IDs and sub-section headings in this document use **abstract channel tokens
 
 | Token in this document | Aliases (signal_interface.md §Channel grouping) |
 |------------------------|--------------------------------------------------|
-| `AW` (in rule ID or §AW channel heading) | `AW_IN` (manager port) and `AW_OUT` (subordinate port) — rule applies to whichever port the rule's `<ROLE>` (MST / SLV) selects |
+| `AW` (in rule ID or §AW channel heading) | `AW_IN` (slave port) and `AW_OUT` (master port) — rule applies to whichever port the rule's `<ROLE>` (MST / SLV) selects |
 | `W` | `W_IN` and `W_OUT` |
 | `B` | `B_IN` and `B_OUT` |
 | `AR` | `AR_IN` and `AR_OUT` |
@@ -44,7 +44,7 @@ Rule IDs and sub-section headings in this document use **abstract channel tokens
 | `noc_*_i.valid` / `noc_*_i.ready` patterns | `REQ_IN` and `RSP_IN` (BFM-observed NoC inputs) |
 | `CSR_AW` / `CSR_W` / `CSR_B` / `CSR_AR` / `CSR_R` (in §CSR sub-section headings) | one-to-one with signal_interface tokens; no aliasing needed |
 
-A rule with role `SLV` referencing `AW` applies at the BFM's slave-side AXI port (`axi_*_i` for NMU's manager port acting as slave to local AXI master, `axi_*_o` for NSU's subordinate port). A rule with role `MST` referencing `AW` applies at the BFM's master-side AXI port. NoC `<PROTO>_MST_*` rules apply to BFM-driven NoC outputs (`REQ_OUT` and `RSP_OUT`); `<PROTO>_SLV_*` rules apply to BFM-observed NoC inputs (`REQ_IN` and `RSP_IN`).
+A rule with role `SLV` referencing `AW` applies at the BFM's slave-side AXI port (`axi_*_i` for NMU's slave port acting as slave to local AXI master, `axi_*_o` for NSU's master port). A rule with role `MST` referencing `AW` applies at the BFM's master-side AXI port. NoC `<PROTO>_MST_*` rules apply to BFM-driven NoC outputs (`REQ_OUT` and `RSP_OUT`); `<PROTO>_SLV_*` rules apply to BFM-observed NoC inputs (`REQ_IN` and `RSP_IN`).
 
 ## Reset rules
 
@@ -66,7 +66,7 @@ A rule with role `SLV` referencing `AW` applies at the BFM's slave-side AXI port
 
 ## AXI4 host-side rules
 
-(Apply to both `axi_*_i` AXI manager port and `axi_*_o` AXI subordinate port unless noted.)
+(Apply to both `axi_*_i` AXI slave port and `axi_*_o` AXI master port unless noted.)
 
 ### AW channel
 
@@ -294,7 +294,7 @@ The CSR access port is AXI4-Lite subordinate. AXI4-Lite is a subset of AXI4: sin
 | NI_CFG_ERR_STATUS_RW1C | Software writes 1 to `ERR_STATUS[i]` (i ∈ {0..2} = {ecc_uncorr_err, route_par_err, axi_parity_err}) | Bit `[i]` and the associated saturating counter are cleared atomically on the cycle the AXI4-Lite write handshake completes. Counter map: `ECC_UNCORR_ERR_CNT` (i=0), `ROUTE_PAR_ERR_CNT` (i=1), `AXI_PARITY_ERR_CNT` (i=2). The clear also deasserts the corresponding IRQ source if `IRQ_ENABLE[i]` was set. | FAIL | (none) |
 | NI_CFG_LAST_ERR_INFO_CAPTURE | Any of the three `ERR_STATUS` event classes fires while no prior un-cleared error is sticky: ECC double-bit at NI sink (per `NOC_FLIT_HDR_FLIT_ECC_CHECK`), route_par drop (per `NOC_FLIT_HDR_ROUTE_PAR_CHECK`), AXI parity mismatch (per `AXI4_MST_PARITY_CHECK` / `AXI4_SLV_PARITY_CHECK`) | `LAST_ERR_INFO` register captures the offending transaction's `err_axi_id`, `err_src_id`, `err_dst_id`. Sticky semantics: first qualifying error wins; subsequent errors do NOT overwrite until software clears the corresponding `ERR_STATUS[i]` via RW1C, at which point the next qualifying event re-arms capture. Rationale: prevents losing the original triggering error during cascaded-error storms. | FAIL | (none) |
 | NI_CFG_MODE_SWITCH | `set_bfm_mode(mode)` called (per `transaction_api.md`); `bfm_mode` transitions ACTIVE→PASSIVE or PASSIVE→ACTIVE | On ACTIVE→PASSIVE, all BFM-driven outputs (per `active_passive_mode.md` §Capability table) transition to their during-reset values within 1 cycle of the corresponding clock; in-flight Transaction API calls unblock with `MODE_SWITCHED_TO_PASSIVE`. On PASSIVE→ACTIVE, BFM-driven outputs return to reset-deassertion values; configuration knobs become effective on the next transaction. | FAIL | (none) |
-| NI_CFG_RESPONSE_DELAY_AXI | `set_response_delay_axi(min, max)` called; next AXI response handshake on manager port pending | BFM holds AXI B/R response output by random K ∈ [min, max] `aclk_i` cycles before asserting `bvalid`/`rvalid`. Persists across transactions until reconfigured or `reset_state()`. Test-only knob; RTL counterpart has fixed pipeline timing (`CUT_AX`/`CUT_RSP` synthesis params). | RECOMMEND | (none) |
+| NI_CFG_RESPONSE_DELAY_AXI | `set_response_delay_axi(min, max)` called; next AXI response handshake on slave port pending | BFM holds AXI B/R response output by random K ∈ [min, max] `aclk_i` cycles before asserting `bvalid`/`rvalid`. Persists across transactions until reconfigured or `reset_state()`. Test-only knob; RTL counterpart has fixed pipeline timing (`CUT_AX`/`CUT_RSP` synthesis params). | RECOMMEND | (none) |
 | NI_CFG_RESPONSE_DELAY_NOC | `set_response_delay_noc(min, max)` called; next NoC injection pending | BFM holds NoC `noc_*_o.valid` HIGH assertion by random K ∈ [min, max] `noc_clk_i` cycles after the flit is ready-to-inject. Persists across transactions until reconfigured or `reset_state()`. Test-only knob; no RTL counterpart. | RECOMMEND | (none) |
 | NI_CFG_INJECT_ECC_ERROR | `set_inject_ecc_error(channel, kind)` called; `kind ∈ {SINGLE_BIT, DOUBLE_BIT}`; next flit injection on the specified channel | Next flit's ECC field is corrupted: SINGLE_BIT flips one ECC bit (correctable by Hsiao SECDED at receiver); DOUBLE_BIT flips two ECC bits (uncorrectable). One-shot — flag clears after the next flit injection on the specified channel. `kind=NONE` clears any pending injection. Test-only knob. | RECOMMEND | (none) |
 | NI_CFG_RESPONSE_FAULT | `set_response_fault(channel, kind)` called; `channel ∈ {B, R}`; `kind ∈ {SLVERR, DECERR}`; next response handshake on the specified channel | Next B/R response handshake drives the corresponding `bresp`/`rresp` value (`SLVERR=0b10` or `DECERR=0b11`) instead of the would-be `OKAY`. One-shot — flag clears after the response is consumed. `kind=NONE` clears any pending fault. Test-only knob. | RECOMMEND | (none) |

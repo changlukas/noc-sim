@@ -1,6 +1,6 @@
 # Registers
 
-NI exposes a software-visible CSR file via the dedicated AXI4-Lite subordinate port (`csr_*`). All CSRs are 32-bit-aligned. Access policies:
+NI exposes a software-visible CSR file via the dedicated AXI4-Lite slave port (`csr_*`). All CSRs are 32-bit-aligned. Access policies:
 
 - **Sub-word access**: not supported. CSR writes with `csr_wstrb_i != 0xF` (any byte deasserted) trigger `csr_bresp_o = SLVERR` and the write is dropped. Reads ignore byte strobes (full 32-bit word returned).
 - **Unmapped offset**: any `csr_awaddr_i` or `csr_araddr_i` that doesn't match a register in §Register map below triggers `csr_bresp_o = DECERR` (writes) or `csr_rresp_o = DECERR` (reads). Unmapped reads return `csr_rdata_o = 0x0`.

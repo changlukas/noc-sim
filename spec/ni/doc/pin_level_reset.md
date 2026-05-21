@@ -12,7 +12,7 @@ A wire's "during reset" value is determined by its corresponding reset signal. W
 
 ## During reset (per relevant reset asserted)
 
-### AXI Manager port — driven by AXI master DUT or by NMU; AXI domain (arst_ni)
+### AXI Slave port — driven by AXI master DUT or by NMU; AXI domain (arst_ni)
 
 | Channel | Signal | Value during reset | Notes |
 |---------|--------|--------------------|-------|
@@ -62,7 +62,7 @@ A wire's "during reset" value is determined by its corresponding reset signal. W
 | R_IN | axi_rlast_o | 0 |  |
 | R_IN | axi_ruser_o | 0 |  |
 
-### AXI Subordinate port — driven by NSU or by AXI slave DUT; AXI domain (arst_ni)
+### AXI Master port — driven by NSU or by AXI slave DUT; AXI domain (arst_ni)
 
 | Channel | Signal | Value during reset | Notes |
 |---------|--------|--------------------|-------|
@@ -216,7 +216,7 @@ For every BFM-driven wire, the first-cycle-after-reset value is the same as the 
 
 The per-wire enumeration below mirrors the §"During reset" section row-for-row to satisfy LINT-BFM-001 wire-set parity. Values are identical unless a different first-cycle-after-reset value is documented; transitions over time are documented separately so the per-wire value column carries cycle-1 only.
 
-### AXI Manager port — driven by AXI master DUT or by NMU; AXI domain (arst_ni)
+### AXI Slave port — driven by AXI master DUT or by NMU; AXI domain (arst_ni)
 
 | Channel | Signal | Value first cycle after reset | Notes |
 |---------|--------|--------------------|-------|
@@ -266,7 +266,7 @@ The per-wire enumeration below mirrors the §"During reset" section row-for-row 
 | R_IN | axi_rlast_o | 0 |  |
 | R_IN | axi_ruser_o | 0 |  |
 
-### AXI Subordinate port — driven by NSU or by AXI slave DUT; AXI domain (arst_ni)
+### AXI Master port — driven by NSU or by AXI slave DUT; AXI domain (arst_ni)
 
 | Channel | Signal | Value first cycle after reset | Notes |
 |---------|--------|--------------------|-------|

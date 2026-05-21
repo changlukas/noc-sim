@@ -58,7 +58,7 @@ This section is **always required** in protocol-bfm mode.
 
 The BFM has **two driver instances** running in different clock domains:
 
-- **AXI Driver** (in `aclk_i` domain): owns per-channel state machines for AW/W/B/AR/R on both manager port (`axi_*_i`) and subordinate port (`axi_*_o`). Plus AXI4-Lite state machine for the CSR port. Fully registered outputs.
+- **AXI Driver** (in `aclk_i` domain): owns per-channel state machines for AW/W/B/AR/R on both slave port (`axi_*_i`) and master port (`axi_*_o`). Plus AXI4-Lite state machine for the CSR port. Fully registered outputs.
 - **NoC Driver** (in `noc_clk_i` domain): owns per-link state machines for `noc_req_o` (valid + flit + per-VC credit return + credit-init handshake) and `noc_rsp_o` (mirror). Fully registered outputs.
 
 Both drivers are disabled when `bfm_mode == PASSIVE`; outputs follow `pin_level_reset.md` during-reset values.

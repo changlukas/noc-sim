@@ -28,14 +28,14 @@ Transaction API covers ~95% of typical tests (single-master single-slave, RoB or
 
 | Group | Method | One-line summary |
 |-------|--------|------------------|
-| **NMU stimulus (active mode; manager port)** ||
-| Stimulus | `apply_axi_write(addr, data, [strb], [id], [qos])` | Drive a single-beat AXI write on the manager port; block until B response. |
+| **NMU stimulus (active mode; slave port)** ||
+| Stimulus | `apply_axi_write(addr, data, [strb], [id], [qos])` | Drive a single-beat AXI write on the slave port; block until B response. |
 | Stimulus | `apply_axi_read(addr, [id], [qos]) -> data` | Drive a single-beat AXI read; block until R received. |
 | Stimulus | `apply_burst_write(addr, len, data[], [strb[]], [id], [burst_type], [qos])` | Drive an AXI burst write. |
 | Stimulus | `apply_burst_read(addr, len, [id], [burst_type], [qos]) -> data[]` | Drive an AXI burst read; block until full burst received. |
-| **NSU monitor (active or passive mode; subordinate port)** ||
-| Monitor | `expect_axi_write(addr, data, [timeout]) -> status_t` | Wait for an AXI write to addr on subordinate port; assert WDATA matches. |
-| Monitor | `expect_axi_read(addr, [timeout]) -> (status_t, data)` | Wait for an AXI read on subordinate port; return BFM-supplied RDATA. |
+| **NSU monitor (active or passive mode; master port)** ||
+| Monitor | `expect_axi_write(addr, data, [timeout]) -> status_t` | Wait for an AXI write to addr on master port; assert WDATA matches. |
+| Monitor | `expect_axi_read(addr, [timeout]) -> (status_t, data)` | Wait for an AXI read on master port; return BFM-supplied RDATA. |
 | Monitor | `expect_axi_burst_write(addr, len, data[], [timeout]) -> status_t` | Wait for a burst write; verify all beats. |
 | Monitor | `expect_axi_burst_read(addr, len, [timeout]) -> (status_t, data[])` | Wait for a burst read; return supplied RDATA[]. |
 | **NoC monitor (any mode)** ||
@@ -80,7 +80,7 @@ Transaction API covers ~95% of typical tests (single-master single-slave, RoB or
 - `bfm_mode == ACTIVE` (passive mode does not drive stimulus).
 - `id` ≤ MAX_UNIQUE_IDS; outstanding count for `id` < MAX_TXNS_PER_ID; total outstanding < MAX_TXNS.
 - No concurrent `apply_axi_*` to overlapping addresses.
-- No Channel API call holding AW or W channels of the manager port.
+- No Channel API call holding AW or W channels of the slave port.
 
 **Side effects:**
 - Drives `axi_*_i` AW phase: awvalid HIGH, awid=id, awaddr=addr, awlen=0, awsize=log2(strb width), awburst=INCR, awqos=qos. Holds until awready observed.
@@ -202,7 +202,7 @@ Mirror of apply_burst_write but for reads. Returns array of len+1 rdata values.
 - No concurrent expect_axi_write to same addr.
 
 **Side effects:**
-- Blocks until master DUT (or NMU forwarding remote write) issues an AXI write to addr on subordinate port.
+- Blocks until master DUT (or NMU forwarding remote write) issues an AXI write to addr on master port.
 - In ACTIVE: BFM drives `axi_*_o` B response (after configured response_delay_axi); fault-injection knobs consumed.
 - In PASSIVE: BFM observes only.
 - WDATA captured and compared against expected `data`; over-strobe lanes compared per WSTRB.
@@ -310,7 +310,7 @@ For full register layouts and offsets, see registers.md.
 
 **Preconditions:** min ≤ max ≤ 65535.
 
-**Side effects:** BFM internal config: next AXI response (B or R) on the manager port is held off by random K ∈ [min, max] aclk cycles. Persists across transactions until reconfigured or `reset_state`.
+**Side effects:** BFM internal config: next AXI response (B or R) on the slave port is held off by random K ∈ [min, max] aclk cycles. Persists across transactions until reconfigured or `reset_state`.
 
 **Return value:** none. **Error modes:** none (illegal args trigger immediate assertion).
 
@@ -390,7 +390,7 @@ There is no separate `OUTSTANDING_LIMIT_EXCEEDED` return enum — overflow manif
 | `apply_axi_write` + `apply_axi_read` from different threads | **Safe** | BFM (channels are independent). |
 | Two `apply_axi_write` to **different** addresses concurrent | Safe (BFM serialises at outstanding-tracker level) | BFM. |
 | Two `apply_axi_write` to **the same / overlapping** address | **Unsafe** — second returns `CONCURRENT_OVERLAP` | BFM. |
-| `apply_*` (manager port) + `expect_axi_*` (subordinate port) concurrent | **Safe** — different ports | BFM. |
+| `apply_*` (slave port) + `expect_axi_*` (master port) concurrent | **Safe** — different ports | BFM. |
 | Concurrent `csr_write` / `csr_read` from different threads | **Safe**; BFM serialises at AXI4-Lite handshake level | BFM. |
 | `apply_*` + `set_*` knob | Safe; `set_*` is atomic | BFM. |
 | `apply_*` + Channel API on the same channel | **Forbidden** | BFM enforces via `BUSY_TXN_API` return. |

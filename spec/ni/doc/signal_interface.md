@@ -5,19 +5,54 @@
 - NoC side: custom flit-based packet protocol. Flit width `FLIT_WIDTH` bits (default 406 in v0.4.0). Header `HEADER_WIDTH` bits (default 54 in v0.4.0). See `./02_flit.md` for flit format details (vendored from `noc-sim/docs/design/02_flit.md`).
 - CSR side: AXI4-Lite (subset of AXI4) for software-visible configuration and monitoring registers.
 
-**Role:** Both manager and subordinate. NMU (Network Manager Unit) acts as AXI subordinate on the host side (receives AXI requests from local master) and initiates flits on the NoC. NSU (Network Subordinate Unit) receives flits from the NoC and acts as AXI manager on the host side (drives AXI requests to local slave).
+**Role:** Both master and slave. NMU (Network Manager Unit) acts as AXI slave on the host side (receives AXI requests from local master) and initiates flits on the NoC. NSU (Network Subordinate Unit) receives flits from the NoC and acts as AXI master on the host side (drives AXI requests to local slave).
 
-**BFM perspective:** Direction in the tables below is from the BFM out to the connected fabric / IP. The BFM has four external interfaces: AXI4 manager port (NMU side; receives AXI from local master), AXI4 subordinate port (NSU side; drives AXI to local slave), NoC link pair (req + rsp, bidirectional), AXI4-Lite CSR access port (software configuration access).
+**BFM perspective:** Direction in the tables below is from the BFM out to the connected fabric / IP. The BFM has four external interfaces: AXI4 slave port (NMU side; receives AXI from local master), AXI4 master port (NSU side; drives AXI to local slave), NoC link pair (req + rsp, bidirectional), AXI4-Lite CSR access port (software configuration access).
 
 ## Naming convention
 
 Lowercase signals with `_i` / `_o` direction suffixes and `_ni` for active-low resets. AXI4 channel signals use the standard `awvalid` / `awready` / `awaddr` lowercase form. Flit-level signals use `noc_*` prefix. Width parameters in brackets denote signal vector width.
 
+## Per-block interface summary
+
+Bundle-level interface contract per sub-block. Pin-level detail (width, reset value, optional flag) stays in the Wire table below, which is the single source of truth. The `Wire source` column points to the §Channel grouping tokens.
+
+**NMU / NSU naming.** NMU (NoC Master Unit) and NSU (NoC Slave Unit) are the AMD Versal AXI-NoC names for the injection-side and ejection-side functions of one bidirectional Network Interface. NMU is injection (local AXI master to flit). NSU is ejection (flit to local AXI slave). FlooNoC keeps both functions in a single `chimney` with no NMU/NSU split, so this decomposition is a logical view. NoC backpressure is per-VC credit (see §NoC credit signals), not a ready handshake. Each NoC direction also runs a startup credit-init handshake (see §NoC credit signals). FlooNoC by contrast defaults to ready-valid and uses credit only in its VC mode.
+
+**Host AXI port roles.** NMU is the AXI slave on its host port, with a local AXI master as peer. NSU is the AXI master on its host port, with a local AXI slave as peer.
+
+### NMU (injection path)
+
+| Interface | Direction | Peer | Protocol | Flow control | Clock domain | Wire source |
+|---|---|---|---|---|---|---|
+| AXI slave port (host) | in request, out response | local AXI master | AXI4 | ready/valid per channel | `aclk_i` / `arst_ni` | `AW_IN` `W_IN` `AR_IN` `B_IN` `R_IN` |
+| NoC request out | out | Router local input | NoC request flit link | per-VC credit return | `noc_clk_i` / `noc_rst_ni` | `REQ_OUT` + req credit |
+| NoC response in | in | Router local output | NoC response flit link | per-VC credit | `noc_clk_i` / `noc_rst_ni` | `RSP_IN` + credit |
+| CSR | in request, out response | software CSR master | AXI4-Lite | ready/valid | `aclk_i` / `arst_ni` | `CSR_*` |
+
+### NSU (ejection path)
+
+| Interface | Direction | Peer | Protocol | Flow control | Clock domain | Wire source |
+|---|---|---|---|---|---|---|
+| NoC request in | in | Router local output | NoC request flit link | per-VC credit | `noc_clk_i` / `noc_rst_ni` | `REQ_IN` + credit |
+| AXI master port (host) | out request, in response | local AXI slave | AXI4 | ready/valid per channel | `aclk_i` / `arst_ni` | `AW_OUT` `W_OUT` `AR_OUT` `B_OUT` `R_OUT` |
+| NoC response out | out | Router local input | NoC response flit link | per-VC credit return | `noc_clk_i` / `noc_rst_ni` | `RSP_OUT` + credit |
+
+### Router peer reference
+
+The Router, which AMD calls the NoC Packet Switch (NPS), is a separate block. Its authoritative interface lives in the noc-sim router spec. It is listed here only as the NI's peer so the NoC-side connection is unambiguous.
+
+| Interface | Direction | Peer | Flow control |
+|---|---|---|---|
+| local request in, response out | in / out | NMU NoC ports | per-VC credit |
+| local request out, response in | out / in | NSU NoC ports | per-VC credit |
+| fabric ports (per `route_direction_e`: N/E/S/W/Eject) | bidirectional per link | neighbor routers | per-VC credit + wormhole packet lock |
+
 ## Wire table
 
 The Wire table excludes the protocol clocks and resets (listed in §Protocol clock and reset). LINT-BFM-001 (wire-set parity vs `pin_level_reset.md`) applies to this table only.
 
-### AXI4 Manager port (NMU side; receives AXI from local AXI master)
+### AXI4 Slave port (NMU side; receives AXI from local AXI master)
 
 #### AW channel (write address)
 
@@ -89,9 +124,9 @@ The Wire table excludes the protocol clocks and resets (listed in §Protocol clo
 | `axi_rlast_o` | output | 1 | H | pos aclk | §AXI in R row 6 | no | yes |  |
 | `axi_ruser_o` | output | USER_WIDTH | — | pos aclk | §AXI in R row 7 | yes | yes |  |
 
-### AXI4 Subordinate port (NSU side; drives AXI to local AXI slave)
+### AXI4 Master port (NSU side; drives AXI to local AXI slave)
 
-The subordinate port mirrors the manager port but with all directions reversed. Field semantics are identical to AXI4 spec; only the BFM-perspective direction differs.
+The master port mirrors the slave port but with all directions reversed. Field semantics are identical to AXI4 spec; only the BFM-perspective direction differs.
 
 #### AW channel
 
@@ -113,9 +148,9 @@ The subordinate port mirrors the manager port but with all directions reversed. 
 
 #### W / B / AR / R channels
 
-Same shape as the manager port; all `_o` ↔ `_i` direction flipped (W: outputs from BFM driving wdata/wstrb/wlast; B: BFM samples bvalid/bid/bresp; AR: BFM drives ARVALID with full address; R: BFM samples rvalid + payload).
+Same shape as the slave port; all `_o` ↔ `_i` direction flipped (W: outputs from BFM driving wdata/wstrb/wlast; B: BFM samples bvalid/bid/bresp; AR: BFM drives ARVALID with full address; R: BFM samples rvalid + payload).
 
-For brevity the wire-level expansion follows the manager port exactly (same fields, same widths). See pin_level_reset.md §AXI out for per-wire reset values.
+For brevity the wire-level expansion follows the slave port exactly (same fields, same widths). See pin_level_reset.md §AXI out for per-wire reset values.
 
 ### NoC Request link
 
@@ -178,7 +213,7 @@ After reset, source-credit counters initialise to 0 per VC. Both ends must compl
 
 ### CSR access port (AXI4-Lite subordinate)
 
-A dedicated AXI4-Lite subordinate port for software access to NMU/NSU CSR file. Width assumptions: 32-bit CSR_ADDR_WIDTH=12 (4KB region accommodates ~32 registers per `registers.md`); 32-bit CSR_DATA_WIDTH=32.
+A dedicated AXI4-Lite slave port for software access to NMU/NSU CSR file. Width assumptions: 32-bit CSR_ADDR_WIDTH=12 (4KB region accommodates ~32 registers per `registers.md`); 32-bit CSR_DATA_WIDTH=32.
 
 | Signal | Direction | Width | Active | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------|
@@ -230,7 +265,7 @@ Coverage:
 
 對齊 AMD pg313 §Parity verbatim：「1 bit per byte for Data」與「1 bit per byte for AxAddress」standard config。
 
-**AXI Manager port (axi_*_i) parity inputs (when `EN_MGR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
+**AXI Slave port (axi_*_i) parity inputs (when `EN_MGR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------------|-------|
@@ -238,13 +273,13 @@ Coverage:
 | `axi_araddr_par_i[ADDR_WIDTH/8-1:0]` | input | ADDR_WIDTH/8 | H | pos aclk | §AXI parity row 2 | Per-byte even parity over `axi_araddr_i`. Sampled when `axi_arvalid_i=1`. |
 | `axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0]` | input | NOC_DATA_WIDTH/8 | H | pos aclk | §AXI parity row 3 | Per-byte even parity over `axi_wdata_i`. Sampled when `axi_wvalid_i=1`. |
 
-**AXI Manager port (axi_*_o) parity outputs (when `EN_MGR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
+**AXI Slave port (axi_*_o) parity outputs (when `EN_MGR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------------|-------|
 | `axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0]` | output | NOC_DATA_WIDTH/8 | H | pos aclk | §AXI parity row 8 | Per-byte even parity over `axi_rdata_o` (NMU-generated). NMU regenerates this **after** the `flit_ecc` check stage when converting the NoC packet back to AXI protocol — aligned with AMD pg313 §Parity: "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." |
 
-**AXI Subordinate port (axi_*_o) parity outputs (when `EN_SBR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
+**AXI Master port (axi_*_o) parity outputs (when `EN_SBR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------------|-------|
@@ -255,7 +290,7 @@ Coverage:
 
 **Behaviour:**
 
-- NMU verifies `axi_*_par_i` on each AW/AR/W handshake at the manager port. Mismatch logged to `ERR_STATUS[2] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_MST_PARITY_CHECK`). Transaction proceeds — no SLVERR injection at AXI boundary. Software observes via CSR / IRQ.
+- NMU verifies `axi_*_par_i` on each AW/AR/W handshake at the slave port. Mismatch logged to `ERR_STATUS[2] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_MST_PARITY_CHECK`). Transaction proceeds — no SLVERR injection at AXI boundary. Software observes via CSR / IRQ.
 - NMU **generates** `axi_rdata_par_o` per byte for R responses returning to master. Generation point: after the `flit_ecc` check stage at NMU (per AMD pg313 §Parity). Formalised in `protocol_rules.md` `AXI4_MST_PARITY_GEN_R`.
 - NSU generates `axi_*_par_o` per byte for AW/AR/W signals driven to local slave. Address parity regenerated when NMU/NSU modify the address (e.g., AddrTrans address-map lookup may change upper address bits — parity over those bytes is recomputed, lower bytes carried through).
 - NSU verifies `axi_rdata_par_i` from local slave. Mismatch logged to `ERR_STATUS[2] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_SLV_PARITY_CHECK`). R beat forwarded to AXI master with `rresp=OKAY`. Same observability path.
@@ -338,12 +373,12 @@ Multiple logical channels across two AXI ports + NoC + CSR. Protocol-rule IDs in
 
 | Channel | Wires |
 |---------|-------|
-| AW_IN | axi_aw*_i (manager port AW) |
+| AW_IN | axi_aw*_i (slave port AW) |
 | W_IN | axi_w*_i |
 | B_IN | axi_b*_o |
 | AR_IN | axi_ar*_i |
 | R_IN | axi_r*_o |
-| AW_OUT | axi_aw*_o (subordinate port AW) |
+| AW_OUT | axi_aw*_o (master port AW) |
 | W_OUT | axi_w*_o |
 | B_OUT | axi_b*_i |
 | AR_OUT | axi_ar*_o |
@@ -366,8 +401,8 @@ Other spec documents (`channel_api.md`, `channel_handshake.md`, `protocol_rules.
 
 Carries everything the request initiator drives. Two instances in this spec:
 
-- `axi_req_i` — manager port (BFM input; local AXI master drives)
-- `axi_req_o` — subordinate port (BFM output; BFM drives to local AXI slave)
+- `axi_req_i` — slave port (BFM input; local AXI master drives)
+- `axi_req_o` — master port (BFM output; BFM drives to local AXI slave)
 
 Fields: `awvalid`, `awid`, `awaddr`, `awlen`, `awsize`, `awburst`, `awlock`, `awcache`, `awprot`, `awqos`, `awregion`, `awuser`, `awatop`, `wvalid`, `wdata`, `wstrb`, `wlast`, `wuser`, `bready`, `arvalid`, `arid`, `araddr`, `arlen`, `arsize`, `arburst`, `arlock`, `arcache`, `arprot`, `arqos`, `arregion`, `aruser`, `rready`.
 
@@ -377,8 +412,8 @@ Example: `axi_req_i.awvalid` ≡ wire `axi_awvalid_i`. `axi_req_o.aw*` expands t
 
 Carries everything the response responder drives.
 
-- `axi_rsp_o` — manager port (BFM output; BFM drives back to local AXI master)
-- `axi_rsp_i` — subordinate port (BFM input; local AXI slave drives)
+- `axi_rsp_o` — slave port (BFM output; BFM drives back to local AXI master)
+- `axi_rsp_i` — master port (BFM input; local AXI slave drives)
 
 Fields: `awready`, `wready`, `bvalid`, `bid`, `bresp`, `buser`, `arready`, `rvalid`, `rid`, `rdata`, `rresp`, `rlast`, `ruser`.
 

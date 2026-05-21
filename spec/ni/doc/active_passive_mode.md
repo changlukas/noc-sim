@@ -4,8 +4,8 @@
 
 | Capability | Active | Passive |
 |------------|--------|---------|
-| Drives AXI manager port outputs (`axi_rsp_o.*`) | yes | no |
-| Drives AXI subordinate port outputs (`axi_req_o.*`) | yes | no |
+| Drives AXI slave port outputs (`axi_rsp_o.*`) | yes | no |
+| Drives AXI master port outputs (`axi_req_o.*`) | yes | no |
 | Drives NoC outputs (`noc_req_valid_o`, `noc_req_flit_o`, `noc_rsp_valid_o`, `noc_rsp_flit_o`) | yes | no |
 | Drives CSR access port outputs (`csr_axi_rsp_o.*`) | yes | no |
 | Drives NoC credit return + credit-init-ready outputs (`noc_req_credit_o[NUM_VC-1:0]`, `noc_rsp_credit_o[NUM_VC-1:0]`, `noc_*_credit_init_ready_o`) | yes | no — BFM stops participating in credit-based flow control, so it cannot promise buffer space or initiate credit exchange. NoC links un-drained in passive mode (must be paired with a real receiver) |
@@ -46,7 +46,7 @@
 - **Single-NI testbench**: one active NI bridging an AXI master DUT to a stub NoC (router model). Most common for unit-test of an attached IP that uses the NI.
 - **NI-pair testbench**: two active NIs facing each other through a router fabric, used for end-to-end transaction testing (e.g., IP at node A reads from memory at node B).
 - **Mixed (mesh integration regression)**: real RTL NIs at all nodes; one passive NI BFM attached to a chosen node for protocol violation detection without altering DUT behavior.
-- **Forbidden**: two active NIs driving the same AXI manager port or the same NoC link. Only one active driver per link.
+- **Forbidden**: two active NIs driving the same AXI slave port or the same NoC link. Only one active driver per link.
 
 ## Reset interaction
 

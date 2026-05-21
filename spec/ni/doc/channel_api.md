@@ -63,7 +63,7 @@ Each link direction (`noc_req_o`, `noc_req_i`, `noc_rsp_o`, `noc_rsp_i`) has its
 
 ## Per-AXI-channel API
 
-### AW channel — manager port (`axi_req_i.aw*`; inbound to BFM)
+### AW channel — slave port (`axi_req_i.aw*`; inbound to BFM)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
@@ -72,7 +72,7 @@ Each link direction (`noc_req_o`, `noc_req_i`, `noc_rsp_o`, `noc_rsp_i`) has its
 | `wait_for_valid_AW_IN(addr_match=<opt>, id_match=<opt>)` | (status, addr, id, len, ...) | WAITING_READY | Blocks until `axi_req_i.awvalid` observed HIGH on aclk rising edge. State → ENDED. | OK or RESET_DURING_TRANSACTION |
 | `end_phase_AW_IN()` | void | ENDED | `axi_rsp_o.awready` driven LOW. State → IDLE. | OK or ILLEGAL_PHASE |
 
-### AW channel — subordinate port (`axi_req_o.aw*`; outbound from BFM)
+### AW channel — master port (`axi_req_o.aw*`; outbound from BFM)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
@@ -81,7 +81,7 @@ Each link direction (`noc_req_o`, `noc_req_i`, `noc_rsp_o`, `noc_rsp_i`) has its
 | `wait_for_ready_AW_OUT()` | status_t | WAITING_READY | Blocks until `axi_rsp_i.awready` observed HIGH. State → ENDED. | OK or RESET_DURING_TRANSACTION |
 | `end_phase_AW_OUT()` | void | ENDED | `awvalid` driven LOW. State → IDLE. | OK or ILLEGAL_PHASE |
 
-### W channel — manager port (`axi_req_i.w*`; inbound to BFM)
+### W channel — slave port (`axi_req_i.w*`; inbound to BFM)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
@@ -90,7 +90,7 @@ Each link direction (`noc_req_o`, `noc_req_i`, `noc_rsp_o`, `noc_rsp_i`) has its
 | `wait_for_valid_W_IN(last_match=<opt>)` | (status, data, strb, last) | WAITING_READY | Blocks until `axi_req_i.wvalid` HIGH. If `last_match=1`, additionally requires wlast=1. Returns observed (wdata, wstrb, wlast). State → ENDED. | OK or RESET_DURING_TRANSACTION |
 | `end_phase_W_IN()` | void | ENDED | `wready` driven LOW. State → IDLE. | OK or ILLEGAL_PHASE |
 
-### W channel — subordinate port (`axi_req_o.w*`; outbound from BFM)
+### W channel — master port (`axi_req_o.w*`; outbound from BFM)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
@@ -99,7 +99,7 @@ Each link direction (`noc_req_o`, `noc_req_i`, `noc_rsp_o`, `noc_rsp_i`) has its
 | `wait_for_ready_W_OUT()` | status_t | WAITING_READY | Blocks until `axi_rsp_i.wready` HIGH. State → ENDED. | OK or RESET_DURING_TRANSACTION |
 | `end_phase_W_OUT()` | void | ENDED | wvalid driven LOW; wlast deasserted. State → IDLE. | OK or ILLEGAL_PHASE |
 
-### B channel — manager port (`axi_rsp_o.b*`; outbound from BFM)
+### B channel — slave port (`axi_rsp_o.b*`; outbound from BFM)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
@@ -108,7 +108,7 @@ Each link direction (`noc_req_o`, `noc_req_i`, `noc_rsp_o`, `noc_rsp_i`) has its
 | `wait_for_ready_B_IN()` | status_t | WAITING_READY | Blocks until `axi_req_i.bready` HIGH. State → ENDED. | OK or RESET_DURING_TRANSACTION |
 | `end_phase_B_IN()` | void | ENDED | bvalid driven LOW. State → IDLE. | OK or ILLEGAL_PHASE |
 
-### B channel — subordinate port (`axi_rsp_i.b*`; inbound to BFM)
+### B channel — master port (`axi_rsp_i.b*`; inbound to BFM)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
@@ -117,7 +117,7 @@ Each link direction (`noc_req_o`, `noc_req_i`, `noc_rsp_o`, `noc_rsp_i`) has its
 | `wait_for_valid_B_OUT(id_match=<opt>)` | (status, bresp, bid) | WAITING_READY | Blocks until `axi_rsp_i.bvalid` HIGH; optionally requires bid=id_match. Returns (bresp, bid). State → ENDED. | OK or RESET_DURING_TRANSACTION |
 | `end_phase_B_OUT()` | void | ENDED | bready driven LOW. State → IDLE. | OK or ILLEGAL_PHASE |
 
-### AR channel — manager port (`axi_req_i.ar*`; inbound to BFM)
+### AR channel — slave port (`axi_req_i.ar*`; inbound to BFM)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
@@ -126,11 +126,11 @@ Each link direction (`noc_req_o`, `noc_req_i`, `noc_rsp_o`, `noc_rsp_i`) has its
 | `wait_for_valid_AR_IN(addr_match=<opt>, id_match=<opt>)` | (status, addr, id, len, size, burst, prot, qos) | WAITING_READY | Blocks until `axi_req_i.arvalid` HIGH. Returns observed AR fields. State → ENDED. | OK or RESET_DURING_TRANSACTION |
 | `end_phase_AR_IN()` | void | ENDED | arready driven LOW. State → IDLE. | OK or ILLEGAL_PHASE |
 
-### AR channel — subordinate port (outbound from BFM)
+### AR channel — master port (outbound from BFM)
 
 Mirror of AR_IN: `begin_phase_AR_OUT(addr, id, len, size, burst, prot, qos)` → `assert_valid_AR_OUT` → `wait_for_ready_AR_OUT` → `end_phase_AR_OUT`. Drives `axi_req_o.ar*` outputs.
 
-### R channel — manager port (`axi_rsp_o.r*`; outbound from BFM)
+### R channel — slave port (`axi_rsp_o.r*`; outbound from BFM)
 
 | Method | Signature | Legal in state | Side effect | Returns |
 |--------|-----------|----------------|-------------|---------|
@@ -139,7 +139,7 @@ Mirror of AR_IN: `begin_phase_AR_OUT(addr, id, len, size, burst, prot, qos)` →
 | `wait_for_ready_R_IN()` | status_t | WAITING_READY | Blocks until `axi_req_i.rready` HIGH. State → ENDED. | OK or RESET_DURING_TRANSACTION |
 | `end_phase_R_IN()` | void | ENDED | rvalid driven LOW; rlast deasserted. State → IDLE. | OK or ILLEGAL_PHASE |
 
-### R channel — subordinate port (inbound to BFM)
+### R channel — master port (inbound to BFM)
 
 Mirror of R_IN: `begin_phase_R_OUT()` → `assert_ready_R_OUT` → `wait_for_valid_R_OUT(id_match)` → `end_phase_R_OUT`. Returns observed (rdata, rresp, rlast, rid).
 
@@ -198,7 +198,7 @@ Direction convention: BFM (NI subordinate) drives ready signals on inbound chann
 ## Ordering constraints with Transaction API
 
 - **Forbidden**: any Channel API method while a Transaction API call holds the same channel / link. Transaction API ownership flows from the transaction lifecycle (`apply_axi_write` owns AW + W + B; `apply_axi_read` owns AR + R; both hold corresponding NoC link directions). Channel API on those held channels returns `BUSY_TXN_API`.
-- **Permitted**: Channel API on AXI subordinate port while Transaction API on manager port (different channels). Channel API on NoC inbound while Transaction API on NoC outbound (different link directions).
+- **Permitted**: Channel API on AXI master port while Transaction API on slave port (different channels). Channel API on NoC inbound while Transaction API on NoC outbound (different link directions).
 - **Detection**: BFM tracks per-channel ownership; methods check before driving.
 
 ## Behavior under reset

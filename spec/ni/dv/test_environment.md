@@ -1,272 +1,240 @@
-# Test Environment, Patterns & Verification Closure
+# Test Environment
 
-本文件描述每個驗證 stage 的 test environment。每個 stage 一章，章節結構沿用 OpenTitan DV document template。跨階段共用的方法論、I/O 格式、OSS、closure 放在後段 §4 至 §11，各 stage 章節以引用方式連過去，不重複。著重設計與 OSS 運用，不含實作細節。Testpoint 與 coverage 清單見 `plan.md`。
+本文件以驗證 stage 為主軸。Stage P0 定義所有 stage 共用的 pattern 與 4 種 testbench。P1 到 P3 各自套用這 4 種 testbench，只換 DUT 型態（C model 或 RTL）與執行環境。方法論與可信收斂見後段，術語與 OSS 先例見 `verification_terminology.md`。Testpoint 與 coverage 清單見 `plan.md`。
 
 ---
 
 ## 0. 驗證階段總綱
 
-整個專案的驗證分三個階段，由 C model 逐步交給 RTL。一套測試流量沿用全程，每個階段換的是 loop 內的 DUT 與 checker，流量格式不變。每個 stage 自己的 build 與 testbench infra 寫在該 stage 的 Testbench architecture 與 Building and running tests，不另立 infra 階段。
+驗證分四個 stage，由 C model 逐步交給 RTL。每個 stage 都跑同樣 4 種 testbench（NMU 單獨、NSU 單獨、Router 單獨、mixed），一套 pattern 沿用全程。
 
-| 階段 | 受測對象 (DUT) | C model 角色 | 執行環境 | 測試核心 | 過關 (V-milestone) |
-|---|---|---|---|---|---|
-| **P1 C model validation** | C model（AXI 與 NoC 兩端）| **DUT** | Windows，C++ 加 GoogleTest | 單元測試、定點 microbench、合成流量 | C model readiness gate（見 §9.1）|
-| **P2 RTL bring-up** | 一個或多個 RTL block | **reference model**（DPI-C predictor）| Linux 加 VCS | 沿用 P1 流量、directed test、時序校準 | RTL block 對 C 一致、時序容差內（V1 到 V2）|
-| **P3 RTL signoff** | full RTL（NI 加 Router）| **reference model，保留** | Linux 加 VCS，UVM、SVA、formal | 合成流量、定點、constrained-random | coverage 100% 或 waiver、formal proven、soak（V3）|
+| 階段 | 受測對象 (DUT) | C model 角色 | 執行環境 | 過關 (V-milestone) |
+|---|---|---|---|---|
+| **P0 Pattern & TB foundation** | 無（定義共用資源）| 無 | repo / build | pattern 與 4 種 TB 就緒 |
+| **P1 C model validation** | C model | DUT | Windows，C++ / GoogleTest 或 cocotb | C model readiness gate（pre-V1，見 §6.1）|
+| **P2 RTL bring-up** | 一個或多個 RTL block | reference（DPI-C predictor）| Linux + VCS | RTL block 對 C 一致、時序容差內（V1 到 V2）|
+| **P3 RTL signoff** | full RTL | reference，保留 | Linux + VCS，UVM / SVA / formal | coverage 100% 或 waiver、formal proven、soak（V3）|
 
-**共用檔案契約**
+**三條原則**
 
-輸入三類跨階段共用：config、mem_init.hex、traffic-job（text-job）。輸出四類跨階段共用：mem_state.hex、response_log、stats、trace。格式固定，見 §6。變的只有 DUT 與 checker。pattern 是貫穿三個 stage 的常數，infra 則各 stage 自有。P3 即使部分項目不靠 C model，仍輸出同一套檔案，方便回歸比對。
-
-**貫穿全程的原則**
-
-1. 同一套合成流量沿用 P1 到 P3，P3 另加 constrained-random。
-2. 檢查方式逐階段轉移。P1 靠 analytic 公式與 frozen vectors，P2 與 P3 靠 C model reference 加 SVA 與 coverage。
-3. C model 角色轉移。P1 是 DUT，P2 與 P3 是 reference model，保留到 signoff。
-
-**本文件結構**
-
-- §1 到 §3：每個 stage 一章，採 OpenTitan DV document 章節結構。
-- §4 到 §11：跨階段 shared reference（方法論、stack、I/O 格式、流量產生、OSS、closure、術語、related），被各 stage 引用。
-
-**層級說明**
-
-本表是整個 NoC 系統層級的分階段，含 NI 與 Router。`plan.md` 是 NI 單元驗證，對應各 stage 的 NI 部分（P1 的 NI C-model、P2 的 NI block bring-up、P3 的 NI in full RTL）。
+1. 同一套 pattern 沿用 P1 到 P3，P3 另加 constrained-random。
+2. 檢查逐 stage 轉移：P1 用公式與 loopback，P2/P3 用 C reference、SVA、coverage。
+3. C model 角色轉移：P1 被驗，P2/P3 當 reference 並保留。
 
 ---
 
-## 1. Stage P1: C model validation
+## 1. Stage P0: Pattern and testbench foundation
 
-**Goals**：驗證 C model 本身正確，讓它之後能當 reference model。
+定義所有 stage 共用的 pattern 與 4 種 testbench。本身不算驗證，是 P1 到 P3 的前置。
 
-**Current status**：C model readiness gate。通過後 P2 與 P3 才可用它當 reference。判準見 §9.1。
+### 1.1 Pattern 產生
 
-**Design features**：涵蓋 C model 的 AXI 與 NoC 兩端功能與 cycle-level 行為。時序對 analytic 公式與設計意圖驗，尚未對 RTL 校準。不涵蓋 RTL。
+- 一支 Python 產生器產出輸入 pattern 檔（哪些檔由它產，見 §1.2 generation 欄）。
+- 輸入：pattern type（§1.4）、mesh 大小、注入率、交易數、burst 分布。
+- 輸出：每個 endpoint 一個 traffic-job + memory init。
+- OSS：FlooNoC `util/gen_jobs.py`（需 fork 改，見 `verification_terminology.md`）。
 
-**Testbench architecture**
+### 1.2 I/O 檔案契約
 
-- Block diagram：
+所有檔案皆純文字或 hex，SV 端 `$fscanf` / `$readmemh` 直讀，不需 JSON parser。
 
-```mermaid
-flowchart TD
-  IN["config / mem_init / traffic-job"] --> DUT["C model (DUT)"]
-  DUT --> OUT["mem_state / response_log / stats / trace"]
-  OUT --> CHK["compare vs analytic oracle + frozen vectors<br/>replay ABV on trace"]
+| pattern | in/out | format | generation | note |
+|---|---|---|---|---|
+| Config | in | SV parameter + plusargs，C 用 text key=value | pattern gen 或手設 | 配置 DUT（mesh、width、dst node id、delays），不驅介面 |
+| Memory init | in | `.hex`（`$readmemh`）| pattern gen | 寫 payload 來源、memory/DDR 預載 |
+| Traffic job | in | per-endpoint text-job（§1.3）| pattern gen | 每列一筆 AXI transaction，AXI master 逐筆 replay |
+| Expected flit log | golden | text / CSV（每列一 flit）| pattern gen | NMU 期望 flit，pattern gen 依 spec 的 AXI→flit mapping 算（無 OSS），僅硬比 flit 時用（見 §1.5）|
+| Memory state | out | `.hex` | DUT | byte-exact 比對，驗寫入落地 |
+| Response log | out | text / CSV（每列一筆 txn）| DUT | 比對 data + resp-code + 順序，驗讀回 |
+| Flit log | out | text / CSV（每列一 flit）| DUT | 比對 expected flit log |
+| Stats | out | text / CSV | DUT | 不比對（derived）|
+
+memory_state 驗寫資料落地，response_log 驗讀回 rdata、resp code、per-ID 順序，兩者互補。
+
+### 1.3 Traffic-job 格式（採 FlooNoC `gen_jobs.py` / `tb_tasks.svh`）
+
+每個 mesh endpoint 一個 `.txt`，每筆 transaction 十行。範例：4x4 mesh、64KB/node，tile(1,1) 寫 2KB 到 tile(2,2)（node→addr = `(x*NUM_Y + y) * 64KB`）。
+
+```
+2048        # length，bytes
+0x50000     # src_addr，tile(1,1) = (1*4+1)*64KB
+0xa0000     # dst_addr，tile(2,2) = (2*4+2)*64KB
+0           # src_protocol，0 = AXI
+0           # dst_protocol，0 = AXI
+256         # max_src_burst
+256         # max_dst_burst
+0           # r_aw_decouple
+0           # r_w_decouple
+0           # num_errors，大於 0 時後接 per-error 列
 ```
 
-- Top level testbench：Not applicable。GoogleTest 直接呼叫 C API，無 clock 或 reset wiring。
-- Agents：Not applicable。無 protocol interface 被驅動，stimulus 經 C API 進入。
-- UVM RAL Model：Not applicable。
-- Reference models：本階段 C model 是 DUT，不是 reference。golden 來自 analytic 公式、hand-derived frozen vectors、ABV replay on C trace，見 §9.1。
+`dst_addr` 高位即 dst node id（本專案 `dst_addr[39:32] = node_id`），決定 flit 路由目標。一個 spatial pattern（§1.4）對每個 endpoint 套同一規則算 dst，產出整組 per-endpoint job。
 
-**Stimulus strategy**
+### 1.4 Spatial traffic pattern
 
-- Test sequences：directed 單元測試、定點 microbench、合成流量。格式見 §6，產生見 §7。
-- Functional coverage：routing、ordering、ECC、traffic 場景矩陣。
+`uniform · transpose · bit_complement · bit_reverse · bit_rotation · shuffle · tornado · neighbor · hotspot`（加 FlooNoC `matmul` / `hbm`）。出自 Dally & Towles、BookSim、gem5 Garnet。
 
-**Self-checking strategy**
+### 1.5 Testbench configurations（4 種，跨 stage 共用）
 
-- Scoreboard：GoogleTest assertion 比對 C model 輸出與 analytic oracle 及 frozen vectors。
-- Assertions：把 `plan.md` 的 FAIL ABV replay 在 C model trace 上，見 §9.1。
+DUT 方塊在 P1 是 C model，P2/P3 是 RTL。每種 TB 下方列出 block 對應的 OSS 與 golden 方法。AXI 介面 bind AXI protocol checker 檢查協定合法性。
 
-**Building and running tests**：input 是 config、mem_init.hex、traffic-job。output 是 mem_state.hex、response_log、stats、trace。在 Windows 純 C++ 跑，免模擬器。harness 是 GoogleTest，含 build 腳本與 smoke test。
+**TB-A: NMU 單獨**
 
-**Testplan**：對應 `plan.md` 的 NI C-model 項目。過關是全測項通過，達 C model readiness gate（§9.1）。
+```mermaid
+flowchart LR
+  M["AXI master"] -->|"AXI slave port (AW/W/AR)"| DUT["NMU (DUT)"]
+  DUT -->|"REQ_OUT (req flit + per-VC credit)"| MON["flit monitor"]
+  MON --> CHK["flit checker"]
+  REF["expected flit log"] --> CHK
+  PC["AXI protocol checker"] -.bind.- M
+```
+
+- 驗 NMU 的 AXI→flit 封裝。
+- flit-level golden 由 pattern gen 依 spec 的 AXI→flit mapping 產生（獨立於 DUT，無可重用 OSS）。或用 TB-D loopback 改以端到端 AXI 比對，不需 flit golden。
+
+| block | OSS |
+|---|---|
+| AXI master | pulp `axi_rand_master` / `axi_file_master`，cocotbext `AxiMaster` |
+| AXI protocol checker | YosysHQ SVA-AXI4-FVIP |
+| flit monitor | FlooNoC tb / 自寫 |
+| expected flit log | 無 OSS（spec / C-model）|
+
+**TB-B: NSU 單獨**
+
+```mermaid
+flowchart LR
+  FD["flit driver"] -->|"REQ_IN (req flit + per-VC credit)"| DUT["NSU (DUT)"]
+  DUT -->|"AXI master port (AW/W/AR)"| S["AXI slave"]
+  S --> MEM["memory / DDR model"]
+  PC["AXI protocol checker"] -.bind.- S
+```
+
+- 驗 NSU 的 flit→AXI 還原。golden = memory_state byte-exact 加 response_log。
+
+| block | OSS |
+|---|---|
+| flit driver | FlooNoC tb / 自寫 |
+| AXI slave | pulp `axi_rand_slave`，cocotbext `AxiSlave` |
+| memory / DDR | 功能：pulp `axi_sim_mem` / cocotbext `AxiRam`，DDR 時序：DRAMSim3 / Ramulator |
+| AXI protocol checker | YosysHQ SVA-AXI4-FVIP |
+
+**TB-C: Router 單獨**
+
+```mermaid
+flowchart LR
+  FD["flit driver (per port)"] -->|"link (flit + per-VC credit)"| DUT["Router (DUT)"]
+  DUT -->|"link (flit + per-VC credit)"| FM["flit monitor (per port)"]
+```
+
+- 驗 routing、VC、credit、wormhole、arbiter。golden = XY 公式 routing oracle 加 latency。Router 完整 spec 在 noc-sim router 文件（本文件只當 peer）。
+
+| block | OSS |
+|---|---|
+| flit driver / monitor | FlooNoC `tb_floo_router` / 自寫 |
+| traffic pattern | BookSim / gem5 Garnet（pattern 靈感，非 bit-accurate golden）|
+
+**TB-D: Mixed（full chain，loopback）**
+
+```mermaid
+flowchart LR
+  M["AXI master"] -->|"AXI slave port"| NMU["NMU"]
+  NMU -->|"req flit"| R["Router"]
+  R -->|"req flit"| NSU["NSU"]
+  NSU -->|"AXI master port"| S["AXI slave"]
+  S --> MEM["memory / DDR model"]
+  CMP["AXI-in == AXI-out comparator"] -.snoop.- M
+  CMP -.snoop.- S
+  PC["AXI protocol checker"] -.bind.- M
+```
+
+- 全鏈 end-to-end：master → NMU → Router → NSU → slave → memory。
+- golden 為 AXI-in 與 AXI-out 比對（FlooNoC `axi_reorder_compare` 法，允許同 ID reorder），不依賴 flit golden 或 C model golden。
+- 另比對 memory_state byte-exact 與 response_log。
+
+| block | OSS |
+|---|---|
+| AXI master | pulp `axi_rand_master`，cocotbext `AxiMaster` |
+| AXI slave + memory/DDR | pulp `axi_rand_slave` + `axi_sim_mem`，cocotbext `AxiRam`，DDR 用 DRAMSim3 |
+| AXI-in==AXI-out comparator | FlooNoC `axi_reorder_compare`（風格參考）|
+| AXI protocol checker | YosysHQ SVA-AXI4-FVIP |
 
 ---
 
-## 2. Stage P2: RTL bring-up
+## 2. Stage P1: C model validation
 
-**Goals**：用已取信的 C model 當 reference，先驗一個或多個 RTL block。
+**Goals**：驗 C model 本身正確，使其可作為 P2/P3 reference。
+
+**Current status**：C model readiness gate（見 §6.1）。通過後 P2/P3 才可用它當 reference。
+
+**Environment**：Windows，純 C++ / GoogleTest，免模擬器。若要一份 stimulus 同時驅 C 與 RTL，可改 cocotb（cocotbext-axi）。
+
+**Testbench**：套用 §1.5 的 4 種 TB，DUT 方塊 = C model（C NMU / C NSU / C Router / C full）。
+
+| TB | DUT | golden / 比對 |
+|---|---|---|
+| TB-A NMU | C NMU | flit checker（reference 來自 spec/C，flit golden 無 OSS）|
+| TB-B NSU | C NSU | memory_state + response_log |
+| TB-C Router | C Router | XY oracle + latency |
+| TB-D mixed | C full chain | **AXI-in == AXI-out loopback**（首選，不需 flit golden）+ memory_state + response_log |
+
+**Self-checking**：將 `plan.md` 的 FAIL ABV rule replay 到 C model signal trace（見 §6.1）。
+**Testplan**：對應 `plan.md` 的 NI C-model 項目。過關達 §6.1 readiness gate。
+
+---
+
+## 3. Stage P2: RTL bring-up
+
+**Goals**：用已通過 P1 readiness gate 的 C model 當 reference，先驗一個或多個 RTL block。
 
 **Current status**：V1 到 V2。前提是 P1 已過 readiness gate。
 
-**Design features**：涵蓋單一或部分 RTL block。NI block 看 AXI 與 flit 轉換、RoB、ECC、暫存器。Router block 看繞路、VC、credit、wormhole、仲裁。哪些 block 是 RTL 屬 composition 參數，不是不同方法論。時序從這裡開始對 RTL 校準，見 §9.3。
+**Environment**：Linux + VCS。C model 經 DPI-C 包進同一 SV harness 當 reference predictor。RTL DUT 直接接 AXI master/slave VIP。
 
-**Testbench architecture**
+**Testbench**：套用 §1.5 的 4 種 TB，DUT 方塊 = 單一或多個 RTL block，C model 當 reference。
 
-- Block diagram：
+| TB | DUT | reference / 比對 |
+|---|---|---|
+| TB-A NMU | RTL NMU | C NMU（DPI-C）算 expected flit，或直接走 TB-D loopback |
+| TB-B NSU | RTL NSU | memory_state + response_log（AXI slave + memory，不需 C reference）|
+| TB-C Router | RTL Router | C Router（DPI-C）+ XY oracle |
+| TB-D mixed | RTL NMU+NSU(+Router) | **AXI-in == AXI-out loopback** + memory_state + response_log |
 
-```mermaid
-flowchart TD
-  IN["input files"] --> ENV
-  subgraph ENV["C model environment (surrogate)"]
-    DUT["DUT: one or more RTL block"]
-  end
-  ENV -->|monitor| SB["scoreboard"]
-  REF["C model (reference, DPI-C predictor)"] -->|expected| SB
-```
-
-- Top level testbench：clock 與 reset、RTL block 連接、C model 經 DPI-C 綁入。
-- Agents：SV driver 與 sequencer 驅動 DUT，是 stimulus boundary。monitor 觀測 DUT 輸出，是 observation boundary。
-- UVM RAL Model：若該 block 含 CSR 存取則用，否則 Not applicable。
-- Reference models：C model 經 DPI-C，同時當 reference model 與 environment surrogate，補上非 RTL 的 block。
-
-**Stimulus strategy**
-
-- Test sequences：沿用 P1 流量，由 C model 經 DPI-C 注入，directed corner 補強。
-- Functional coverage：該 block 的 covergroups。
-
-**Self-checking strategy**
-
-- Scoreboard：RTL block 介面輸出對 C reference 比對。功能 byte-exact，時序在容差內。
-- Assertions：該 block 的 SVA。
-
-**Building and running tests**：input 與 output 檔同 P1，見 §6。在 Linux 加 VCS 跑，含該 stage 的 DPI-C bridge 與 build flow。
-
+**時序**：從這裡開始對 RTL 校準（見 §6.3）。
 **Testplan**：對應 `plan.md` 的 block-level testpoint。過關是 RTL block 對 C 一致、時序容差內、block coverage 達 V2。
 
 ---
 
-## 3. Stage P3: RTL signoff
+## 4. Stage P3: RTL signoff
 
-**Goals**：full RTL 為 DUT，C model 保留當 reference，做最終收斂。
+**Goals**：full RTL 為 DUT，C model 保留當 reference，最終收斂。
 
 **Current status**：V3。
 
-**Design features**：涵蓋 full RTL，含 NI 與 Router。加 constrained-random 衝覆蓋率。
+**Environment**：Linux + VCS，UVM / SVA / formal / nightly regression。
 
-**Testbench architecture**
+**Testbench**：以 §1.5 TB-D（mixed full RTL）為主，加 constrained-random，TB-A/B/C 作 corner 補強。AXI protocol checker 全程 bind。
 
-- Block diagram：
-
-```mermaid
-flowchart TD
-  IN["input files + constrained-random"] -->|UVM driver / sequencer| DUT["DUT: full RTL"]
-  DUT -->|monitor| SB["scoreboard (differential)"]
-  REF["C model (reference, DPI-C predictor)"] -->|expected| SB
-  DUT -.-> SVA["SVA"]
-  DUT -.-> COV["coverage collector"]
-  FORMAL["formal (runs separately)"]
-```
-
-- Top level testbench：full RTL 連接，C model 經 DPI-C 綁入當 predictor。
-- Agents：SV driver 與 sequencer（含 constrained-random），monitor。
-- UVM RAL Model：若有 CSR 則用。
-- Reference models：C model 保留於 testbench。
-
-**Stimulus strategy**
-
-- Test sequences：合成流量、定點、constrained-random，見 §7。
-- Functional coverage：full coverage model。
-
-**Self-checking strategy**
-
-- Scoreboard：differential，C reference 對 full RTL。data 與 response byte-exact，時序在 sync point 精確、整體用 correlation，見 §9.3。
-- Assertions：full SVA。formal 另跑。
-
-**Building and running tests**：input 與 output 檔同 P1，見 §6。在 Linux 加 VCS 跑，含 UVM、SVA、formal 與 nightly regression。
-
-**Testplan**：對應 `plan.md` 全表。過關是 coverage 100% 或 waiver、formal proven、多 seed soak，達 V3，見 §9。部分項目如 local SVA、FPV、coverage-only regression 不需 reference model，此時 C model 可離線產 expected vectors。
-
----
-
-## 4. 方法論
-
-C model + RTL co-sim：高階 C model 驗效能，模型正確後當 reference model 與 RTL co-sim。Scope = NI + Router（整個 NoC）。C model 同時是 perf model 與 reference model。
-
-對齊先例：BookSim2 與 gem5 Garnet（C++ NoC perf model），加 Spike 與 Ibex cosim（reference-model lockstep）。
-
----
-
-## 5. Stack 與環境分工
-
-SV stack（非 cocotb）：`plan.md` 已是 SV/UVM 形狀（每條 FAIL rule 一條 SVA、covergroups、FPV），VCS 是 SV/UVM/SVA/DPI-C 原生，可重用的 OSS 多為 SV。改 cocotb 等於重寫既有計畫。
-
-| 環境 | 跑什麼 | 工具 | 需 VCS |
-|---|---|---|---|
-| Windows（本機）| C-model 開發 + C-model 自驗 tier-1（GoogleTest、routing/latency oracle、frozen golden vectors）| 純 C++ / GoogleTest | 否 |
-| Windows（選配）| C↔RTL co-sim 快速 bring-up | Verilator（OSS，DPI-C/C++ 友善，SVA 有限、無 UVM）| 否 |
-| Linux + VCS | RTL sim、co-sim（DPI-C）、SVA（FAIL ABV 跑 RTL 加 replay C-trace）、UVM/pulp axi_test、covergroups、formal | VCS + SV OSS + VC Formal / SymbiYosys | 是 |
-
-同一組 ABV SVA 兼驗 C-model trace（replay）與 RTL（co-sim），單一 assertion 來源，兩條 trace。
-
----
-
-## 6. I/O Pattern 格式（全 text，無 JSON）
-
-一組 pattern = 3 input → model/RTL → 3 output。所有檔案皆為純文字或 hex，SV 端用 `$fscanf` / `$readmemh` 直讀，不需 JSON parser。
-
-| # | 角色 | 格式 | 讀取方式 | golden 比對 |
-|---|---|---|---|---|
-| 1 | Config | SV `parameter` + `+plusargs`（runtime 旋鈕），C-model 用 text `key=value` | `$value$plusargs` / fstream | N/A |
-| 2 | Memory init | `.hex`（`$readmemh` 格式）| `$readmemh` / C++ fstream | N/A |
-| 3 | Traffic job | per-endpoint text-job（§6.1）| SV `$fscanf` / C++ fstream | N/A |
-| 4 | Memory state | `.hex` | dump 比對 | byte-exact |
-| 5 | Response log | text / CSV（每列一筆 txn）| 逐列比對 | data + resp-code exact |
-| 6 | Stats | text / CSV | N/A | 不比對（derived）|
-
-### 6.1 Traffic job 格式（text-job，採 FlooNoC `gen_jobs.py` / `tb_tasks.svh`）
-
-每個 mesh endpoint 一個 `.txt`，每筆 transaction 依序：
-
-```
-<length-bytes>
-<hex src_addr>          # src node 的 mem 區（addr 高位編碼 node_id）
-<hex dst_addr>          # dst node 的 mem 區
-<src_protocol>          # 0 = AXI
-<dst_protocol>          # 0 = AXI
-<max_src_burst_size>
-<max_dst_burst_size>
-<r_aw_decouple>         # 0/1
-<r_w_decouple>          # 0/1
-<num_errors>            # >0 時後接 per-error 描述列
-```
-
-範例（tile(1,1) 寫 2KB 到 tile(2,2)，node→addr = `(x*NUM_Y + y) * MEM_SIZE`，等同本專案 `dst_addr[39:32] = node_id`）：
-
-```
-2048
-0x50000
-0xa0000
-0
-0
-256
-256
-0
-0
-0
-```
-
-Config 用 plusargs（如 FlooNoC 的 `+JOB_NAME` / `+JOB_DIR`）加 SV parameter，不用 JSON。memory init 用 `$readmemh` hex。response-log 與 stats 用 CSV，不用 JSON。
-
-### 6.2 Spatial traffic pattern
-
-決定各 endpoint 目的地分布的標準合成 pattern（出自 Dally & Towles《Principles and Practices of Interconnection Networks》與 BookSim、gem5 Garnet）：
-
-`uniform · transpose · bit_complement · bit_reverse · bit_rotation · shuffle · tornado · neighbor · hotspot`（加 FlooNoC 的 `matmul` / `hbm`）。
-
----
-
-## 7. Pattern 產生方式
-
-Python 產生器：輸入 `(pattern_type, mesh 大小, injection_rate, N_txns, burst/size 分布)`，依 spatial pattern 算各 endpoint 目的地，吐 per-endpoint traffic-job 加 memory init。
-範例（FlooNoC 介面）：`make jobs TRAFFIC_TYPE=transpose` 產 `mesh_0.txt` 到 `mesh_15.txt`。
-C-model 讀 job 跑出 golden output，同一組餵 RTL co-sim 比對。
-
----
-
-## 8. 可重用 OSS
-
-| 需要 | 現有 code | 實際重用程度（落地） |
+| TB | DUT | 比對 |
 |---|---|---|
-| Pattern 產生器（Python）| **FlooNoC `util/gen_jobs.py`** | fork/template：`NUM_X/NUM_Y/MEM_SIZE` 是腳本常數、無 `injection_rate` 排程、不產 memory init、burst/size 分布有限 |
-| Spatial pattern 定義 | gen_jobs.py + **gem5 `garnet_synth_traffic.py`** | 抄定義（pattern 名稱加 destination function）|
-| Text-job reader（SV）| **FlooNoC `tb_tasks.svh`** + **`floo_dma_test_node.sv`**（本機確認有，iDMA job-flow）| 改：是 iDMA-shaped job（含 n_dims strides），給 plain AXI 要調整 |
-| AXI driver | **FlooNoC `floo_axi_test_node.sv`** = random AXI node（`axi_rand_master`，非 job-reader），file-driven 用 **pulp `axi_file_master`** | 當 random driver 模板，逐 job replay 的 sequencer 要自寫或接 `axi_file_master` |
-| AXI slave / memory model | pulp `axi_test::axi_rand_slave` / FlooNoC `floo_axi_rand_slave.sv` | 直接用（AXI 層）|
-| Memory init 讀取 | `$readmemh` / C++ fstream | 標準，直接用 |
-| Ordering 檢查 | **FlooNoC `axi_reorder_compare.sv`** / pulp `axi_scoreboard` | 只覆蓋 same-ID ordering 加 AXI 欄位，不懂 flit/ECC/route_par/QoS/CSR/memory，非 full golden |
-| ECC encode/decode | **OpenTitan `secded_gen.py`** | 需 fork/extend：原 script 限 `k≤120`，whole-flit 約 396-bit 超過，需放寬加固定 H-matrix 加產 RTL/C 同源 |
-| Formal | **SymbiYosys + Yosys**（OSS）或 VCS VC Formal | 只適合小型抽取目標（credit counter、arbiter、small FIFO、ECC logic），full NI+Router deadlock-freedom 需抽象 CDG proof 或商用 formal |
-| Closure / testplan | **OpenTitan `dvsim` / testplanner** | 需導入流程：寫 hjson cfg、coverage merge adapter、dashboard |
-| Network 層 perf baseline | **BookSim2 / gem5 Garnet**（cycle-accurate，僅 network/flit 層）| network-layer differential，非 AXI golden，見 §6.2 與 §9.3 |
+| TB-D mixed | full RTL + C reference | differential scoreboard（C reference）+ AXI-in==AXI-out + memory_state + response_log + SVA + coverage |
+| TB-A/B/C | full RTL block 視角 | corner / coverage 補強 |
 
-自寫部分（不是只對映欄位）：job sequencer（逐 job replay）、C/RTL trace adapter（給 ABV replay 與 timing 比對）、AXI↔flit scoreboard（flit/ECC/QoS/CSR/memory，OSS 不覆蓋）、timing microbench harness（§9.3）。OSS 提供 stimulus、AXI VIP、ordering check、ECC gen、formal 工具、pattern 定義的材料，整合與 NoC-specific 檢查仍需自建。
+**Self-checking**：differential（C reference 對 full RTL），data 與 response byte-exact，時序在 sync point 精確、整體 correlation（見 §6.3）。formal 另跑。
+**Testplan**：對應 `plan.md` 全表。過關是 coverage 100% 或 waiver、formal proven、多 seed soak。部分項目（local SVA、FPV、coverage-only）不需 reference model。
 
 ---
 
-## 9. 可信收斂（Verification Closure）
+## 5. 方法論
+
+C model + RTL co-sim：C model 先完成功能與效能校準，再作為 RTL co-sim 的 reference。Scope = NI + Router（整個 NoC）。
+
+**SV stack（預設）**：`plan.md` 已採 SV/UVM 結構（每條 FAIL rule 一條 SVA、covergroups、FPV），VCS 原生支援 SV/UVM/SVA/DPI-C，可重用 OSS 多為 SV。改用 cocotb 需重建 testplan、checker 與 coverage。例外：若需一份 stimulus 同時驅 C model 與 RTL，且 C model 不適合整合進 SV simulator，可改走 cocotb（cocotbext-axi）。
+
+對齊先例：BookSim2 與 gem5 Garnet（C++ NoC perf model），加 Spike 與 Ibex cosim（reference-model lockstep）。詳見 `verification_terminology.md`。
+
+---
+
+## 6. 可信收斂（Verification Closure）
 
 採 OpenTitan V1/V2/V3 stage gate，非只看 coverage 數字：
 
@@ -276,73 +244,54 @@ C-model 讀 job 跑出 golden output，同一組餵 RTL co-sim 比對。
 | V2 | functional coverage 至少 90% 且全實作，所有 assertion 寫好，end-to-end scoreboard enabled，P0/P1 bug 關閉 |
 | V3 | coverage 100%（或 review 過 waiver），formal/assertion 100% proven，多 seed soak 至少 1 week 全過，無未解釋 waiver |
 
-### 9.1 命門：C-model 自身正確度（對應 P1，先做，否則 co-sim 循環論證）
+### 6.1 C model 自身正確度（reference 資格前提，對應 P1）
 
-C-model 當 reference 前必須獨立取信。C 與 RTL 不一致時，co-sim 不會告訴你誰對。本專案資產足夠，多為接線：
+C model 作為 reference 前，先完成以下獨立檢查：
 
-1. 把 `plan.md` 已規劃的 FAIL ABV SVA replay 在 C-model 自己的 signal trace 上，C-model 自證 protocol 合規，不依賴 RTL。
-2. XY 公式當 routing oracle：all-pairs sweep 比對 realized hop 序列。
-3. analytic zero-load latency 當 perf oracle：C 必須 ±0 match（hops × pipeline depth + NI +1）。
-4. frozen hand-derived golden vectors 入 `patterns/`，破 capture-at-source 的搬運恆等式循環。
-5. RoB 與 ECC 的 FPV proof（`plan.md` 已 scope）。
+1. 將 `plan.md` 的 FAIL ABV rule replay 到 C model 的 signal trace（各 TB 協定合規）。
+2. XY 公式當 routing oracle：all-pairs sweep 比對 realized hop 序列（TB-C）。
+3. analytic zero-load latency 當 perf oracle：C 必須 ±0 match（TB-C / TB-D）。
+4. frozen hand-derived golden vectors 入 `patterns/`（TB-A NMU、TB-B NSU 的 sub-block golden）。
+5. RoB 與 ECC 的 FPV proof（`plan.md` 已 scope，TB-A 內部）。
+6. TB-D loopback：trusted AXI master 驅動全鏈，端到端比對 AXI-in 與 AXI-out（TB-D）。
 
-C-model sign-off 等於上述全過。
+C model sign-off：上述全部通過。
 
-### 9.2 逐子項目收斂判準
+### 6.2 逐子項目收斂判準
 
 | 子項目 | 收斂判準 | 工具 / 資產 | OT stage |
 |---|---|---|---|
-| C-model 自正確 | ABV 過 C-trace + frozen 向量 + XY/latency oracle + RoB/ECC FPV | 既有 ABV/FPV 加公式 oracle | V1 到 V3 |
-| C↔RTL equivalence | data/resp/memory byte-exact + ABV 過兩 trace + bin-closure 0 mismatch | 既有 co-sim 加 ABV | V2 到 V3 |
-| AXI compliance | rule→SVA→TP→bin traceability 0 orphan，解掉所有 `(unverified)` | pulp axi_test / AMD AXI checker | V1 到 V3 |
-| AXI ordering / RoB | FPV proof（非 bounded-cex）per-ID order==issue order + `cg_rob_state_machine` 100% | 既有 FPV、FlooNoC axi_reorder_compare | V2/V3 |
+| C model 自正確 | ABV 過 C-trace + frozen 向量 + XY/latency oracle + RoB/ECC FPV + loopback | 既有 ABV/FPV 加公式 oracle 加 TB-D | pre-V1，V2/V3 再確認 |
+| C↔RTL equivalence | data/resp/memory byte-exact + ABV 過兩 trace + AXI-in==AXI-out 0 mismatch | co-sim 加 ABV 加 TB-D | V2 到 V3 |
+| AXI compliance | AXI protocol checker（SVA）0 violation + rule→SVA→TP traceability | YosysHQ SVA-AXI4-FVIP / pulp axi_test | V1 到 V3 |
+| AXI ordering / RoB | FPV proof per-ID order==issue order + `cg_rob_state_machine` 100% | 既有 FPV、FlooNoC axi_reorder_compare | V2/V3 |
 | Routing | all-pairs realized hop == XY analytic | XY 公式 oracle | V2 |
 | Credit conservation | 不變量升 always-on SVA，regression 0 violation | SymbiYosys | V2/formal V3 |
-| Deadlock freedom | acyclic CDG/VC 證明 + FPV arbiter liveness + per-txn completion watchdog（非 threshold heuristic）| VC Formal / SymbiYosys | V2 分析/V3 formal |
+| Deadlock freedom | acyclic CDG/VC 證明 + FPV arbiter liveness（非 threshold heuristic）| VC Formal / SymbiYosys | V2 分析/V3 formal |
 | Wormhole | always-on SVA：first-grant→last=1 無異包 flit、vc_id 不變 | SVA | V2/V3 |
-| ECC | exhaustive single-bit FPV + double-bit 取樣數明寫 + `cg_ecc` 100% | secded_gen | V2/V3 |
-| Performance | zero-load ±0 vs analytic + saturation curve + loaded ±5% vs RTL | BookSim2/Garnet baseline | V2/V3 |
-| Cycle-accuracy | 見 §9.3（時序軸）| directed microbench 加 RTL 校準 | V3 selected configs |
+| ECC | exhaustive single-bit FPV + double-bit 取樣 + `cg_ecc` 100% | secded_gen | V2/V3 |
+| Performance | zero-load ±0 vs analytic + saturation curve + loaded ±5% vs RTL（timing 軸見 §6.3）| BookSim2/Garnet baseline | V2/V3 |
+| Cycle-accuracy | 見 §6.3 | directed microbench 加 RTL 校準 | V3 selected configs |
 
-### 9.3 時序軸收斂（cycle-accuracy calibration，對應 P2、P3）
+### 6.3 時序軸收斂（cycle-accuracy calibration，對應 P2、P3）
 
-§9.1 與 §9.2 多屬功能軸（C model 當 reference，用 oracle 取信）。cycle-accurate C model 的時序不能自證。RTL 是時序真值，且不該追「所有 cycle 微狀態的高覆蓋」（buffer × arb × credit × VC × pipeline 狀態爆炸，且無獨立 cycle golden，會循環）。時序收斂改用 directed microbench 對 RTL 校準。
-
-Trace schema（每 cycle 記錄，供 ABV replay 與 timing 比對）：AXI handshakes、NoC valid/ready/credit、flit header、router input/output grant、vc_id、wormhole lock、RR pointer、queue depth、RoB state、CDC FIFO observable events。
+cycle-accurate C model 的 timing 以 RTL 為基準，用 directed microbench 校準。不覆蓋所有 cycle-level microstate。
 
 Microbench suite（每筆定義 stimulus、觀測點、期望 cycle、容差、覆蓋 class）：zero-load single flit、multi-hop XY、W-burst wormhole lock、AR blocked during W、same-cycle AW/AR RR tie、VC contention、credit starvation/recovery、RoB full/backpressure、same-ID reorder release、QoS no-preempt、CDC ratio 1:1 / 2:1 / 1:2。
 
-容差分級：single-clock deterministic path = ±0。CDC crossing = 明確 phase-dependent envelope。loaded aggregate latency/throughput = ±5%（perf correlation，非 cycle-exact equivalence）。
+容差分級：single-clock deterministic path = ±0。CDC crossing = 明確 phase-dependent envelope。loaded aggregate = ±5%（perf correlation，非 cycle-exact equivalence）。
 
-時序軸「高覆蓋」的定義是 structural / microbenchmark / contention-scenario-class coverage（每個 `*_DELAY` knob 各被獨立驗、每類 contention 場景被覆蓋），不是 random 撞 cycle microstates。
+timing coverage 採 structural、microbenchmark、contention-scenario class。
 
-Network-layer differential（BookSim2 / Garnet，唯一的時序獨立交叉檢查）：剝掉 AXI，用同一 topology 加 synthetic traffic，比 router/link/VC/credit 子系統的 hop latency、saturation、latency curve。比較時分離 NI overhead（pack/unpack、`CUT_AX`/`CUT_RSP`、CDC、RoB release）。僅 network/flit 層，不含 AXI/NI/memory，故不可作端到端 golden。
-
----
-
-## 10. 術語與 OSS 先例對映
-
-本方法論的標準術語（非自創）：`co-simulation`、`lockstep / step-and-compare`、`differential testing`、`directed / synthetic microbenchmark validation`、`trace-based validation`、`calibration / correlation`、`golden / reference model checking`、`regression`。Verification 是符合 spec，Validation 是符合現實/RTL（perf 對得上）。本方法論兩者都做。
-
-本設計是 hybrid（cycle-accurate NoC perf model 又當 RTL reference），無單一 OSS 全等。按軸對映先例：
-
-| 軸 | 先例 | 借用 | 差異 |
-|---|---|---|---|
-| 功能 reference + RTL co-sim 結構 | **Ibex / Spike lockstep** | reference 與 RTL 在明確同步點（transaction 完成 / 介面事件，非每內部 cycle）differential | Spike 是功能 ISS、無 timing |
-| reference 自身取信（無外部 golden）| **Spike 取信法** | 靠 spec（`protocol_rules`）衍生 ABV + analytic oracle + frozen vectors，見 §9.1 | DRAMSim 有 vendor golden，本設計沒有，更靠 spec-derived |
-| timing / perf fidelity | **gem5 Garnet** | synthetic traffic + latency-throughput curve + correlation，見 §9.3 | Garnet 不做 RTL-reference co-sim、不模 AXI |
-| 介面 per-cycle 協定合法性（AXI handshake / credit / VC）| **DRAMSim / Ramulator trace-to-RTL** | C model 產 trace，replay 過 RTL 檢查介面合法 | DRAMSim 信 RTL 驗 C（方向相反）|
-
-定位句：以 spec-derived oracle/ABV 取信的 cycle-accurate NoC C++ reference model，與 RTL 做 differential co-simulation。功能在 transaction 與介面同步點 cycle-exact 比對，bulk timing 用 synthetic-traffic latency-throughput correlation 校準。
-
-OSS 是否真追 cycle-exact：多數（gem5、Garnet、BookSim、Noxim）不追全系統 cycle-exact，只驗 latency-throughput fidelity。僅在介面協定逐 cycle contract（AXI handshake、credit/VC）才 cycle-exact，bulk 用 correlation。本設計的容差分級（§9.3）即依此。
-
-必讀：Ibex cosim docs（co-sim 結構，硬體 DV 最易上手），接 gem5 Garnet（NoC timing 驗證），接 DRAMSim2 paper（trace-to-RTL 介面技術）。
+Network-layer differential（BookSim2 / Garnet）：移除 AXI，同一 topology 加 synthetic traffic，比對 router/link/VC/credit 的 hop latency 與 throughput，分離 NI overhead。僅 network/flit 層。
 
 ---
 
-## 11. Related
+## 7. Related
 
 - `plan.md`：testpoints、coverage model、ABV-FPV 清單。
-- `../doc/02_flit.md`：flit 格式（pattern 的 wire-level 對應）。
+- `verification_terminology.md`：標準術語、OSS 先例對映、驗證資源 OSS 清單、使用範圍與限制。
+- `../doc/signal_interface.md` §Per-block interface summary：NMU / NSU / Router 介面定義。
+- `../doc/02_flit.md`：flit 格式。
+- AXI→flit mapping 權威來源（expected flit golden 依據）：`../doc/theory_of_operation.md`（NMU 封裝架構）、`../doc/protocol_rules.md`（WSTRB regen 等規則）。
 - 系統級 C-model 平台與 co-sim 機制：noc-sim `docs/design/08_simulation.md`、`09_verification.md`。
