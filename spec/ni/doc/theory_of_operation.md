@@ -112,7 +112,7 @@ Reset behavior: cleared on `arst_ni` (AXI domain).
 
 NSU-side state for AXI4 Exclusive Access (LDREX/STREX-style atomic primitives via AxLOCK=Exclusive). Tracks pending Exclusive read reservations and validates Exclusive write attempts.
 
-Behavior summary (full normative behavior in `protocol_rules.md` `AXI4_EXCLUSIVE_*` rules):
+Behavior summary (full normative behavior in `protocol_rules.md` `AXI4_SLV_EXCLUSIVE_*` rules):
 
 - **Exclusive AR (AxLOCK=01)**: NSU records `(axi_id, awaddr, awsize, awlen)` into an exclusive-monitor entry. AXI4 restricts Exclusive bursts to single-beat (`awlen=0`); Exclusive cache-line-aligned, naturally-aligned sizes only.
 - **Exclusive AW + W**: NSU checks each Exclusive AW arrival's `(axi_id, awaddr, awsize, awlen)` against pending entries. Match → write proceeds, `bresp=EXOKAY`. Mismatch (different ID, different addr, or a normal write to the same line in between) → write becomes a *normal* write (still committed to memory) but `bresp=OKAY` (not EXOKAY).
@@ -560,7 +560,7 @@ Cross-domain partial reset → CDC FIFO is in inconsistent state; integrator mus
 |---|---|
 | `set_response_delay_axi` / `set_response_delay_noc` | **Test-only.** RTL has fixed pipeline timing (`CUT_AX` / `CUT_RSP` synthesis params only). BFM knob exists for stress-testing master DUT response-latency tolerance. |
 | `set_inject_ecc_error(channel, kind)` | **Test-only.** RTL only generates ECC errors when input data is genuinely corrupted (single-event upset, etc.). BFM knob exists for stress-testing downstream ECC-handling paths. |
-| `set_response_fault(channel, SLVERR/DECERR)` | **Test-only.** RTL only generates SLVERR/DECERR on real conditions: AXI 4KB boundary crossing (`AXI4_SLV_AW_BURST_4KB_BOUNDARY` / `AXI4_SLV_AR_BURST_4KB_BOUNDARY`), unmapped address (`AXI4LITE_SLV_UNMAPPED_DECERR` for CSR access; SAM no-match for data-path), Exclusive monitor overflow (`AXI4_EXCLUSIVE_MONITOR_OVERFLOW`). **flit_ecc uncorrectable does NOT generate SLVERR** — the corrupted flit is forwarded with `bresp/rresp=OKAY` and the error surfaces only via CSR + IRQ (per (B)-philosophy ECC scheme; see §ECC §"Double-bit (uncorrectable) errors"). |
+| `set_response_fault(channel, SLVERR/DECERR)` | **Test-only.** RTL only generates SLVERR/DECERR on real conditions: AXI 4KB boundary crossing (`AXI4_SLV_AW_BURST_4KB_BOUNDARY` / `AXI4_SLV_AR_BURST_4KB_BOUNDARY`), unmapped address (`AXI4LITE_SLV_UNMAPPED_DECERR` for CSR access; SAM no-match for data-path), Exclusive monitor overflow (`AXI4_SLV_EXCLUSIVE_MONITOR_OVERFLOW`). **flit_ecc uncorrectable does NOT generate SLVERR** — the corrupted flit is forwarded with `bresp/rresp=OKAY` and the error surfaces only via CSR + IRQ (per (B)-philosophy ECC scheme; see §ECC §"Double-bit (uncorrectable) errors"). |
 | `bfm_mode = ACTIVE / PASSIVE` | **Test-only.** RTL is always active; PASSIVE is a verification convenience only. |
 | `apply_axi_*` / `expect_axi_*` / `expect_noc_*` | **Test-only.** RTL is the DUT (in some scenarios) or the AXI responder (in others); it has no method API. |
 | `get_observed_*` lists | **Test-only.** RTL has no observation buffers; observation happens via the BFM (in passive mode) or external scoreboards. |

@@ -1,5 +1,7 @@
 # DV Plan
 
+> 測試環境、I/O pattern（text-job）、pattern 產生、可重用 OSS、與可信收斂(closure)框架見 `test_environment.md`。本文件聚焦 testpoint / coverage model / ABV-FPV 清單。
+
 ## Verification scope
 
 Verify the NI against:
@@ -37,7 +39,7 @@ Mapping README Features → testpoints (per stage gate D1.dv.testpoints requirem
 | TP2 | AXI4 full protocol conversion | Same for AXI reads. | AXI4 AR/R rules; XCH_R_AFTER_AR; XCH_R_LAST_CONSISTENT |
 | TP3 | AXI4 burst handling | Burst writes (awlen ∈ {1, 7, 15}); verify N+1 W flits per burst, all carrying same axi_id; verify single B response with correct id. | AXI4_MST_AW_AWLEN_STABLE; NOC_FLIT_AW_W_ORDER |
 | TP4 | AXI4 burst handling | Burst reads; verify wormhole-locked R flit sequence; final beat carries RLAST=1. | AR/R rules; XCH_R_LAST_CONSISTENT |
-| TP5 | RoB Normal mode (NormalRoB) | Issue 32 outstanding reads with mixed axi_id; randomize NoC response order; verify per-id in-order release at AXI; verify cross-id reordering. | AXI4_MST_RoB_PER_ID_ORDER |
+| TP5 | RoB Normal mode (NormalRoB) | Issue 32 outstanding reads with mixed axi_id; randomize NoC response order; verify per-id in-order release at AXI; verify cross-id reordering. | AXI4_MST_ROB_PER_ID_ORDER |
 | TP6 | RoB Simple mode (SimpleRoB) | Same with SimpleRoB; verify FIFO ordering across all txnIDs (different IDs serialised). | RoB_PER_ID_ORDER |
 | TP7 | RoB NoRoB mode | Single-outstanding; verify next request stalls until previous completes. | RoB_OUTSTANDING_LIMIT |
 | TP8 | flit_ecc single-bit corrected on W | Inject 1-bit error in W flit at NMU egress (`set_inject_ecc_error(W, SINGLE_BIT)`); verify NSU sink corrects silently, increments `ECC_CORR_ERR_CNT` (saturating, no clear path), forwards corrected data to local AXI slave with `bresp=OKAY`; verify `ECC_UNCORR_ERR_CNT`, `ERR_STATUS[0]`, `LAST_ERR_INFO`, `irq_o` all unchanged. | NOC_FLIT_HDR_FLIT_ECC_GEN; NOC_FLIT_HDR_FLIT_ECC_CHECK |
@@ -74,9 +76,9 @@ Mapping README Features → testpoints (per stage gate D1.dv.testpoints requirem
 | TP34 | NMU-only / NSU-only configurations | Build BFM with `EN_MGR_PORT=1, EN_SBR_PORT=0`; verify NSU signals tied to inactive defaults; mirror with NSU-only. Coverage of `D1.bfm.signal_interface` parameter constraints. | (configuration-only, no protocol rule directly) |
 | TP35 | Probe accuracy under sustained load | Configure PKT_PROBE_EN with various PKT_WINDOW_SIZE; issue traffic at known bandwidth; verify reported PKT_BANDWIDTH within ±5% of actual (target accuracy). | NI_CFG_PROBE_PKT_BYTE_COUNT |
 | TP36 | Long-tail latency capture | Configure TXN_PROBE thresholds (e.g., 10/100/1000/10000 cycles); inject long-tail-latency traffic; verify all 5 bins populated correctly. | NI_CFG_PROBE_TXN_LATENCY |
-| TP37 | RoB exhaustion / back-pressure | Issue MAX_TXNS+1 outstanding transactions in rapid succession; verify NMU asserts back-pressure on awready / arready until RoB slot frees; verify no transaction loss. | AXI4_MST_RoB_OUTSTANDING_LIMIT |
+| TP37 | RoB exhaustion / back-pressure | Issue MAX_TXNS+1 outstanding transactions in rapid succession; verify NMU asserts back-pressure on awready / arready until RoB slot frees; verify no transaction loss. | AXI4_MST_ROB_OUTSTANDING_LIMIT |
 | TP38 | RoB FREE entry allocation policy | Issue 5 transactions to RoB entries 0-4; complete entry 2 first; issue new transaction; verify it allocates to entry 2 (lowest-index-FREE-first per ToO §RoB allocator). | (none specific; ToO §RoB) |
-| TP39 | RoB tie-breaking on simultaneous READY | Issue 2 transactions same axi_id (back-to-back); arrange responses to arrive simultaneously; verify lower rob_idx releases first (per ToO §RoB tie-breaking). | AXI4_MST_RoB_PER_ID_ORDER |
+| TP39 | RoB tie-breaking on simultaneous READY | Issue 2 transactions same axi_id (back-to-back); arrange responses to arrive simultaneously; verify lower rob_idx releases first (per ToO §RoB tie-breaking). | AXI4_MST_ROB_PER_ID_ORDER |
 | TP40 | AR-during-W interleaving | Start a long W burst; mid-burst issue an AR; verify AR flit injected on noc_req_o between W flits; verify NSU correctly dispatches both. | NOC_FLIT_AW_W_ORDER + AR ordering per ToO |
 | TP41 | route_par drop (silent AXI hang in v0.4.0) | Inject a single-bit corruption into a request flit's `route_par`-protected fields (`dst_id` / `last`, per AMD pg313 §Parity coverage) on `noc_req_o` egress (e.g., via stub router); verify the receiving router or NSU sink drops the flit, increments `ROUTE_PAR_ERR_CNT`, sets `ERR_STATUS[1]`, captures `LAST_ERR_INFO` (if first sticky). Set `IRQ_ENABLE[1]=1` and verify `irq_o` asserts. The originating AXI master transaction hangs silently — no automatic SLVERR synthesis in v0.4.0. Test framework upper-bounded watchdog detects the hang and validates the test case. | NOC_FLIT_HDR_ROUTE_PAR_GEN; NOC_FLIT_HDR_ROUTE_PAR_CHECK |
 | TP42 | IRQ assert/deassert + IRQ_ENABLE mask + RW1C interaction | (a) With `IRQ_ENABLE = 0x0`, trigger each of the 3 ERR_STATUS event classes; verify `irq_o` stays LOW even though ERR_STATUS bits set and counters increment (mask works). (b) With `IRQ_ENABLE = 0x7`, trigger one event class at a time; verify `irq_o` rises on the event cycle (after CSR-CDC sync delay where applicable) and falls on the cycle the matching `ERR_STATUS[i]` is RW1C-cleared. (c) With multiple ERR_STATUS bits set + multiple IRQ_ENABLE bits set, verify `irq_o` stays HIGH until ALL set+enabled bits are cleared; verify partial clear keeps `irq_o` HIGH. (d) Edge case: set ERR_STATUS bit, then set the matching IRQ_ENABLE bit; verify `irq_o` asserts on the IRQ_ENABLE write cycle (level-sensitive, no edge requirement). | NI_IRQ_LEVEL; NI_CFG_ERR_STATUS_RW1C |

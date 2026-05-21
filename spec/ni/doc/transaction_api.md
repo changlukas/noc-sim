@@ -123,8 +123,10 @@ begin_phase_W_OUT(data=data, strb=strb, last=1)
 assert_valid_W_OUT()
 wait_for_ready_W_OUT()
 end_phase_W_OUT()
-wait_for_phase(B_IN, id_match=id)
-end_phase_B_IN()
+begin_phase_B_OUT()
+assert_ready_B_OUT()
+wait_for_valid_B_OUT(id_match=id)
+end_phase_B_OUT()
 ```
 Plus internal NMU pipeline (FlitPack + ECC + InjectionBuffer) and NoC link injection on `noc_req_o`, which have no Channel API equivalent (these are NMU-internal).
 
@@ -149,8 +151,10 @@ begin_phase_AR_OUT(addr=addr, id=id, ...)
 assert_valid_AR_OUT()
 wait_for_ready_AR_OUT()
 end_phase_AR_OUT()
-wait_for_phase(R_IN, id_match=id, last=1)
-end_phase_R_IN()
+begin_phase_R_OUT()
+assert_ready_R_OUT()
+wait_for_valid_R_OUT(id_match=id)
+end_phase_R_OUT()
 ```
 
 ### apply_burst_write(addr, len, data[], strb[]=all-ones, id=0, burst_type=INCR, qos=0) -> status_t
@@ -207,14 +211,18 @@ Mirror of apply_burst_write but for reads. Returns array of len+1 rdata values.
 
 **Equivalent channel API decomposition:**
 ```
-wait_for_phase(AW_OUT, addr_match=addr)  // observe master DUT's AW
-end_phase_AW_OUT()
-wait_for_phase(W_OUT, last=1)
-end_phase_W_OUT()
-begin_phase_B_OUT(bresp=<per fault>, bid=<from observed AW>)
-assert_valid_B_OUT()
-wait_for_ready_B_OUT()
-end_phase_B_OUT()
+begin_phase_AW_IN()
+assert_ready_AW_IN()
+wait_for_valid_AW_IN(addr_match=addr)   // observe master DUT's AW
+end_phase_AW_IN()
+begin_phase_W_IN()
+assert_ready_W_IN()
+wait_for_valid_W_IN(last_match=1)
+end_phase_W_IN()
+begin_phase_B_IN(bresp=<per fault>, bid=<from observed AW>)
+assert_valid_B_IN()
+wait_for_ready_B_IN()
+end_phase_B_IN()
 ```
 
 ### expect_axi_read(addr, timeout=10000) -> (status_t, data)
@@ -371,7 +379,7 @@ When a test issues a new transaction while the BFM's outstanding tracker is alre
 
 The `Preconditions` line `outstanding count for id < MAX_TXNS_PER_ID; total outstanding < MAX_TXNS` in `apply_axi_write` / `apply_axi_read` is a **performance / liveness guideline, not a hard contract violation**: a test that exceeds the limit will not return an error, but will see the API call stall until back-pressure relief arrives. If the test's slave path is also stalled (deadlock scenario), the call hangs indefinitely — software-side test framework is responsible for upper-bounded watchdog detection.
 
-Behavior matches the RTL counterpart's `AXI4_MST_RoB_OUTSTANDING_LIMIT` rule in `protocol_rules.md` (NMU back-pressures `awready`/`arready` until a slot frees).
+Behavior matches the RTL counterpart's `AXI4_MST_ROB_OUTSTANDING_LIMIT` rule in `protocol_rules.md` (NMU back-pressures `awready`/`arready` until a slot frees).
 
 There is no separate `OUTSTANDING_LIMIT_EXCEEDED` return enum — overflow manifests as back-pressure-induced latency.
 

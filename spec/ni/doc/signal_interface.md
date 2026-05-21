@@ -2,7 +2,7 @@
 
 **Protocols:**
 - AXI side: AXI4 (ARM IHI 0022)
-- NoC side: custom flit-based packet protocol. Flit width `FLIT_WIDTH` bits (default 406 in v0.4.0). Header `HEADER_WIDTH` bits (default 54 in v0.4.0). See `./02_flit.md` for flit format details (vendored from `noc-sim/docs/design/02_flit.md` per `IMPLEMENTER_REVIEW_LOG.md` #1 resolution).
+- NoC side: custom flit-based packet protocol. Flit width `FLIT_WIDTH` bits (default 406 in v0.4.0). Header `HEADER_WIDTH` bits (default 54 in v0.4.0). See `./02_flit.md` for flit format details (vendored from `noc-sim/docs/design/02_flit.md`).
 - CSR side: AXI4-Lite (subset of AXI4) for software-visible configuration and monitoring registers.
 
 **Role:** Both manager and subordinate. NMU (Network Manager Unit) acts as AXI subordinate on the host side (receives AXI requests from local master) and initiates flits on the NoC. NSU (Network Subordinate Unit) receives flits from the NoC and acts as AXI manager on the host side (drives AXI requests to local slave).
