@@ -15,11 +15,11 @@
 | 軸 | 先例 | 借用 | 差異 |
 |---|---|---|---|
 | 功能 reference + RTL co-sim 結構 | **Ibex / Spike lockstep** | reference 與 RTL 在明確同步點（transaction 完成 / 介面事件，非每內部 cycle）differential | Spike 是功能 ISS、無 timing |
-| reference 自身取信（無外部 golden）| **Spike 取信法** | 靠 spec（`protocol_rules`）衍生 ABV + analytic oracle + frozen vectors | DRAMSim 有 vendor golden，本設計沒有，更靠 spec-derived |
+| reference model qualification（無外部 golden）| **Spike**（spec-derived qualification）| 靠 spec（`protocol_rules`）衍生 ABV + analytic oracle + frozen vectors | DRAMSim 有 vendor golden，本設計沒有，更靠 spec-derived |
 | timing / perf fidelity | **gem5 Garnet** | synthetic traffic + latency-throughput curve + correlation | Garnet 不做 RTL-reference co-sim、不模 AXI |
 | 介面 per-cycle 協定合法性（AXI handshake / credit / VC）| **DRAMSim / Ramulator trace-to-RTL** | C model 產 trace，replay 過 RTL 檢查介面合法 | DRAMSim 信 RTL 驗 C（方向相反）|
 
-本設計概括：以 spec-derived oracle/ABV 取信的 cycle-accurate NoC C++ reference model，與 RTL 做 differential co-simulation。功能在 transaction 與介面同步點 cycle-exact 比對，bulk timing 用 synthetic-traffic latency-throughput correlation 校準。
+本設計概括：cycle-accurate NoC C++ reference model，靠 spec-derived oracle、ABV、frozen vectors 完成 reference-model qualification，再與 RTL 做 differential co-simulation。功能在 transaction 與介面同步點 cycle-exact 比對，bulk timing 用 synthetic-traffic latency-throughput correlation 校準。
 
 OSS 對 cycle accuracy 的覆蓋：多數（gem5、Garnet、BookSim、Noxim）不追全系統 cycle-exact，只驗 latency-throughput fidelity。僅在介面協定逐 cycle contract（AXI handshake、credit/VC）才 cycle-exact，bulk 用 correlation。
 
@@ -42,11 +42,11 @@ OSS 對 cycle accuracy 的覆蓋：多數（gem5、Garnet、BookSim、Noxim）�
 
 ## 使用範圍與限制
 
-OSS 可提供 AXI master stimulus、AXI 協定合法性檢查（SVA）、AXI slave/memory/DDR model、NoC traffic pattern 參考。OSS 不提供客製 NMU 的 flit-encoding golden。客製 flit golden 可用 NMU+NSU loopback 的 AXI-in == AXI-out 比對（FlooNoC `axi_reorder_compare` 法）降低依賴，或由 spec 推導 / C model（取信後）/ FlooNoC chimney 共通子集產生。
+OSS 可提供 AXI master stimulus、AXI 協定合法性檢查（SVA）、AXI slave/memory/DDR model、NoC traffic pattern 參考。OSS 不提供客製 NMU 的 flit-encoding golden。客製 flit golden 可用 NMU+NSU loopback 的 AXI-in == AXI-out 比對（FlooNoC `axi_reorder_compare` 法）降低依賴，或由 spec 推導 / C model（qualification 後）/ FlooNoC chimney 共通子集產生。
 
 ## 必讀
 
-Ibex cosim docs（co-sim 結構，硬體 DV 最易上手）→ gem5 Garnet（NoC timing 驗證）→ DRAMSim2 paper（trace-to-RTL 介面技術）。
+先讀 Ibex cosim docs（co-sim 結構，硬體 DV 最易上手），再讀 gem5 Garnet（NoC timing 驗證），最後讀 DRAMSim2 paper（trace-to-RTL 介面技術）。
 
 ## Sources
 
