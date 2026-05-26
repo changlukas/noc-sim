@@ -82,18 +82,35 @@ def field_encoding(packet_spec, field_name: str) -> Dict[str, int]:
 # ---------- signals domain (Task 2 will implement) ----------
 
 def signals_pin_names(signals_spec) -> list:
-    """Return list of all pin_name across all signals (cross-merge result)."""
-    raise NotImplementedError("Task 2")
+    """Return list of all non-null pin_name across all signals."""
+    out = []
+    for iface in signals_spec.get("interfaces", []):
+        for ch in iface.get("channels", []):
+            for sig in ch.get("signals", []):
+                if sig.get("pin_name"):
+                    out.append(sig["pin_name"])
+        for sig in iface.get("signals", []):
+            if sig.get("pin_name"):
+                out.append(sig["pin_name"])
+    return out
 
 
 def signals_reset_domains(signals_spec) -> set:
     """Return set of legal reset signal names from meta.reset_signals[]."""
-    raise NotImplementedError("Task 2")
+    return set(signals_spec.get("meta", {}).get("reset_signals", []))
 
 
 def signals_signal_by_pin(signals_spec, pin_name: str) -> dict:
-    """Lookup signal entry by RTL-level pin_name."""
-    raise NotImplementedError("Task 2")
+    """Lookup signal entry by RTL-level pin_name. Returns None if not found."""
+    for iface in signals_spec.get("interfaces", []):
+        for ch in iface.get("channels", []):
+            for sig in ch.get("signals", []):
+                if sig.get("pin_name") == pin_name:
+                    return sig
+        for sig in iface.get("signals", []):
+            if sig.get("pin_name") == pin_name:
+                return sig
+    return None
 
 
 # ---------- registers domain (Task 4 will implement) ----------

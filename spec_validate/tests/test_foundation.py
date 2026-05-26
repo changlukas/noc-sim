@@ -11,13 +11,6 @@ def test_load_spec_version_returns_string():
     assert v.count(".") == 2  # semver
 
 
-# This test will be DELETED when Task 2 replaces the stub.
-def test_constants_signals_stub_raises():
-    """signals_* API is reserved for Task 2; calling now must NotImplementedError."""
-    with pytest.raises(NotImplementedError, match="Task 2"):
-        constants.signals_pin_names({})
-
-
 # This test will be DELETED when Task 4 replaces the stub.
 def test_constants_regs_stub_raises():
     """regs_* API is reserved for Task 4."""

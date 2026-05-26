@@ -26,7 +26,28 @@
         "name":        {"type": "string"},
         "width_param": {"type": "string"},
         "direction":   {"enum": ["input", "output"]},
-        "default":     {"type": "string"}
+        "default":     {"type": "string"},
+        "pin_name": {
+          "type": ["string", "null"],
+          "description": "RTL-level concrete pin name (e.g. axi_awvalid_i); null until Task 3 cross-merges with pin_level_reset.md"
+        },
+        "reset_behavior": {
+          "type": ["object", "null"],
+          "properties": {
+            "kind": {"enum": ["async-active-low", "sync-active-high", "external_driven"]},
+            "value": {"type": "string"},
+            "domain": {"type": "string"}
+          },
+          "required": ["kind"]
+        },
+        "presence": {
+          "type": ["object", "null"],
+          "properties": {"condition_text": {"type": "string"}}
+        },
+        "width_expr": {
+          "type": ["string", "null"],
+          "description": "Width expression — must match whitelist regex"
+        }
       }
     },
     "channel": {
@@ -51,7 +72,12 @@
       "additionalProperties": true,
       "properties": {
         "block":        {"type": "string"},
-        "spec_version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"}
+        "spec_version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "reset_signals": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Legal reset signal names extracted from pin_level_reset.md"
+        }
       }
     },
 

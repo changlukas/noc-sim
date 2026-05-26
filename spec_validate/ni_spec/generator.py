@@ -709,7 +709,64 @@ def generate_ni_signals_json(md_dir: Union[str, Path]) -> dict:
 
 def write_generated_signals_json(md_dir: Union[str, Path], out_path: Union[str, Path]) -> dict:
     data = generate_ni_signals_json(md_dir)
+
+    # Add pin_name: null on every signal (Task 3 will fill in)
+    for iface in data["interfaces"]:
+        for ch in iface.get("channels", []):
+            for sig in ch.get("signals", []):
+                sig.setdefault("pin_name", None)
+                sig.setdefault("reset_behavior", None)
+                sig.setdefault("presence", None)
+                sig.setdefault("width_expr", None)
+        for sig in iface.get("signals", []):
+            sig.setdefault("pin_name", None)
+            sig.setdefault("reset_behavior", None)
+            sig.setdefault("presence", None)
+            sig.setdefault("width_expr", None)
+
+    # Extract and inject meta.reset_signals
+    md_dir_path = Path(md_dir) if not isinstance(md_dir, Path) else md_dir
+    reset_signals = extract_reset_signals(md_dir_path / "pin_level_reset.md")
+    data.setdefault("meta", {})["reset_signals"] = reset_signals
+
     p = Path(out_path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return data
+
+
+def extract_reset_signals(pin_level_reset_md: Path) -> list:
+    """Extract the reset signal whitelist from pin_level_reset.md.
+
+    The MD file has a section headed by **Reset signals:** followed by
+    bullet lines of the form:
+        - `arst_ni` (description...)
+        - `noc_rst_ni` (description...)
+
+    Returns list of reset signal names (order-preserving).
+    """
+    if not pin_level_reset_md.exists():
+        raise FileNotFoundError(f"pin_level_reset.md not found at {pin_level_reset_md}")
+    text = pin_level_reset_md.read_text(encoding="utf-8")
+
+    # Find the **Reset signals:** line (with or without bold markers).
+    # The heading may be formatted as **Reset signals:** (bold) so the match
+    # ends before the closing ** and/or trailing whitespace on the heading line.
+    m = re.search(r"\*{0,2}Reset signals\*{0,2}\s*:\**\s*\n", text)
+    if not m:
+        raise ValueError(f"No 'Reset signals:' section found in {pin_level_reset_md}")
+
+    # Scan lines after the heading; collect backtick-names from bullet lines
+    after = text[m.end():]
+    results = []
+    for line in after.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            break  # blank line ends the block
+        if not stripped.startswith("-"):
+            break  # non-bullet line ends the block
+        # Extract first backtick-wrapped identifier on this bullet line
+        names = re.findall(r"`([a-zA-Z_][a-zA-Z0-9_]*)`", stripped)
+        if names:
+            results.append(names[0])
+    return results

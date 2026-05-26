@@ -6,7 +6,11 @@
     "auto_generated_from": "../spec/ni/doc/signal_interface.md",
     "generator": "ni_spec.generator :: generate_ni_signals_json",
     "do_not_edit": "Re-run validator/generator to refresh.",
-    "scope_note": "Top-level interface + parameters。AXI signal width parameters 來源 packet_format.md §1.2 Group 3。"
+    "scope_note": "Top-level interface + parameters。AXI signal width parameters 來源 packet_format.md §1.2 Group 3。",
+    "reset_signals": [
+      "arst_ni",
+      "noc_rst_ni"
+    ]
   },
   "block_enables": [
     {
@@ -41,57 +45,101 @@
             {
               "name": "AW_ID",
               "width_param": "IN_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_ADDR",
               "width_param": "ADDR_WIDTH",
-              "default": "64"
+              "default": "64",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_LEN",
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_BURST",
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_PROT",
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_REGION",
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_QOS",
               "width_param": "NOC_QOS_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -103,22 +151,38 @@
             {
               "name": "W_DATA",
               "width_param": "NOC_DATA_WIDTH",
-              "default": "256"
+              "default": "256",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "W_STRB",
               "width_param": "WSTRB_WIDTH",
-              "default": "32"
+              "default": "32",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "W_LAST",
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "W_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -130,57 +194,101 @@
             {
               "name": "AR_ID",
               "width_param": "IN_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_ADDR",
               "width_param": "ADDR_WIDTH",
-              "default": "64"
+              "default": "64",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_LEN",
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_BURST",
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_PROT",
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_REGION",
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_QOS",
               "width_param": "NOC_QOS_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -192,17 +300,29 @@
             {
               "name": "B_ID",
               "width_param": "IN_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "B_RESP",
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "B_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -214,27 +334,47 @@
             {
               "name": "R_ID",
               "width_param": "IN_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_DATA",
               "width_param": "NOC_DATA_WIDTH",
-              "default": "256"
+              "default": "256",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_RESP",
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_LAST",
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         }
@@ -262,31 +402,51 @@
           "name": "req_valid_o",
           "width_param": "1",
           "direction": "output",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "req_flit_o",
           "width_param": "FLIT_WIDTH",
           "direction": "output",
-          "default": "406"
+          "default": "406",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "req_credit_i",
           "width_param": "NUM_VC",
           "direction": "input",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "req_credit_init_ready_o",
           "width_param": "1",
           "direction": "output",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "req_credit_init_ready_i",
           "width_param": "1",
           "direction": "input",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         }
       ],
       "parameters": [
@@ -318,19 +478,31 @@
           "name": "rsp_valid_i",
           "width_param": "1",
           "direction": "input",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "rsp_flit_i",
           "width_param": "FLIT_WIDTH",
           "direction": "input",
-          "default": "406"
+          "default": "406",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "rsp_credit_o",
           "width_param": "NUM_VC",
           "direction": "output",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         }
       ],
       "parameters": [
@@ -366,57 +538,101 @@
             {
               "name": "AW_ID",
               "width_param": "IN_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_ADDR",
               "width_param": "ADDR_WIDTH",
-              "default": "64"
+              "default": "64",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_LEN",
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_BURST",
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_PROT",
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_REGION",
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_QOS",
               "width_param": "NOC_QOS_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -428,22 +644,38 @@
             {
               "name": "W_DATA",
               "width_param": "NOC_DATA_WIDTH",
-              "default": "256"
+              "default": "256",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "W_STRB",
               "width_param": "WSTRB_WIDTH",
-              "default": "32"
+              "default": "32",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "W_LAST",
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "W_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -455,57 +687,101 @@
             {
               "name": "AR_ID",
               "width_param": "IN_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_ADDR",
               "width_param": "ADDR_WIDTH",
-              "default": "64"
+              "default": "64",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_LEN",
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_BURST",
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_PROT",
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_REGION",
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_QOS",
               "width_param": "NOC_QOS_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -517,17 +793,29 @@
             {
               "name": "B_ID",
               "width_param": "IN_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "B_RESP",
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "B_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -539,27 +827,47 @@
             {
               "name": "R_ID",
               "width_param": "IN_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_DATA",
               "width_param": "NOC_DATA_WIDTH",
-              "default": "256"
+              "default": "256",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_RESP",
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_LAST",
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         }
@@ -587,19 +895,31 @@
           "name": "req_valid_i",
           "width_param": "1",
           "direction": "input",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "req_flit_i",
           "width_param": "FLIT_WIDTH",
           "direction": "input",
-          "default": "406"
+          "default": "406",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "req_credit_o",
           "width_param": "NUM_VC",
           "direction": "output",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         }
       ],
       "parameters": [
@@ -635,57 +955,101 @@
             {
               "name": "AW_ID",
               "width_param": "OUT_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_ADDR",
               "width_param": "ADDR_WIDTH",
-              "default": "64"
+              "default": "64",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_LEN",
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_BURST",
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_PROT",
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_REGION",
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AW_QOS",
               "width_param": "NOC_QOS_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -697,22 +1061,38 @@
             {
               "name": "W_DATA",
               "width_param": "NOC_DATA_WIDTH",
-              "default": "256"
+              "default": "256",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "W_STRB",
               "width_param": "WSTRB_WIDTH",
-              "default": "32"
+              "default": "32",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "W_LAST",
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "W_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -724,57 +1104,101 @@
             {
               "name": "AR_ID",
               "width_param": "OUT_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_ADDR",
               "width_param": "ADDR_WIDTH",
-              "default": "64"
+              "default": "64",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_LEN",
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_BURST",
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_PROT",
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3"
+              "default": "3",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_REGION",
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "AR_QOS",
               "width_param": "NOC_QOS_WIDTH",
-              "default": "4"
+              "default": "4",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -786,17 +1210,29 @@
             {
               "name": "B_ID",
               "width_param": "OUT_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "B_RESP",
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "B_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         },
@@ -808,27 +1244,47 @@
             {
               "name": "R_ID",
               "width_param": "OUT_ID_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_DATA",
               "width_param": "NOC_DATA_WIDTH",
-              "default": "256"
+              "default": "256",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_RESP",
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2"
+              "default": "2",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_LAST",
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1"
+              "default": "1",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             },
             {
               "name": "R_USER",
               "width_param": "USER_WIDTH",
-              "default": "8"
+              "default": "8",
+              "pin_name": null,
+              "reset_behavior": null,
+              "presence": null,
+              "width_expr": null
             }
           ]
         }
@@ -856,31 +1312,51 @@
           "name": "rsp_valid_o",
           "width_param": "1",
           "direction": "output",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "rsp_flit_o",
           "width_param": "FLIT_WIDTH",
           "direction": "output",
-          "default": "406"
+          "default": "406",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "rsp_credit_i",
           "width_param": "NUM_VC",
           "direction": "input",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "rsp_credit_init_ready_o",
           "width_param": "1",
           "direction": "output",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         },
         {
           "name": "rsp_credit_init_ready_i",
           "width_param": "1",
           "direction": "input",
-          "default": "1"
+          "default": "1",
+          "pin_name": null,
+          "reset_behavior": null,
+          "presence": null,
+          "width_expr": null
         }
       ],
       "parameters": [
