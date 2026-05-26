@@ -710,22 +710,27 @@ def generate_ni_signals_json(md_dir: Union[str, Path]) -> dict:
 def write_generated_signals_json(md_dir: Union[str, Path], out_path: Union[str, Path]) -> dict:
     data = generate_ni_signals_json(md_dir)
 
-    # Add pin_name: null on every signal (Task 3 will fill in)
+    md_dir_path = Path(md_dir) if not isinstance(md_dir, Path) else md_dir
+
+    # Task 3: cross-merge pin_name + reset_behavior from pin_level_reset.md
+    reset_map = parse_pin_level_reset(md_dir_path / "pin_level_reset.md")
+
     for iface in data["interfaces"]:
         for ch in iface.get("channels", []):
             for sig in ch.get("signals", []):
-                sig.setdefault("pin_name", None)
-                sig.setdefault("reset_behavior", None)
+                pin_name = _derive_pin_name(iface, ch, sig)
+                sig["pin_name"] = pin_name
+                sig["reset_behavior"] = reset_map.get(pin_name) or _default_reset_for(sig, iface)
                 sig.setdefault("presence", None)
                 sig.setdefault("width_expr", None)
         for sig in iface.get("signals", []):
-            sig.setdefault("pin_name", None)
-            sig.setdefault("reset_behavior", None)
+            pin_name = _derive_pin_name(iface, None, sig)
+            sig["pin_name"] = pin_name
+            sig["reset_behavior"] = reset_map.get(pin_name) or _default_reset_for(sig, iface)
             sig.setdefault("presence", None)
             sig.setdefault("width_expr", None)
 
     # Extract and inject meta.reset_signals
-    md_dir_path = Path(md_dir) if not isinstance(md_dir, Path) else md_dir
     reset_signals = extract_reset_signals(md_dir_path / "pin_level_reset.md")
     data.setdefault("meta", {})["reset_signals"] = reset_signals
 
@@ -733,6 +738,137 @@ def write_generated_signals_json(md_dir: Union[str, Path], out_path: Union[str, 
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return data
+
+
+def parse_pin_level_reset(md_path: Path) -> dict:
+    """Parse the pin-level reset table from pin_level_reset.md.
+
+    Returns {pin_name: reset_behavior_dict}, e.g.
+        {"axi_awid_i": {"kind": "external_driven"},
+         "noc_req_valid_o": {"kind": "async-active-low", "value": "0", "domain": "noc_rst_ni"},
+         ...}
+
+    Only parses the first half of the file (the "During reset" section) to avoid
+    double-counting the identical "After reset" tables.  Rows that don't match
+    the expected pattern are skipped silently.
+    """
+    text = md_path.read_text(encoding="utf-8")
+
+    # Only parse up to "## After reset" to avoid duplicating entries
+    after_reset_m = re.search(r"^## After reset", text, re.MULTILINE)
+    if after_reset_m:
+        text = text[: after_reset_m.start()]
+
+    result = {}
+
+    # Match rows: | CHANNEL_TAG | pin_name[optional_range] | reset_text | ...
+    # Channel tag ends with _IN, _OUT, or is CSR_* / REQ_* / RSP_* etc.
+    table_row = re.compile(
+        r"\|\s*([A-Z_]+)\s*\|\s*`?([a-zA-Z_][a-zA-Z0-9_]*)`?(?:\s*\[[^\]]*\])?\s*\|\s*([^|]+?)\s*\|"
+    )
+    for m in table_row.finditer(text):
+        channel_tag = m.group(1).strip()
+        pin = m.group(2).strip()
+        reset_text = m.group(3).strip().strip("`").strip()
+
+        # Skip header rows
+        if pin.lower() in ("signal", "name", "channel"):
+            continue
+
+        rt_lower = reset_text.lower()
+
+        # Input wires driven externally
+        if ("driven by" in rt_lower or "external" in rt_lower
+                or rt_lower.startswith("input") or "as driven" in rt_lower):
+            rb = {"kind": "external_driven"}
+        elif "pass-through" in rt_lower or "pass through" in rt_lower:
+            rb = {"kind": "external_driven"}
+        elif re.match(r"^0\s*(\(.*\))?$", reset_text) or reset_text in ("1'b0", "0x0") \
+                or re.match(r"^0x0+$", reset_text) or reset_text == "0 (all bits)":
+            # Determine reset domain by pin prefix
+            if pin.startswith("noc_") or pin.startswith("csr_") is False and (
+                    "REQ" in channel_tag or "RSP" in channel_tag):
+                domain = "noc_rst_ni"
+            elif pin.startswith("noc_"):
+                domain = "noc_rst_ni"
+            else:
+                domain = "arst_ni"
+            # Refine: noc_ prefix always → noc_rst_ni; csr_/axi_ → arst_ni
+            if pin.startswith("noc_"):
+                domain = "noc_rst_ni"
+            elif pin.startswith("csr_") or pin.startswith("axi_"):
+                domain = "arst_ni"
+            rb = {"kind": "async-active-low", "value": "0", "domain": domain}
+        elif re.match(r"^1\s*(\(.*\))?$", reset_text) or reset_text == "1'b1":
+            if pin.startswith("noc_"):
+                domain = "noc_rst_ni"
+            else:
+                domain = "arst_ni"
+            rb = {"kind": "async-active-low", "value": "1", "domain": domain}
+        else:
+            # Unknown reset format — skip
+            continue
+
+        result[pin] = rb
+    return result
+
+
+def _derive_pin_name(iface: dict, ch: Optional[dict], sig: dict) -> str:
+    """Derive the RTL-level pin name from interface / channel / signal context.
+
+    Rules:
+    - NoC interfaces: signal name is already pin-style without noc_ prefix; add it.
+    - AXI slave/master port: axi_<ch_lower><sig_suffix_lower>_i/o
+      where sig_suffix is the part after 'CH_' (e.g. AW_ID → id).
+      Direction suffix (_i/_o) matches the channel direction.
+    - CSR interface (AXI4-Lite slave): csr_<ch_lower><sig_suffix_lower>_i/o
+      Same direction logic as AXI slave.
+    """
+    iface_name = iface.get("name", "")
+    sig_name = sig.get("name", "")  # e.g. "AW_ID", "req_valid_o"
+
+    # --- NoC interfaces: prepend noc_ to the existing name ---
+    if iface_name in _NOC_INTERFACE_SIGNALS:
+        return f"noc_{sig_name}"
+
+    # --- CSR (AXI4-Lite) or AXI port ---
+    if ch is None:
+        # Fallback: should not happen for AXI/CSR interfaces
+        return sig_name.lower()
+
+    ch_name = ch.get("name", "")  # "AW", "W", "B", "AR", "R"
+    ch_dir = ch.get("direction", "")  # "input" or "output"
+    dir_suffix = "_i" if ch_dir == "input" else "_o"
+
+    # Strip channel prefix from signal name: "AW_ID" → "id", "W_DATA" → "data"
+    prefix = ch_name + "_"
+    if sig_name.upper().startswith(prefix.upper()):
+        sig_suffix = sig_name[len(prefix):].lower()
+    else:
+        sig_suffix = sig_name.lower()
+
+    if iface_name.startswith("CSR") or iface.get("protocol") == "AXI4-Lite":
+        return f"csr_{ch_name.lower()}{sig_suffix}{dir_suffix}"
+    else:
+        return f"axi_{ch_name.lower()}{sig_suffix}{dir_suffix}"
+
+
+def _default_reset_for(sig: dict, iface: dict) -> dict:
+    """Fallback reset_behavior for signals not found in pin_level_reset.md table.
+
+    Output wire → async-active-low, value=0, domain depends on interface.
+    Input wire → external_driven.
+    """
+    direction = sig.get("direction", "")
+    # For AXI channel signals, direction comes from the channel, not the sig entry.
+    # sig entries under channels[] don't have a "direction" key — use pin suffix.
+    pin = sig.get("pin_name", "") or ""
+    is_output = (direction == "output") or pin.endswith("_o")
+    if is_output:
+        iface_name = iface.get("name", "")
+        domain = "noc_rst_ni" if "NoC" in iface_name else "arst_ni"
+        return {"kind": "async-active-low", "value": "0", "domain": domain}
+    return {"kind": "external_driven"}
 
 
 def extract_reset_signals(pin_level_reset_md: Path) -> list:

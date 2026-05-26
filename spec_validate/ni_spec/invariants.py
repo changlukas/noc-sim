@@ -163,6 +163,60 @@ def check_flit_arithmetic(packet_spec) -> List[Issue]:
     return issues
 
 
+def check_signals_reset_domains(signals_spec) -> List[Issue]:
+    """L2: every signal's reset_behavior.domain must be in meta.reset_signals."""
+    issues: List[Issue] = []
+    legal = set(signals_spec.get("meta", {}).get("reset_signals", []))
+    for iface in signals_spec.get("interfaces", []):
+        for ch in iface.get("channels", []):
+            for sig in ch.get("signals", []):
+                _check_one_reset(sig, legal, issues)
+        for sig in iface.get("signals", []):
+            _check_one_reset(sig, legal, issues)
+    return issues
+
+
+def _check_one_reset(sig: dict, legal_domains: set, issues: List[Issue]) -> None:
+    rb = sig.get("reset_behavior")
+    if rb is None:
+        issues.append(_err("L2-SIG-RST", f"signal {sig.get('name')} missing reset_behavior"))
+        return
+    if rb.get("kind") == "external_driven":
+        if "value" in rb:
+            issues.append(_err("L2-SIG-RST",
+                f"signal {sig.get('name')}: external_driven must not carry value"))
+        return
+    domain = rb.get("domain")
+    if domain and domain not in legal_domains:
+        issues.append(_err("L2-SIG-RST",
+            f"signal {sig.get('name')}: reset domain {domain!r} not in meta.reset_signals"))
+
+
+def check_signals_pin_uniqueness(signals_spec) -> List[Issue]:
+    """L2: every signal must have a non-null, unique pin_name."""
+    issues: List[Issue] = []
+    seen: dict = {}
+    for iface in signals_spec.get("interfaces", []):
+        for ch in iface.get("channels", []):
+            for sig in ch.get("signals", []):
+                _check_pin_unique(sig, seen, issues)
+        for sig in iface.get("signals", []):
+            _check_pin_unique(sig, seen, issues)
+    return issues
+
+
+def _check_pin_unique(sig: dict, seen: dict, issues: List[Issue]) -> None:
+    pin = sig.get("pin_name")
+    if pin is None:
+        issues.append(_err("L2-SIG-PIN", f"signal {sig.get('name')} has null pin_name"))
+        return
+    if pin in seen:
+        issues.append(_err("L2-SIG-PIN",
+            f"pin_name {pin!r} duplicated (also in {seen[pin]})"))
+    else:
+        seen[pin] = sig.get("name")
+
+
 def check_all(bundle, md_dir: Optional[str] = None) -> List[Issue]:
     """Path B：跑 Layer 1 (schema) + Layer 2 (arithmetic)。
 

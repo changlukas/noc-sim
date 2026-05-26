@@ -14,7 +14,8 @@ from pathlib import Path
 
 from .generator import write_generated_json, write_generated_signals_json
 from .loader import load_doc
-from .invariants import check_schema, check_flit_arithmetic
+from .invariants import (check_schema, check_flit_arithmetic,
+                         check_signals_reset_domains, check_signals_pin_uniqueness)
 from .report import print_report
 
 for _s in (sys.stdout, sys.stderr):
@@ -64,7 +65,7 @@ def main() -> int:
     issues += check_flit_arithmetic(packet)
 
     signals_schema = load_doc(SIGNALS_SCHEMA) if SIGNALS_SCHEMA.exists() else None
-    # Layer 1 only for signals (Layer 2 invariants for signals 待加)
+    # Layer 1 for signals schema
     if signals_schema is not None:
         from .invariants import Issue
         import jsonschema
@@ -73,15 +74,21 @@ def main() -> int:
             loc = "/".join(str(p) for p in e.absolute_path) or "(root)"
             issues.append(Issue("ERROR", "L1-SIG-SCHEMA", f"{loc}: {e.message}"))
 
+    # Layer 2 for signals: reset domains + pin uniqueness
+    issues += check_signals_reset_domains(signals)
+    issues += check_signals_pin_uniqueness(signals)
+
     has_l1_err = any(i.check in ("L1-SCHEMA", "L1-SIG-SCHEMA") and i.severity == "ERROR" for i in issues)
     has_l1_skip = (signals_schema is None or
                    any(i.check == "L1-SCHEMA" and i.severity == "WARN" for i in issues))
-    has_l2_err = any(i.check.startswith("L2") and i.severity == "ERROR" for i in issues)
+    has_l2_packet_err = any(i.check == "L2-FLIT" and i.severity == "ERROR" for i in issues)
+    has_l2_sig_err = any(i.check.startswith("L2-SIG") and i.severity == "ERROR" for i in issues)
 
     layers = {
-        "Generator (MD -> JSON)":      f"OK (ni_packet.json + ni_signals.json)",
-        "Layer 1 (JSON Schema, both)": "SKIPPED" if has_l1_skip else ("FAIL" if has_l1_err else "PASS"),
-        "Layer 2 (packet arithmetic)": "FAIL" if has_l2_err else "PASS",
+        "Generator (MD -> JSON)":        "OK (ni_packet.json + ni_signals.json)",
+        "Layer 1 (JSON Schema, both)":   "SKIPPED" if has_l1_skip else ("FAIL" if has_l1_err else "PASS"),
+        "Layer 2 (packet arithmetic)":   "FAIL" if has_l2_packet_err else "PASS",
+        "Layer 2 (signals reset)":       "FAIL" if has_l2_sig_err else "PASS",
     }
     return print_report(issues, target_name="ni_packet.json + ni_signals.json",
                         show_layers=layers)
