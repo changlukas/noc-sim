@@ -898,7 +898,7 @@ def parse_pin_level_reset(md_path: Path) -> dict:
         else:
             warnings.warn(
                 f"parse_pin_level_reset: unrecognized reset text {reset_text!r} for pin {pin!r} "
-                f"in {pin_level_reset_md.name}; skipping (will use _default_reset_for)",
+                f"in {md_path.name}; skipping (will use _default_reset_for)",
                 stacklevel=2,
             )
             continue
@@ -956,7 +956,7 @@ def _default_reset_for(sig: dict, iface: dict, pin_name: str) -> dict:
     is_output = (direction == "output") or pin.endswith("_o")
     if is_output:
         iface_name = iface.get("name", "")
-        domain = "noc_rst_ni" if "NoC" in iface_name else "arst_ni"
+        domain = "noc_rst_ni" if iface_name in _NOC_INTERFACE_SIGNALS else "arst_ni"
         return {"kind": "async-active-low", "value": "0", "domain": domain}
     return {"kind": "external_driven"}
 

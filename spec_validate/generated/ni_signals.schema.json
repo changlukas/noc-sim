@@ -3,8 +3,8 @@
   "$id": "ni-spec/ni_signals.schema.json",
   "title": "NoC NI Signal Interface Schema — top-level only (Task 3.5 clean shape)",
   "type": "object",
-  "required": ["meta", "block_enables", "interfaces"],
-  "additionalProperties": true,
+  "required": ["$schema_version", "meta", "block_enables", "interfaces"],
+  "additionalProperties": false,
 
   "$defs": {
     "param": {
@@ -70,6 +70,11 @@
   },
 
   "properties": {
+    "$schema_version": {
+      "type": "string",
+      "description": "Schema version identifier (e.g. ni-spec/2.0)"
+    },
+
     "meta": {
       "type": "object",
       "required": ["block", "spec_version"],

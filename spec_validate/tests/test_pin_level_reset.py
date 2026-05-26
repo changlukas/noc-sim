@@ -52,7 +52,7 @@ def test_validator_catches_unknown_reset_domain():
         "interfaces": [{
             "channels": [{
                 "signals": [{
-                    "name": "BOGUS", "pin_name": "bogus_o", "direction": "output",
+                    "pin_name": "bogus_o", "direction": "output",
                     "reset_behavior": {"kind": "async-active-low", "value": "0", "domain": "fake_rst"}
                 }]
             }]
