@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ni-spec/ni_signals.schema.json",
+  "title": "NoC NI Signal Interface Schema — top-level only",
+  "type": "object",
+  "required": ["meta", "block_enables", "interfaces"],
+  "additionalProperties": true,
+
+  "$defs": {
+    "param": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": true,
+      "properties": {
+        "name":            {"type": "string"},
+        "type":            {"type": "string"},
+        "default":         {"type": "string"},
+        "constraint_text": {"type": "string"}
+      }
+    },
+    "signal": {
+      "type": "object",
+      "required": ["name", "width_param"],
+      "additionalProperties": true,
+      "properties": {
+        "name":        {"type": "string"},
+        "width_param": {"type": "string"},
+        "direction":   {"enum": ["input", "output"]},
+        "default":     {"type": "string"}
+      }
+    },
+    "channel": {
+      "type": "object",
+      "required": ["name", "direction"],
+      "properties": {
+        "name":      {"enum": ["AW", "W", "AR", "B", "R"]},
+        "direction": {"enum": ["input", "output"]},
+        "carrier":   {"enum": ["request", "response"]},
+        "signals": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/signal"}
+        }
+      }
+    }
+  },
+
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["block", "spec_version"],
+      "additionalProperties": true,
+      "properties": {
+        "block":        {"type": "string"},
+        "spec_version": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"}
+      }
+    },
+
+    "block_enables": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/param"}
+    },
+
+    "interfaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["block", "name"],
+        "additionalProperties": true,
+        "properties": {
+          "block":         {"enum": ["NMU", "NSU"]},
+          "name":          {"type": "string", "minLength": 1},
+          "direction":     {"type": "string"},
+          "peer":          {"type": "string"},
+          "protocol":      {"type": "string"},
+          "flow_control":  {"type": "string"},
+          "clock_domain":  {"type": "string"},
+          "wire_source":   {"type": "string"},
+          "channels": {
+            "type": "array",
+            "description": "AXI / AXI4-Lite only — 5 channels (AW/W/B/AR/R) each with signals[].",
+            "items": {"$ref": "#/$defs/channel"}
+          },
+          "signals": {
+            "type": "array",
+            "description": "NoC link signals (valid/flit/credit/credit-init). AXI puts signals inside channels[].",
+            "items": {"$ref": "#/$defs/signal"}
+          },
+          "port_parameters": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/param"}
+          },
+          "parameters": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/param"}
+          }
+        }
+      }
+    }
+  }
+}

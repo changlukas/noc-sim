@@ -1,0 +1,902 @@
+{
+  "$schema_version": "ni-spec/2.0",
+  "meta": {
+    "block": "NI signal interface (top-level)",
+    "spec_version": "v0.4.0",
+    "auto_generated_from": "../spec/ni/doc/signal_interface.md",
+    "generator": "ni_spec.generator :: generate_ni_signals_json",
+    "do_not_edit": "Re-run validator/generator to refresh.",
+    "scope_note": "Top-level interface + parameters。AXI signal width parameters 來源 packet_format.md §1.2 Group 3。"
+  },
+  "block_enables": [
+    {
+      "name": "EN_MST_PORT",
+      "type": "bool",
+      "default": "true",
+      "constraint_text": "EN_SLV_PORT || EN_MST_PORT"
+    },
+    {
+      "name": "EN_SLV_PORT",
+      "type": "bool",
+      "default": "true",
+      "constraint_text": "EN_SLV_PORT || EN_MST_PORT"
+    }
+  ],
+  "interfaces": [
+    {
+      "block": "NMU",
+      "name": "AXI slave port (host)",
+      "direction": "in request, out response",
+      "peer": "local AXI master",
+      "protocol": "AXI4",
+      "flow_control": "ready/valid per channel",
+      "clock_domain": "aclk_i / arst_ni",
+      "wire_source": "AW_IN W_IN AR_IN B_IN R_IN",
+      "channels": [
+        {
+          "name": "AW",
+          "direction": "input",
+          "carrier": "request",
+          "signals": [
+            {
+              "name": "AW_ID",
+              "width_param": "IN_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AW_ADDR",
+              "width_param": "ADDR_WIDTH",
+              "default": "64"
+            },
+            {
+              "name": "AW_LEN",
+              "width_param": "AXI_LEN_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AW_SIZE",
+              "width_param": "AXI_SIZE_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AW_BURST",
+              "width_param": "AXI_BURST_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "AW_CACHE",
+              "width_param": "AXI_CACHE_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AW_LOCK",
+              "width_param": "AXI_LOCK_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "AW_PROT",
+              "width_param": "AXI_PROT_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AW_REGION",
+              "width_param": "AXI_REGION_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AW_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AW_QOS",
+              "width_param": "NOC_QOS_WIDTH",
+              "default": "4"
+            }
+          ]
+        },
+        {
+          "name": "W",
+          "direction": "input",
+          "carrier": "request",
+          "signals": [
+            {
+              "name": "W_DATA",
+              "width_param": "NOC_DATA_WIDTH",
+              "default": "256"
+            },
+            {
+              "name": "W_STRB",
+              "width_param": "WSTRB_WIDTH",
+              "default": "32"
+            },
+            {
+              "name": "W_LAST",
+              "width_param": "AXI_LAST_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "W_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            }
+          ]
+        },
+        {
+          "name": "AR",
+          "direction": "input",
+          "carrier": "request",
+          "signals": [
+            {
+              "name": "AR_ID",
+              "width_param": "IN_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AR_ADDR",
+              "width_param": "ADDR_WIDTH",
+              "default": "64"
+            },
+            {
+              "name": "AR_LEN",
+              "width_param": "AXI_LEN_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AR_SIZE",
+              "width_param": "AXI_SIZE_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AR_BURST",
+              "width_param": "AXI_BURST_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "AR_CACHE",
+              "width_param": "AXI_CACHE_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AR_LOCK",
+              "width_param": "AXI_LOCK_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "AR_PROT",
+              "width_param": "AXI_PROT_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AR_REGION",
+              "width_param": "AXI_REGION_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AR_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AR_QOS",
+              "width_param": "NOC_QOS_WIDTH",
+              "default": "4"
+            }
+          ]
+        },
+        {
+          "name": "B",
+          "direction": "output",
+          "carrier": "response",
+          "signals": [
+            {
+              "name": "B_ID",
+              "width_param": "IN_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "B_RESP",
+              "width_param": "AXI_RESP_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "B_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            }
+          ]
+        },
+        {
+          "name": "R",
+          "direction": "output",
+          "carrier": "response",
+          "signals": [
+            {
+              "name": "R_ID",
+              "width_param": "IN_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "R_DATA",
+              "width_param": "NOC_DATA_WIDTH",
+              "default": "256"
+            },
+            {
+              "name": "R_RESP",
+              "width_param": "AXI_RESP_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "R_LAST",
+              "width_param": "AXI_LAST_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "R_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            }
+          ]
+        }
+      ],
+      "port_parameters": [
+        {
+          "name": "ENABLE_AXI_PARITY",
+          "type": "bool",
+          "default": "true",
+          "constraint_text": "—"
+        }
+      ]
+    },
+    {
+      "block": "NMU",
+      "name": "NoC request out",
+      "direction": "out",
+      "peer": "Router local input",
+      "protocol": "NoC request flit link",
+      "flow_control": "per-VC credit return",
+      "clock_domain": "noc_clk_i / noc_rst_ni",
+      "wire_source": "REQ_OUT + req credit",
+      "signals": [
+        {
+          "name": "req_valid_o",
+          "width_param": "1",
+          "direction": "output",
+          "default": "1"
+        },
+        {
+          "name": "req_flit_o",
+          "width_param": "FLIT_WIDTH",
+          "direction": "output",
+          "default": "406"
+        },
+        {
+          "name": "req_credit_i",
+          "width_param": "NUM_VC",
+          "direction": "input",
+          "default": "1"
+        },
+        {
+          "name": "req_credit_init_ready_o",
+          "width_param": "1",
+          "direction": "output",
+          "default": "1"
+        },
+        {
+          "name": "req_credit_init_ready_i",
+          "width_param": "1",
+          "direction": "input",
+          "default": "1"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "NUM_VC",
+          "type": "int",
+          "default": "1",
+          "constraint_text": "1 ≤ x ≤ 8; when x > 1, both `R_ROB_TYPE` and `B_ROB_TYPE` MUST be != `NoRoB` (see `theory_of_operation.md` §RoB allocator §\"NoRoB single-VC restriction\")"
+        },
+        {
+          "name": "FLIT_WIDTH",
+          "type": "derived",
+          "default": "406",
+          "constraint_text": "derived = HEADER_WIDTH + PAYLOAD_WIDTH"
+        }
+      ]
+    },
+    {
+      "block": "NMU",
+      "name": "NoC response in",
+      "direction": "in",
+      "peer": "Router local output",
+      "protocol": "NoC response flit link",
+      "flow_control": "per-VC credit",
+      "clock_domain": "noc_clk_i / noc_rst_ni",
+      "wire_source": "RSP_IN + credit",
+      "signals": [
+        {
+          "name": "rsp_valid_i",
+          "width_param": "1",
+          "direction": "input",
+          "default": "1"
+        },
+        {
+          "name": "rsp_flit_i",
+          "width_param": "FLIT_WIDTH",
+          "direction": "input",
+          "default": "406"
+        },
+        {
+          "name": "rsp_credit_o",
+          "width_param": "NUM_VC",
+          "direction": "output",
+          "default": "1"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "NUM_VC",
+          "type": "int",
+          "default": "1",
+          "constraint_text": "1 ≤ x ≤ 8; when x > 1, both `R_ROB_TYPE` and `B_ROB_TYPE` MUST be != `NoRoB` (see `theory_of_operation.md` §RoB allocator §\"NoRoB single-VC restriction\")"
+        },
+        {
+          "name": "FLIT_WIDTH",
+          "type": "derived",
+          "default": "406",
+          "constraint_text": "derived = HEADER_WIDTH + PAYLOAD_WIDTH"
+        }
+      ]
+    },
+    {
+      "block": "NMU",
+      "name": "CSR",
+      "direction": "in request, out response",
+      "peer": "software CSR master",
+      "protocol": "AXI4-Lite",
+      "flow_control": "ready/valid",
+      "clock_domain": "aclk_i / arst_ni",
+      "wire_source": "CSR_",
+      "channels": [
+        {
+          "name": "AW",
+          "direction": "input",
+          "carrier": "request",
+          "signals": [
+            {
+              "name": "AW_ID",
+              "width_param": "IN_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AW_ADDR",
+              "width_param": "ADDR_WIDTH",
+              "default": "64"
+            },
+            {
+              "name": "AW_LEN",
+              "width_param": "AXI_LEN_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AW_SIZE",
+              "width_param": "AXI_SIZE_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AW_BURST",
+              "width_param": "AXI_BURST_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "AW_CACHE",
+              "width_param": "AXI_CACHE_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AW_LOCK",
+              "width_param": "AXI_LOCK_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "AW_PROT",
+              "width_param": "AXI_PROT_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AW_REGION",
+              "width_param": "AXI_REGION_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AW_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AW_QOS",
+              "width_param": "NOC_QOS_WIDTH",
+              "default": "4"
+            }
+          ]
+        },
+        {
+          "name": "W",
+          "direction": "input",
+          "carrier": "request",
+          "signals": [
+            {
+              "name": "W_DATA",
+              "width_param": "NOC_DATA_WIDTH",
+              "default": "256"
+            },
+            {
+              "name": "W_STRB",
+              "width_param": "WSTRB_WIDTH",
+              "default": "32"
+            },
+            {
+              "name": "W_LAST",
+              "width_param": "AXI_LAST_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "W_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            }
+          ]
+        },
+        {
+          "name": "AR",
+          "direction": "input",
+          "carrier": "request",
+          "signals": [
+            {
+              "name": "AR_ID",
+              "width_param": "IN_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AR_ADDR",
+              "width_param": "ADDR_WIDTH",
+              "default": "64"
+            },
+            {
+              "name": "AR_LEN",
+              "width_param": "AXI_LEN_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AR_SIZE",
+              "width_param": "AXI_SIZE_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AR_BURST",
+              "width_param": "AXI_BURST_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "AR_CACHE",
+              "width_param": "AXI_CACHE_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AR_LOCK",
+              "width_param": "AXI_LOCK_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "AR_PROT",
+              "width_param": "AXI_PROT_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AR_REGION",
+              "width_param": "AXI_REGION_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AR_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AR_QOS",
+              "width_param": "NOC_QOS_WIDTH",
+              "default": "4"
+            }
+          ]
+        },
+        {
+          "name": "B",
+          "direction": "output",
+          "carrier": "response",
+          "signals": [
+            {
+              "name": "B_ID",
+              "width_param": "IN_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "B_RESP",
+              "width_param": "AXI_RESP_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "B_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            }
+          ]
+        },
+        {
+          "name": "R",
+          "direction": "output",
+          "carrier": "response",
+          "signals": [
+            {
+              "name": "R_ID",
+              "width_param": "IN_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "R_DATA",
+              "width_param": "NOC_DATA_WIDTH",
+              "default": "256"
+            },
+            {
+              "name": "R_RESP",
+              "width_param": "AXI_RESP_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "R_LAST",
+              "width_param": "AXI_LAST_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "R_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            }
+          ]
+        }
+      ],
+      "port_parameters": [
+        {
+          "name": "ENABLE_AXI_PARITY",
+          "type": "bool",
+          "default": "true",
+          "constraint_text": "—"
+        }
+      ]
+    },
+    {
+      "block": "NSU",
+      "name": "NoC request in",
+      "direction": "in",
+      "peer": "Router local output",
+      "protocol": "NoC request flit link",
+      "flow_control": "per-VC credit",
+      "clock_domain": "noc_clk_i / noc_rst_ni",
+      "wire_source": "REQ_IN + credit",
+      "signals": [
+        {
+          "name": "req_valid_i",
+          "width_param": "1",
+          "direction": "input",
+          "default": "1"
+        },
+        {
+          "name": "req_flit_i",
+          "width_param": "FLIT_WIDTH",
+          "direction": "input",
+          "default": "406"
+        },
+        {
+          "name": "req_credit_o",
+          "width_param": "NUM_VC",
+          "direction": "output",
+          "default": "1"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "NUM_VC",
+          "type": "int",
+          "default": "1",
+          "constraint_text": "1 ≤ x ≤ 8; when x > 1, both `R_ROB_TYPE` and `B_ROB_TYPE` MUST be != `NoRoB` (see `theory_of_operation.md` §RoB allocator §\"NoRoB single-VC restriction\")"
+        },
+        {
+          "name": "FLIT_WIDTH",
+          "type": "derived",
+          "default": "406",
+          "constraint_text": "derived = HEADER_WIDTH + PAYLOAD_WIDTH"
+        }
+      ]
+    },
+    {
+      "block": "NSU",
+      "name": "AXI master port (host)",
+      "direction": "out request, in response",
+      "peer": "local AXI slave",
+      "protocol": "AXI4",
+      "flow_control": "ready/valid per channel",
+      "clock_domain": "aclk_i / arst_ni",
+      "wire_source": "AW_OUT W_OUT AR_OUT B_OUT R_OUT",
+      "channels": [
+        {
+          "name": "AW",
+          "direction": "output",
+          "carrier": "request",
+          "signals": [
+            {
+              "name": "AW_ID",
+              "width_param": "OUT_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AW_ADDR",
+              "width_param": "ADDR_WIDTH",
+              "default": "64"
+            },
+            {
+              "name": "AW_LEN",
+              "width_param": "AXI_LEN_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AW_SIZE",
+              "width_param": "AXI_SIZE_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AW_BURST",
+              "width_param": "AXI_BURST_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "AW_CACHE",
+              "width_param": "AXI_CACHE_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AW_LOCK",
+              "width_param": "AXI_LOCK_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "AW_PROT",
+              "width_param": "AXI_PROT_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AW_REGION",
+              "width_param": "AXI_REGION_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AW_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AW_QOS",
+              "width_param": "NOC_QOS_WIDTH",
+              "default": "4"
+            }
+          ]
+        },
+        {
+          "name": "W",
+          "direction": "output",
+          "carrier": "request",
+          "signals": [
+            {
+              "name": "W_DATA",
+              "width_param": "NOC_DATA_WIDTH",
+              "default": "256"
+            },
+            {
+              "name": "W_STRB",
+              "width_param": "WSTRB_WIDTH",
+              "default": "32"
+            },
+            {
+              "name": "W_LAST",
+              "width_param": "AXI_LAST_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "W_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            }
+          ]
+        },
+        {
+          "name": "AR",
+          "direction": "output",
+          "carrier": "request",
+          "signals": [
+            {
+              "name": "AR_ID",
+              "width_param": "OUT_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AR_ADDR",
+              "width_param": "ADDR_WIDTH",
+              "default": "64"
+            },
+            {
+              "name": "AR_LEN",
+              "width_param": "AXI_LEN_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AR_SIZE",
+              "width_param": "AXI_SIZE_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AR_BURST",
+              "width_param": "AXI_BURST_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "AR_CACHE",
+              "width_param": "AXI_CACHE_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AR_LOCK",
+              "width_param": "AXI_LOCK_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "AR_PROT",
+              "width_param": "AXI_PROT_WIDTH",
+              "default": "3"
+            },
+            {
+              "name": "AR_REGION",
+              "width_param": "AXI_REGION_WIDTH",
+              "default": "4"
+            },
+            {
+              "name": "AR_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "AR_QOS",
+              "width_param": "NOC_QOS_WIDTH",
+              "default": "4"
+            }
+          ]
+        },
+        {
+          "name": "B",
+          "direction": "input",
+          "carrier": "response",
+          "signals": [
+            {
+              "name": "B_ID",
+              "width_param": "OUT_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "B_RESP",
+              "width_param": "AXI_RESP_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "B_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            }
+          ]
+        },
+        {
+          "name": "R",
+          "direction": "input",
+          "carrier": "response",
+          "signals": [
+            {
+              "name": "R_ID",
+              "width_param": "OUT_ID_WIDTH",
+              "default": "8"
+            },
+            {
+              "name": "R_DATA",
+              "width_param": "NOC_DATA_WIDTH",
+              "default": "256"
+            },
+            {
+              "name": "R_RESP",
+              "width_param": "AXI_RESP_WIDTH",
+              "default": "2"
+            },
+            {
+              "name": "R_LAST",
+              "width_param": "AXI_LAST_WIDTH",
+              "default": "1"
+            },
+            {
+              "name": "R_USER",
+              "width_param": "USER_WIDTH",
+              "default": "8"
+            }
+          ]
+        }
+      ],
+      "port_parameters": [
+        {
+          "name": "ENABLE_AXI_PARITY",
+          "type": "bool",
+          "default": "true",
+          "constraint_text": "—"
+        }
+      ]
+    },
+    {
+      "block": "NSU",
+      "name": "NoC response out",
+      "direction": "out",
+      "peer": "Router local input",
+      "protocol": "NoC response flit link",
+      "flow_control": "per-VC credit return",
+      "clock_domain": "noc_clk_i / noc_rst_ni",
+      "wire_source": "RSP_OUT + credit",
+      "signals": [
+        {
+          "name": "rsp_valid_o",
+          "width_param": "1",
+          "direction": "output",
+          "default": "1"
+        },
+        {
+          "name": "rsp_flit_o",
+          "width_param": "FLIT_WIDTH",
+          "direction": "output",
+          "default": "406"
+        },
+        {
+          "name": "rsp_credit_i",
+          "width_param": "NUM_VC",
+          "direction": "input",
+          "default": "1"
+        },
+        {
+          "name": "rsp_credit_init_ready_o",
+          "width_param": "1",
+          "direction": "output",
+          "default": "1"
+        },
+        {
+          "name": "rsp_credit_init_ready_i",
+          "width_param": "1",
+          "direction": "input",
+          "default": "1"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "NUM_VC",
+          "type": "int",
+          "default": "1",
+          "constraint_text": "1 ≤ x ≤ 8; when x > 1, both `R_ROB_TYPE` and `B_ROB_TYPE` MUST be != `NoRoB` (see `theory_of_operation.md` §RoB allocator §\"NoRoB single-VC restriction\")"
+        },
+        {
+          "name": "FLIT_WIDTH",
+          "type": "derived",
+          "default": "406",
+          "constraint_text": "derived = HEADER_WIDTH + PAYLOAD_WIDTH"
+        }
+      ]
+    }
+  ]
+}

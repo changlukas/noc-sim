@@ -1,0 +1,368 @@
+{
+  "$schema_version": "ni-spec/1.0",
+  "meta": {
+    "block": "Network Interface (NI / chimney: NMU + NSU)",
+    "spec_version": "v0.4.0",
+    "source_repo": "github.com/changlukas/noc-sim",
+    "source_docs": [
+      "packet_format.md",
+      "signal_interface.md",
+      "registers.md",
+      "protocol_rules.md",
+      "channel_handshake.md",
+      "active_passive_mode.md"
+    ],
+    "note": "Structured extraction of the machine-checkable parts of the NI spec. Prose-only docs (theory_of_operation, channel_api) stay as Markdown and are not modelled here.",
+    "scope": "non-flit parameters (block-level: AXI host, CDC, MAX_TXNS, etc.)"
+  },
+  "parameters": [
+    {
+      "name": "ADDR_WIDTH",
+      "type": "int",
+      "default": 64,
+      "constraint": {
+        "kind": "range",
+        "min": 32,
+        "max": 64
+      }
+    },
+    {
+      "name": "AXI_DATA_WIDTH",
+      "type": "int",
+      "default": 256,
+      "constraint": {
+        "kind": "enum",
+        "values": [
+          32,
+          64,
+          128,
+          256,
+          512
+        ]
+      }
+    },
+    {
+      "name": "USER_WIDTH",
+      "type": "int",
+      "default": 8,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": 32
+      }
+    },
+    {
+      "name": "IN_ID_WIDTH",
+      "type": "int",
+      "default": 8,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": 16
+      }
+    },
+    {
+      "name": "OUT_ID_WIDTH",
+      "type": "int",
+      "default": 8,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": 16
+      }
+    },
+    {
+      "name": "EN_SBR_PORT",
+      "type": "bool",
+      "default": true,
+      "constraint": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "EN_MGR_PORT",
+      "type": "bool",
+      "default": true,
+      "constraint": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "MAX_TXNS",
+      "type": "int",
+      "default": 32,
+      "constraint": {
+        "kind": "power_of_2"
+      }
+    },
+    {
+      "name": "MAX_UNIQUE_IDS",
+      "type": "int",
+      "default": 1,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": "MAX_TXNS"
+      }
+    },
+    {
+      "name": "MAX_TXNS_PER_ID",
+      "type": "int",
+      "default": 32,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": "MAX_TXNS"
+      }
+    },
+    {
+      "name": "B_ROB_TYPE",
+      "type": "enum",
+      "default": "NoRoB",
+      "constraint": {
+        "kind": "enum",
+        "values": [
+          "NoRoB",
+          "SimpleRoB",
+          "NormalRoB"
+        ]
+      }
+    },
+    {
+      "name": "B_ROB_SIZE",
+      "type": "int",
+      "default": 0,
+      "constraint": {
+        "kind": "range",
+        "min": 0,
+        "max": "MAX_TXNS"
+      }
+    },
+    {
+      "name": "R_ROB_TYPE",
+      "type": "enum",
+      "default": "NoRoB",
+      "constraint": {
+        "kind": "enum",
+        "values": [
+          "NoRoB",
+          "SimpleRoB",
+          "NormalRoB"
+        ]
+      }
+    },
+    {
+      "name": "R_ROB_SIZE",
+      "type": "int",
+      "default": 0,
+      "constraint": {
+        "kind": "range",
+        "min": 0,
+        "max": "MAX_TXNS"
+      }
+    },
+    {
+      "name": "CUT_AX",
+      "type": "bool",
+      "default": false,
+      "constraint": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "CUT_RSP",
+      "type": "bool",
+      "default": false,
+      "constraint": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "ROUTE_ALGO",
+      "type": "enum",
+      "default": "XYRouting",
+      "constraint": {
+        "kind": "enum",
+        "values": [
+          "XYRouting",
+          "SourceRouting",
+          "IDRouting"
+        ]
+      }
+    },
+    {
+      "name": "USE_ID_TABLE",
+      "type": "bool",
+      "default": false,
+      "constraint": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "XY_ADDR_OFFSET_X",
+      "type": "int",
+      "default": 32,
+      "constraint": {
+        "kind": "range",
+        "min": 0,
+        "max": "ADDR_WIDTH - X_WIDTH"
+      }
+    },
+    {
+      "name": "XY_ADDR_OFFSET_Y",
+      "type": "int",
+      "default": 36,
+      "constraint": {
+        "kind": "range",
+        "min": 0,
+        "max": "ADDR_WIDTH - Y_WIDTH"
+      }
+    },
+    {
+      "name": "NUM_SAM_RULES",
+      "type": "int",
+      "default": 0,
+      "constraint": {
+        "kind": "range",
+        "min": 0,
+        "max": 64
+      }
+    },
+    {
+      "name": "BW_COUNTER_WIDTH",
+      "type": "int",
+      "default": 24,
+      "constraint": {
+        "kind": "range",
+        "min": 16,
+        "max": 32
+      }
+    },
+    {
+      "name": "URGENCY_WIDTH",
+      "type": "int",
+      "default": 3,
+      "constraint": {
+        "kind": "range",
+        "min": 2,
+        "max": 4
+      }
+    },
+    {
+      "name": "ERR_COUNTER_WIDTH",
+      "type": "int",
+      "default": 16,
+      "constraint": {
+        "kind": "range",
+        "min": 8,
+        "max": 32
+      }
+    },
+    {
+      "name": "MESH_COLS",
+      "type": "int",
+      "default": 4,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": "2 ** X_WIDTH"
+      }
+    },
+    {
+      "name": "MESH_ROWS",
+      "type": "int",
+      "default": 4,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": "2 ** Y_WIDTH"
+      }
+    },
+    {
+      "name": "NUM_VC",
+      "type": "int",
+      "default": 1,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": 8
+      }
+    },
+    {
+      "name": "CDC_FIFO_DEPTH",
+      "type": "int",
+      "default": 16,
+      "constraint": {
+        "kind": "range",
+        "min": 4,
+        "max": 64
+      }
+    },
+    {
+      "name": "MAX_OUTSTANDING",
+      "type": "int",
+      "default": 8,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": "MAX_TXNS"
+      }
+    },
+    {
+      "name": "MAX_BURST_LEN",
+      "type": "int",
+      "default": 16,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": 256
+      }
+    },
+    {
+      "name": "MAX_RO_TXNS_PER_ID",
+      "type": "int",
+      "default": 32,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": "MAX_TXNS_PER_ID"
+      }
+    },
+    {
+      "name": "ONLY_METADATA_B",
+      "type": "bool",
+      "default": true,
+      "constraint": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "NSU_R_BUFFER_DEPTH",
+      "type": "int",
+      "default": 16,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": 64
+      }
+    },
+    {
+      "name": "EXCLUSIVE_MONITOR_DEPTH",
+      "type": "int",
+      "default": 8,
+      "constraint": {
+        "kind": "range",
+        "min": 1,
+        "max": "MAX_TXNS"
+      }
+    },
+    {
+      "name": "ENABLE_AXI_PARITY",
+      "type": "bool",
+      "default": true,
+      "constraint": {
+        "kind": "bool"
+      }
+    }
+  ]
+}

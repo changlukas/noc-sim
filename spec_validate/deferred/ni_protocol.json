@@ -1,0 +1,276 @@
+{
+  "$schema_version": "ni-spec/1.0",
+  "meta": {
+    "block": "Network Interface (NI / chimney: NMU + NSU)",
+    "spec_version": "v0.4.0",
+    "source_repo": "github.com/changlukas/noc-sim",
+    "source_docs": [
+      "packet_format.md",
+      "signal_interface.md",
+      "registers.md",
+      "protocol_rules.md",
+      "channel_handshake.md",
+      "active_passive_mode.md"
+    ],
+    "note": "Structured extraction of the machine-checkable parts of the NI spec. Prose-only docs (theory_of_operation, channel_api) stay as Markdown and are not modelled here.",
+    "scope": "protocol rules (deferred — out of current scope)"
+  },
+  "protocol_rules": [
+    {
+      "id": "NI_RST_OUTPUTS_LOW_NOC",
+      "proto": "NI",
+      "role": "RST",
+      "channels": [
+        "RST"
+      ],
+      "severity": "FAIL",
+      "condition": "noc_rst_ni asserted -> all NI-driven NoC outputs at 0"
+    },
+    {
+      "id": "NI_RST_DURATION_AXI",
+      "proto": "NI",
+      "role": "RST",
+      "channels": [
+        "RST"
+      ],
+      "severity": "FAIL",
+      "condition": "arst_ni pulse held LOW for >= 16 aclk_i cycles"
+    },
+    {
+      "id": "NI_CDC_NO_COMBINATIONAL_PATH",
+      "proto": "NI",
+      "role": "CDC",
+      "channels": [
+        "CDC"
+      ],
+      "severity": "FAIL",
+      "condition": "no combinational path crosses the AXI<->NoC clock boundary"
+    },
+    {
+      "id": "AXI4_MST_AW_AWVALID_STABLE",
+      "proto": "AXI4",
+      "role": "MST",
+      "channels": [
+        "AW"
+      ],
+      "severity": "FAIL",
+      "condition": "AWVALID held HIGH until AWREADY observed"
+    },
+    {
+      "id": "AXI4_SLV_AW_BURST_4KB_BOUNDARY",
+      "proto": "AXI4",
+      "role": "SLV",
+      "channels": [
+        "AW"
+      ],
+      "severity": "FAIL",
+      "condition": "INCR burst must not cross a 4KB address boundary"
+    },
+    {
+      "id": "AXI4_MST_W_WLAST_LEN_CONSISTENT",
+      "proto": "AXI4",
+      "role": "MST",
+      "channels": [
+        "W"
+      ],
+      "severity": "FAIL",
+      "condition": "WLAST asserts on beat AWLEN+1"
+    },
+    {
+      "id": "AXI4_SLV_B_BRESP_VALUES",
+      "proto": "AXI4",
+      "role": "SLV",
+      "channels": [
+        "B"
+      ],
+      "severity": "FAIL",
+      "condition": "BRESP in {OKAY, SLVERR, DECERR}; EXOKAY unused"
+    },
+    {
+      "id": "AXI4_SLV_R_RLAST_LEN_CONSISTENT",
+      "proto": "AXI4",
+      "role": "SLV",
+      "channels": [
+        "R"
+      ],
+      "severity": "FAIL",
+      "condition": "total R beats == ARLEN+1"
+    },
+    {
+      "id": "AXI4_SLV_XCH_W_AFTER_AW",
+      "proto": "AXI4",
+      "role": "SLV",
+      "channels": [
+        "XCH",
+        "AW",
+        "W"
+      ],
+      "severity": "FAIL",
+      "condition": "AW handshake completes before WREADY"
+    },
+    {
+      "id": "AXI4_MST_PARITY_CHECK",
+      "proto": "AXI4",
+      "role": "MST",
+      "channels": [
+        "AW",
+        "AR",
+        "W"
+      ],
+      "severity": "FAIL",
+      "condition": "NMU recomputes per-byte parity; mismatch logs ERR_STATUS[2]"
+    },
+    {
+      "id": "NOC_MST_FLIT_ON_CREDIT_ONLY",
+      "proto": "NOC",
+      "role": "MST",
+      "channels": [
+        "REQ_OUT",
+        "RSP_OUT"
+      ],
+      "severity": "FAIL",
+      "condition": "source holds >=1 credit on chosen VC before asserting valid"
+    },
+    {
+      "id": "NOC_MST_WORMHOLE_LOCK",
+      "proto": "NOC",
+      "role": "MST",
+      "channels": [
+        "REQ_OUT",
+        "RSP_OUT"
+      ],
+      "severity": "FAIL",
+      "condition": "no foreign-packet flit injected until in-flight packet last=1 accepted"
+    },
+    {
+      "id": "NOC_CREDIT_STARTUP_HANDSHAKE",
+      "proto": "NOC",
+      "role": "MST",
+      "channels": [
+        "REQ_OUT",
+        "RSP_OUT"
+      ],
+      "severity": "FAIL",
+      "condition": "bi-directional credit-init handshake completes before first flit"
+    },
+    {
+      "id": "NOC_FLIT_HDR_LAST_CONSISTENT",
+      "proto": "NOC",
+      "role": "MST",
+      "channels": [
+        "REQ_OUT",
+        "RSP_OUT"
+      ],
+      "severity": "FAIL",
+      "condition": "header last bit demarcates packet boundary; W/R last == AXI wlast/rlast"
+    },
+    {
+      "id": "NOC_FLIT_HDR_ROUTE_PAR_GEN",
+      "proto": "NOC",
+      "role": "MST",
+      "channels": [
+        "REQ_OUT",
+        "RSP_OUT"
+      ],
+      "severity": "FAIL",
+      "condition": "route_par = XOR{dst_id,last} placed in header"
+    },
+    {
+      "id": "NOC_FLIT_HDR_ROUTE_PAR_CHECK",
+      "proto": "NOC",
+      "role": "SLV",
+      "channels": [
+        "REQ_IN",
+        "RSP_IN"
+      ],
+      "severity": "FAIL",
+      "condition": "recompute route_par; mismatch drops flit + ERR_STATUS[1]"
+    },
+    {
+      "id": "NOC_FLIT_HDR_FLIT_ECC_CHECK",
+      "proto": "NOC",
+      "role": "SLV",
+      "channels": [
+        "REQ_IN",
+        "RSP_IN"
+      ],
+      "severity": "FAIL",
+      "condition": "SECDED recompute; 1-bit correct, 2-bit forward+log ERR_STATUS[0]"
+    },
+    {
+      "id": "NOC_FLIT_HDR_RSVD_ZERO_TX",
+      "proto": "NOC",
+      "role": "MST",
+      "channels": [
+        "REQ_OUT",
+        "RSP_OUT"
+      ],
+      "severity": "FAIL",
+      "condition": "reserved header fields must be zero on transmission"
+    },
+    {
+      "id": "NOC_FLIT_HDR_RSVD_IGNORE_RX",
+      "proto": "NOC",
+      "role": "SLV",
+      "channels": [
+        "REQ_IN",
+        "RSP_IN"
+      ],
+      "severity": "RECOMMEND",
+      "condition": "non-zero reserved fields on RX must be ignored"
+    },
+    {
+      "id": "NOC_VC_MAPPING_HYBRID_RW_QOS",
+      "proto": "NOC",
+      "role": "MST",
+      "channels": [
+        "REQ_OUT",
+        "RSP_OUT"
+      ],
+      "severity": "FAIL",
+      "condition": "vc_id = qos >> (4 - log2(NUM_VC)); magnitude-tier mapping"
+    },
+    {
+      "id": "AXI4LITE_SLV_UNMAPPED_DECERR",
+      "proto": "AXI4LITE",
+      "role": "SLV",
+      "channels": [
+        "CSR_AW",
+        "CSR_AR"
+      ],
+      "severity": "FAIL",
+      "condition": "access to unmapped CSR offset returns DECERR"
+    },
+    {
+      "id": "NI_CFG_ERR_STATUS_RW1C",
+      "proto": "NI",
+      "role": "CFG",
+      "channels": [
+        "CFG",
+        "CSR_W"
+      ],
+      "severity": "FAIL",
+      "condition": "write 1 to ERR_STATUS[i] clears bit + paired counter atomically"
+    },
+    {
+      "id": "NI_CFG_QUIESCE_FLOW",
+      "proto": "NI",
+      "role": "CFG",
+      "channels": [
+        "CFG"
+      ],
+      "severity": "FAIL",
+      "condition": "quiesce_req=1 holds awready/arready=0; quiesce_idle on drain"
+    },
+    {
+      "id": "NI_IRQ_LEVEL",
+      "proto": "NI",
+      "role": "IRQ",
+      "channels": [
+        "IRQ"
+      ],
+      "severity": "FAIL",
+      "condition": "irq_o = OR over i of (ERR_STATUS[i] AND IRQ_ENABLE[i])"
+    }
+  ]
+}

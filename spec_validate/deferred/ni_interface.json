@@ -1,0 +1,49 @@
+{
+  "$schema_version": "ni-spec/1.0",
+  "meta": {
+    "block": "Network Interface (NI / chimney: NMU + NSU)",
+    "spec_version": "v0.4.0",
+    "source_repo": "github.com/changlukas/noc-sim",
+    "source_docs": [
+      "packet_format.md",
+      "signal_interface.md",
+      "registers.md",
+      "protocol_rules.md",
+      "channel_handshake.md",
+      "active_passive_mode.md"
+    ],
+    "note": "Structured extraction of the machine-checkable parts of the NI spec. Prose-only docs (theory_of_operation, channel_api) stay as Markdown and are not modelled here.",
+    "scope": "channel/bundle tokens (placeholder — wire-table extraction is phase 2)"
+  },
+  "bundles": [
+    "AW_IN",
+    "W_IN",
+    "B_IN",
+    "AR_IN",
+    "R_IN",
+    "AW_OUT",
+    "W_OUT",
+    "B_OUT",
+    "AR_OUT",
+    "R_OUT",
+    "REQ_OUT",
+    "REQ_IN",
+    "RSP_OUT",
+    "RSP_IN",
+    "CSR_AW",
+    "CSR_W",
+    "CSR_B",
+    "CSR_AR",
+    "CSR_R",
+    "AW",
+    "W",
+    "B",
+    "AR",
+    "R",
+    "RST",
+    "XCH",
+    "CFG",
+    "IRQ",
+    "CDC"
+  ]
+}

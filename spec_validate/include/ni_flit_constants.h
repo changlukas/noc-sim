@@ -1,0 +1,98 @@
+// AUTO-GENERATED from ni_packet.json by tools/gen_cpp_header.py
+// Do not edit by hand. Re-run the generator after spec changes.
+// Spec version: v0.4.0
+
+#pragma once
+#include <cstdint>
+
+namespace ni {
+
+// --- top-level flit widths (from flit.derived) ---
+constexpr int FLIT_WIDTH        = 406;
+constexpr int HEADER_WIDTH      = 54;
+constexpr int PAYLOAD_WIDTH     = 352;
+constexpr int LINK_WIDTH        = 407;
+constexpr int FLIT_DATA_WIDTH = 396;
+constexpr int HEADER_DATA_WIDTH = 44;
+constexpr int WSTRB_WIDTH     = 32;
+
+// --- header field bit positions (from flit.header_fields) ---
+namespace header {
+constexpr int NOC_QOS_LSB   = 0;
+constexpr int NOC_QOS_MSB   = 3;
+constexpr int NOC_QOS_WIDTH = 4;
+constexpr int AXI_CH_LSB   = 4;
+constexpr int AXI_CH_MSB   = 6;
+constexpr int AXI_CH_WIDTH = 3;
+constexpr int SRC_ID_LSB   = 7;
+constexpr int SRC_ID_MSB   = 14;
+constexpr int SRC_ID_WIDTH = 8;
+constexpr int DST_ID_LSB   = 15;
+constexpr int DST_ID_MSB   = 22;
+constexpr int DST_ID_WIDTH = 8;
+constexpr int VC_ID_LSB   = 23;
+constexpr int VC_ID_MSB   = 25;
+constexpr int VC_ID_WIDTH = 3;
+constexpr int ROUTE_PAR_LSB   = 26;
+constexpr int ROUTE_PAR_MSB   = 26;
+constexpr int ROUTE_PAR_WIDTH = 1;
+constexpr int LAST_LSB   = 27;
+constexpr int LAST_MSB   = 27;
+constexpr int LAST_WIDTH = 1;
+constexpr int ROB_REQ_LSB   = 28;
+constexpr int ROB_REQ_MSB   = 28;
+constexpr int ROB_REQ_WIDTH = 1;
+constexpr int ROB_IDX_LSB   = 29;
+constexpr int ROB_IDX_MSB   = 33;
+constexpr int ROB_IDX_WIDTH = 5;
+constexpr int RSVD_COMMTYPE_LSB   = 34;
+constexpr int RSVD_COMMTYPE_MSB   = 35;
+constexpr int RSVD_COMMTYPE_WIDTH = 2;
+constexpr int MULTICAST_LSB   = 36;
+constexpr int MULTICAST_MSB   = 43;
+constexpr int MULTICAST_WIDTH = 8;
+constexpr int FLIT_ECC_LSB   = 44;
+constexpr int FLIT_ECC_MSB   = 53;
+constexpr int FLIT_ECC_WIDTH = 10;
+}  // namespace header
+
+// --- payload widths per channel (from flit.payload_channels) ---
+namespace payload {
+constexpr int AW_WIDTH = 108;
+constexpr int AR_WIDTH = 108;
+constexpr int W_WIDTH = 352;
+constexpr int B_WIDTH = 64;
+constexpr int R_WIDTH = 352;
+}  // namespace payload
+
+// --- all field widths (from flit.field_widths) ---
+namespace width {
+constexpr int X_WIDTH                = 4;
+constexpr int Y_WIDTH                = 4;
+constexpr int NOC_QOS_WIDTH          = 4;
+constexpr int AXI_CH_WIDTH           = 3;
+constexpr int LAST_WIDTH             = 1;
+constexpr int ROB_REQ_WIDTH          = 1;
+constexpr int ROB_IDX_WIDTH          = 5;
+constexpr int RSVD_COMMTYPE_WIDTH    = 2;
+constexpr int MULTICAST_WIDTH        = 8;
+constexpr int VC_ID_WIDTH            = 3;
+constexpr int ROUTE_PAR_WIDTH        = 1;
+constexpr int FLIT_ECC_WIDTH         = 10;
+constexpr int AXI_ADDR_WIDTH         = 64;
+constexpr int AXI_ID_WIDTH           = 8;
+constexpr int NOC_DATA_WIDTH         = 256;
+constexpr int AXI_USER_WIDTH         = 8;
+constexpr int AXI_LEN_WIDTH          = 8;
+constexpr int AXI_SIZE_WIDTH         = 3;
+constexpr int AXI_BURST_WIDTH        = 2;
+constexpr int AXI_CACHE_WIDTH        = 4;
+constexpr int AXI_LOCK_WIDTH         = 1;
+constexpr int AXI_PROT_WIDTH         = 3;
+constexpr int AXI_REGION_WIDTH       = 4;
+constexpr int AXI_RESP_WIDTH         = 2;
+constexpr int AXI_LAST_WIDTH         = 1;
+constexpr int RSVD_MC_STATUS_WIDTH   = 2;
+}  // namespace width
+
+}  // namespace ni

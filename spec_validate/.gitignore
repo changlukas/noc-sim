@@ -1,0 +1,15 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# C++ build artifacts (platform-specific binaries — regenerate via tools/gen_cpp_header.py + g++)
+*.exe
+*.o
+*.obj
+
+# Editor / OS clutter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

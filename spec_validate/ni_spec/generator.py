@@ -1,0 +1,715 @@
+"""MD → JSON generator. Path B 的核心：把 packet_format.md 解析成完整 ni_packet.json。
+
+對齊業界做法（SystemRDL / Protocol Buffers）：人類只改 source（MD），
+工具產衍生品（JSON），下游消費衍生品。本檔取代原 crosscheck.py 的角色。
+"""
+
+from __future__ import annotations
+import json
+import re
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
+
+
+# ---------- 共用 helper ----------
+
+_RANGE_RE = re.compile(r"\[(\d+)(?::(\d+))?\]")
+# 整數解析容忍 backtick：`8` → 8
+_INT_TOKEN_RE = re.compile(r"-?\d+")
+
+
+def _parse_bit_range(s: str) -> Optional[Tuple[int, int]]:
+    """`[3:0]` → (0, 3)；`[26]` → (26, 26)；失敗 None。回 (lsb, msb)。"""
+    m = _RANGE_RE.search(s)
+    if not m:
+        return None
+    msb = int(m.group(1))
+    lsb = int(m.group(2)) if m.group(2) is not None else msb
+    return (lsb, msb)
+
+
+def _strip_cell(c: str) -> str:
+    """剝掉 markdown 強調符號（`、*）跟空白。"""
+    return c.strip().strip("`").strip("*").strip("`").strip()
+
+
+def _parse_int_cell(s: str) -> Optional[int]:
+    """從 cell 字串裡抓第一個整數（容忍 backtick / 描述文字）。"""
+    s = _strip_cell(s)
+    m = _INT_TOKEN_RE.search(s)
+    return int(m.group(0)) if m else None
+
+
+def _section_slice(md_text: str, heading_pattern: str) -> Optional[str]:
+    """切出 heading 後到下一個同層或淺層 heading 之前的文字。找不到 heading 回 None。
+
+    自動偵測 heading 層級——例如 `### Foo` (level 3) 結束於下一個 level ≤ 3 的 heading
+    (i.e. `###` / `##` / `#`)，**不**結束於更深的 `####` (level 4)。這讓 sub-section
+    parser 可以放心抓母 section 完整內容。
+    """
+    pat = re.compile(heading_pattern, re.MULTILINE)
+    m = pat.search(md_text)
+    if not m:
+        return None
+    # 計算這個 matched heading 的 # 個數
+    matched = m.group(0).lstrip()
+    level = 0
+    for ch in matched:
+        if ch == "#":
+            level += 1
+        else:
+            break
+    if level == 0:
+        level = 6  # fallback：不限制深度
+    after = md_text[m.end():]
+    next_re = re.compile(rf"^#{{1,{level}}}\s", re.MULTILINE)
+    nxt = next_re.search(after)
+    return after[: nxt.start()] if nxt else after
+
+
+def _extract_table(section_text: str) -> Tuple[List[str], List[List[str]]]:
+    """從 section 文字裡抓第一張 markdown table。回 (header_cells, [data_rows])。
+
+    自動跳過分隔列 (|---|---|) 跟空 first-column 的 summary 列。
+    支援 escaped pipe (\\|) — 不會被誤切。
+    """
+    lines = [l for l in section_text.splitlines() if l.lstrip().startswith("|")]
+    if len(lines) < 3:
+        return [], []
+    header = _split_table_row(lines[0])
+    rows: List[List[str]] = []
+    for raw in lines[2:]:
+        cells = _split_table_row(raw)
+        if not cells or not cells[0]:
+            continue  # summary 列
+        rows.append(cells)
+    return header, rows
+
+
+def _col_idx(header: List[str], name: str) -> Optional[int]:
+    try:
+        return header.index(name)
+    except ValueError:
+        return None
+
+
+# ---------- §2.1 header bit allocation ----------
+
+
+def parse_header_fields(md_text: str) -> List[dict]:
+    sec = _section_slice(md_text, r"^### 2\.1\s+.*Bit Allocation")
+    if sec is None:
+        raise ValueError("找不到 packet_format.md §2.1 Bit Allocation")
+    header, rows = _extract_table(sec)
+    i_name = _col_idx(header, "Field")
+    i_wp = _col_idx(header, "Width Symbol")
+    i_rng = _col_idx(header, "Default Range")
+    i_stage = _col_idx(header, "Stage")
+    if None in (i_name, i_wp, i_rng):
+        raise ValueError(f"§2.1 缺欄位 (Field/Width Symbol/Default Range)；實際 header={header}")
+    result = []
+    for cells in rows:
+        if max(i_name, i_wp, i_rng) >= len(cells):
+            continue
+        name = cells[i_name]
+        rng = _parse_bit_range(cells[i_rng])
+        if not name or rng is None:
+            continue
+        lsb, msb = rng
+        field = {
+            "name": name,
+            "width_param": cells[i_wp],
+            "width": msb - lsb + 1,
+            "lsb": lsb,
+            "msb": msb,
+        }
+        if i_stage is not None and i_stage < len(cells):
+            field["stage"] = cells[i_stage]
+        result.append(field)
+    return result
+
+
+# ---------- §3 payload channels ----------
+
+
+_CHANNEL_TO_NETWORK = {"AW": "REQ", "W": "REQ", "AR": "REQ", "B": "RSP", "R": "RSP"}
+
+
+def _parse_payload_section(md_text: str, section_re: str, channel_name: str) -> Optional[dict]:
+    sec = _section_slice(md_text, section_re)
+    if sec is None:
+        return None
+    header, rows = _extract_table(sec)
+    i_name = _col_idx(header, "Field")
+    i_wp = _col_idx(header, "Width Symbol")
+    i_rng = _col_idx(header, "Default Range")
+    if None in (i_name, i_wp, i_rng):
+        return None
+    fields = []
+    for cells in rows:
+        if max(i_name, i_wp, i_rng) >= len(cells):
+            continue
+        name = cells[i_name]
+        rng = _parse_bit_range(cells[i_rng])
+        if not name or rng is None:
+            continue
+        lsb, msb = rng
+        wp = cells[i_wp]
+        # "derived (3)" → 規一化為 "derived"，width 由 bit range 推
+        if wp.startswith("derived"):
+            wp = "derived"
+        fields.append({
+            "name": name,
+            "width_param": wp,
+            "width": msb - lsb + 1,
+            "lsb": lsb,
+            "msb": msb,
+        })
+    if not fields:
+        return None
+    payload_width = max(f["msb"] for f in fields) + 1
+    return {
+        "name": channel_name,
+        "network": _CHANNEL_TO_NETWORK[channel_name],
+        "payload_width": payload_width,
+        "fields": fields,
+    }
+
+
+def parse_payload_channels(md_text: str) -> List[dict]:
+    """§3.1 (AW + 從 AW 衍生 AR) + §3.2 W + §3.3 B + §3.4 R。"""
+    channels = []
+
+    aw = _parse_payload_section(md_text, r"^### 3\.1\s+AW/AR Channel Payload", "AW")
+    if aw:
+        channels.append(aw)
+        # §3.1 只列 aw* fields，AR 結構相同（spec 寫死 prefix swap）
+        ar = {
+            "name": "AR",
+            "network": "REQ",
+            "payload_width": aw["payload_width"],
+            "fields": [
+                {**f, "name": f["name"].replace("aw", "ar", 1) if f["name"].startswith("aw") else f["name"]}
+                for f in aw["fields"]
+            ],
+        }
+        channels.append(ar)
+
+    for name, sec_re in (
+        ("W", r"^### 3\.2\s+W Channel Payload"),
+        ("B", r"^### 3\.3\s+B Channel Payload"),
+        ("R", r"^### 3\.4\s+R Channel Payload"),
+    ):
+        ch = _parse_payload_section(md_text, sec_re, name)
+        if ch:
+            channels.append(ch)
+
+    return channels
+
+
+# ---------- §1.2 field_widths (Group 1-5) ----------
+
+
+_FIELD_WIDTHS_GROUPS = (
+    r"^#### Group 1 — Topology",
+    r"^#### Group 2 — Header Fields",
+    r"^#### Group 3 — AXI Payload Sub-Fields",
+    # Group 4 (ECC) 已 retired，跳過
+    r"^#### Group 5 — B Channel Reserved",
+)
+
+
+def parse_field_widths(md_text: str) -> Dict[str, int]:
+    widths: Dict[str, int] = {}
+    for group_re in _FIELD_WIDTHS_GROUPS:
+        sec = _section_slice(md_text, group_re)
+        if sec is None:
+            continue
+        header, rows = _extract_table(sec)
+        i_name = _col_idx(header, "Parameter")
+        i_default = _col_idx(header, "Default")
+        if None in (i_name, i_default):
+            continue
+        for cells in rows:
+            if max(i_name, i_default) >= len(cells):
+                continue
+            name = cells[i_name]
+            val = _parse_int_cell(cells[i_default])
+            if name and val is not None:
+                widths[name] = val
+    return widths
+
+
+# ---------- §1.2 derived (Group 6) ----------
+
+
+# 跳過 per-channel payload width — 那些屬於 payload_channels[].payload_width
+_DERIVED_SKIP = {"AW_PAYLOAD_WIDTH", "W_PAYLOAD_WIDTH", "AR_PAYLOAD_WIDTH",
+                 "B_PAYLOAD_WIDTH", "R_PAYLOAD_WIDTH"}
+
+
+def parse_derived(md_text: str) -> Dict[str, int]:
+    derived: Dict[str, int] = {}
+    sec = _section_slice(md_text, r"^#### Group 6 — Composite / Derived")
+    if sec is None:
+        return derived
+    header, rows = _extract_table(sec)
+    i_name = _col_idx(header, "Parameter")
+    i_default = _col_idx(header, "Default")
+    if None in (i_name, i_default):
+        return derived
+    for cells in rows:
+        if max(i_name, i_default) >= len(cells):
+            continue
+        name = cells[i_name]
+        if name in _DERIVED_SKIP:
+            continue
+        val = _parse_int_cell(cells[i_default])
+        if name and val is not None:
+            derived[name] = val
+    return derived
+
+
+# ---------- 組裝 ----------
+
+
+def generate_ni_packet_json(md_dir: Union[str, Path]) -> dict:
+    """讀 packet_format.md 產出完整 ni_packet.json 結構。"""
+    md_path = Path(md_dir) / "packet_format.md"
+    if not md_path.exists():
+        raise FileNotFoundError(f"找不到 {md_path}")
+    md_text = md_path.read_text(encoding="utf-8")
+
+    return {
+        "$schema_version": "ni-spec/2.0",
+        "meta": {
+            "block": "Network Interface (NI / chimney: NMU + NSU)",
+            "spec_version": "v0.4.0",
+            "auto_generated_from": str(md_path).replace("\\", "/"),
+            "generator": "ni_spec.generator :: generate_ni_packet_json",
+            "do_not_edit": "Re-run validator/generator to refresh.",
+        },
+        "flit": {
+            "endianness": "little-endian byte ordering for wdata/rdata; MSB-first bit numbering for metadata",
+            "field_widths": parse_field_widths(md_text),
+            "header_fields": parse_header_fields(md_text),
+            "payload_channels": parse_payload_channels(md_text),
+            "derived": parse_derived(md_text),
+            "route_par_coverage": ["dst_id", "last"],
+        },
+    }
+
+
+def write_generated_json(md_dir: Union[str, Path], out_path: Union[str, Path]) -> dict:
+    """生成 + 寫檔。回傳 dict 給 caller。"""
+    data = generate_ni_packet_json(md_dir)
+    p = Path(out_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return data
+
+
+# ════════════════════════════════════════════════════════════════════
+# signal_interface.md — Phase 2 (Path B), 簡化版：只抓 top-level interface + parameters
+# ════════════════════════════════════════════════════════════════════
+#
+# 之前版本曾 parse 134 根 wire，使用者裁定太複雜。化繁為簡：
+#   - parameters: 從 §Parameters 抓
+#   - interfaces: 從 §Per-block interface summary 的 NMU/NSU table 抓
+#   - 其他 per-wire 細節留在 signal_interface.md 給人讀，不機器化
+
+
+_ESC_PIPE = "\x00ESC_PIPE\x00"
+
+
+def _split_table_row(raw: str) -> List[str]:
+    """安全切 markdown table 列：先用 placeholder 保護 escaped pipe (\\|)，split 後還原。"""
+    protected = raw.replace(r"\|", _ESC_PIPE)
+    cells = [_strip_cell(c).replace(_ESC_PIPE, "|") for c in protected.strip().strip("|").split("|")]
+    return cells
+
+
+def _extract_all_tables(section_text: str) -> List[Tuple[List[str], List[List[str]]]]:
+    """Section 內所有 markdown table（不只第一張）。回 [(header, rows), ...]。"""
+    tables = []
+    lines = section_text.splitlines()
+    i = 0
+    while i < len(lines):
+        if not lines[i].lstrip().startswith("|"):
+            i += 1
+            continue
+        block = []
+        while i < len(lines) and lines[i].lstrip().startswith("|"):
+            block.append(lines[i])
+            i += 1
+        if len(block) >= 3:
+            header = _split_table_row(block[0])
+            rows = []
+            for raw in block[2:]:
+                cells = _split_table_row(raw)
+                if not cells or not cells[0]:
+                    continue
+                rows.append(cells)
+            tables.append((header, rows))
+    return tables
+
+
+def parse_signal_parameters(md_text: str) -> List[dict]:
+    """§Parameters table。"""
+    sec = _section_slice(md_text, r"^## Parameters")
+    if sec is None:
+        return []
+    tables = _extract_all_tables(sec)
+    if not tables:
+        return []
+    header, rows = tables[0]
+    i_name = _col_idx(header, "Name")
+    i_type = _col_idx(header, "Type")
+    i_default = _col_idx(header, "Default")
+    i_constraint = _col_idx(header, "Constraint")
+    i_desc = _col_idx(header, "Description")
+    params = []
+    for cells in rows:
+        if i_name is None or i_name >= len(cells):
+            continue
+        name = _strip_cell(cells[i_name])
+        if not name:
+            continue
+        p = {"name": name}
+        if i_type is not None and i_type < len(cells):
+            p["type"] = _strip_cell(cells[i_type])
+        if i_default is not None and i_default < len(cells):
+            p["default"] = _strip_cell(cells[i_default])
+        if i_constraint is not None and i_constraint < len(cells):
+            p["constraint_text"] = _strip_cell(cells[i_constraint])
+        if i_desc is not None and i_desc < len(cells):
+            p["description"] = _strip_cell(cells[i_desc])
+        params.append(p)
+    return params
+
+
+# AXI4 / AXI4-Lite 5-channel direction map（per ARM IHI 0022）
+# 從 host port 視角：slave port 看 AW/W/AR 是 input，B/R 是 output；master 反過來
+_AXI_CHANNELS_SLAVE = [
+    ("AW", "input",  "request"),
+    ("W",  "input",  "request"),
+    ("AR", "input",  "request"),
+    ("B",  "output", "response"),
+    ("R",  "output", "response"),
+]
+_AXI_CHANNELS_MASTER = [
+    (n, ("output" if d == "input" else "input"), c)
+    for n, d, c in _AXI_CHANNELS_SLAVE
+]
+
+
+def _port_type_of(entry: dict) -> Optional[str]:
+    """slave / master / None。"""
+    proto = entry.get("protocol", "")
+    name = entry.get("name", "").lower()
+    if proto not in ("AXI4", "AXI4-Lite"):
+        return None
+    if "slave" in name or proto == "AXI4-Lite":
+        return "slave"
+    if "master" in name:
+        return "master"
+    return None
+
+
+def _build_axi_channels(port_type: str, ns: Dict[str, dict],
+                         with_signals: bool) -> List[dict]:
+    """組 AXI 5 channel list。with_signals=True 時每 channel 帶 signals[] (展 per-signal)。
+
+    port_type: 'slave' 或 'master'，決定方向 + ID 寬度 source。
+    """
+    template = _AXI_CHANNELS_SLAVE if port_type == "slave" else _AXI_CHANNELS_MASTER
+    channels = []
+    for ch_name, direction, carrier in template:
+        ch = {"name": ch_name, "direction": direction, "carrier": carrier}
+        if with_signals:
+            ch["signals"] = []
+            for sig_suffix, src_param in _AXI_CHANNEL_SIGNALS[ch_name]:
+                # ID width 依 port type 動態 resolve
+                actual = _ID_WIDTH_PARAM[port_type] if src_param == "ID" else src_param
+                p = ns.get(actual)
+                sig_entry = {
+                    "name": f"{ch_name}_{sig_suffix}",
+                    "width_param": actual,
+                }
+                if p and "default" in p:
+                    sig_entry["default"] = p["default"]
+                ch["signals"].append(sig_entry)
+        channels.append(ch)
+    return channels
+
+
+# Per-channel signal listing — each AXI channel 自己 carry 哪些 signal、各 signal 寬度
+# 來自哪個 parameter。signal 名稱用 channel 前綴（AW_ADDR / AR_ADDR）讓 user 一眼分辨。
+#
+# Signal naming: channel-suffix。Width source param 來自 packet_format.md §1.2 Group 3
+# 或 signal_interface.md §Parameters（ID 寬度依 slave/master 不同）。
+# 不列 valid/ready (1-bit fixed handshake)。
+
+_AXI_CHANNEL_SIGNALS = {
+    "AW": [
+        ("ID",     "ID"),           # → IN_ID_WIDTH / OUT_ID_WIDTH（依 port type）
+        ("ADDR",   "ADDR_WIDTH"),   # signal_interface.md
+        ("LEN",    "AXI_LEN_WIDTH"),
+        ("SIZE",   "AXI_SIZE_WIDTH"),
+        ("BURST",  "AXI_BURST_WIDTH"),
+        ("CACHE",  "AXI_CACHE_WIDTH"),
+        ("LOCK",   "AXI_LOCK_WIDTH"),
+        ("PROT",   "AXI_PROT_WIDTH"),
+        ("REGION", "AXI_REGION_WIDTH"),
+        ("USER",   "USER_WIDTH"),
+        ("QOS",    "NOC_QOS_WIDTH"),  # noc-layer qos (renamed from QOS_WIDTH)
+    ],
+    "W": [
+        ("DATA",   "NOC_DATA_WIDTH"),
+        ("STRB",   "WSTRB_WIDTH"),
+        ("LAST",   "AXI_LAST_WIDTH"),
+        ("USER",   "USER_WIDTH"),
+    ],
+    "B": [
+        ("ID",     "ID"),
+        ("RESP",   "AXI_RESP_WIDTH"),
+        ("USER",   "USER_WIDTH"),
+    ],
+    "AR": [
+        ("ID",     "ID"),
+        ("ADDR",   "ADDR_WIDTH"),
+        ("LEN",    "AXI_LEN_WIDTH"),
+        ("SIZE",   "AXI_SIZE_WIDTH"),
+        ("BURST",  "AXI_BURST_WIDTH"),
+        ("CACHE",  "AXI_CACHE_WIDTH"),
+        ("LOCK",   "AXI_LOCK_WIDTH"),
+        ("PROT",   "AXI_PROT_WIDTH"),
+        ("REGION", "AXI_REGION_WIDTH"),
+        ("USER",   "USER_WIDTH"),
+        ("QOS",    "NOC_QOS_WIDTH"),
+    ],
+    "R": [
+        ("ID",     "ID"),
+        ("DATA",   "NOC_DATA_WIDTH"),
+        ("RESP",   "AXI_RESP_WIDTH"),
+        ("LAST",   "AXI_LAST_WIDTH"),
+        ("USER",   "USER_WIDTH"),
+    ],
+}
+
+# Per-port ID width override
+_ID_WIDTH_PARAM = {"slave": "IN_ID_WIDTH", "master": "OUT_ID_WIDTH"}
+
+
+# 每個 NoC link interface 帶的 signals（per-signal name + width_param + direction）
+# 跟 AXI 同樣風格 — 看 JSON 就知道每根 wire 名字/寬度/方向。
+# Credit return 是反向走（_o 側 interface 收 _i credit；_i 側 interface 送 _o credit）。
+# Credit init handshake 雙向，只在 _o 側 interface 有（per signal_interface.md §Channel grouping）。
+_NOC_INTERFACE_SIGNALS = {
+    "NoC request out": [
+        ("req_valid_o",              "1",          "output"),
+        ("req_flit_o",               "FLIT_WIDTH", "output"),
+        ("req_credit_i",             "NUM_VC",     "input"),
+        ("req_credit_init_ready_o",  "1",          "output"),
+        ("req_credit_init_ready_i",  "1",          "input"),
+    ],
+    "NoC response in": [
+        ("rsp_valid_i",              "1",          "input"),
+        ("rsp_flit_i",               "FLIT_WIDTH", "input"),
+        ("rsp_credit_o",             "NUM_VC",     "output"),
+    ],
+    "NoC request in": [
+        ("req_valid_i",              "1",          "input"),
+        ("req_flit_i",               "FLIT_WIDTH", "input"),
+        ("req_credit_o",             "NUM_VC",     "output"),
+    ],
+    "NoC response out": [
+        ("rsp_valid_o",              "1",          "output"),
+        ("rsp_flit_o",               "FLIT_WIDTH", "output"),
+        ("rsp_credit_i",             "NUM_VC",     "input"),
+        ("rsp_credit_init_ready_o",  "1",          "output"),
+        ("rsp_credit_init_ready_i",  "1",          "input"),
+    ],
+}
+
+# NoC port-level parameters (knobs that configure the link)
+_INTERFACE_PARAMS = {
+    "NoC request out":  ["NUM_VC", "FLIT_WIDTH"],
+    "NoC response in":  ["NUM_VC", "FLIT_WIDTH"],
+    "NoC request in":   ["NUM_VC", "FLIT_WIDTH"],
+    "NoC response out": ["NUM_VC", "FLIT_WIDTH"],
+    "CSR":              [],  # AXI4-Lite，width 寫死 32/12
+}
+
+# AXI port 層級 parameter（不屬任一 channel，是整個 port 的 toggle）
+_AXI_PORT_PARAMS = ["ENABLE_AXI_PARITY"]
+
+
+def _build_noc_signals(interface_name: str, ns: Dict[str, dict]) -> List[dict]:
+    """組 NoC link interface 的 signals list。"""
+    sigs = _NOC_INTERFACE_SIGNALS.get(interface_name, [])
+    out = []
+    for name, width_param, direction in sigs:
+        entry = {"name": name, "width_param": width_param, "direction": direction}
+        # Resolve default: literal int 或 lookup param
+        try:
+            entry["default"] = str(int(width_param))
+        except ValueError:
+            p = ns.get(width_param)
+            if p and "default" in p:
+                entry["default"] = p["default"]
+        out.append(entry)
+    return out
+
+# Block-level presence toggle（不屬於任一 interface 而是 block 本身）
+_BLOCK_ENABLE_PARAMS = ["EN_MST_PORT", "EN_SLV_PORT"]
+
+
+def _build_params_namespace(md_dir: Union[str, Path],
+                             signal_params: List[dict]) -> Dict[str, dict]:
+    """聯集 signal_interface.md §Parameters + packet_format.md §1.2 field_widths/derived。
+
+    signal_interface 提供 type / constraint / description；
+    packet_format 只提供 default value（field width 是 fixed-by-AXI4-spec）。
+    """
+    by_name = {p["name"]: p for p in signal_params}
+
+    # 從 packet_format.md 補 AXI signal width / WSTRB_WIDTH 等
+    packet_md = (Path(md_dir) / "packet_format.md").read_text(encoding="utf-8")
+    fw = parse_field_widths(packet_md)
+    derived = parse_derived(packet_md)
+    for name, val in {**fw, **derived}.items():
+        if name not in by_name:
+            by_name[name] = {
+                "name": name,
+                "default": str(val),
+                "source": "packet_format.md §1.2",
+            }
+    return by_name
+
+
+def _select_params(ns: Dict[str, dict], names: List[str]) -> List[dict]:
+    out = []
+    for n in names:
+        p = ns.get(n)
+        if p is None:
+            continue
+        out.append({k: p[k] for k in ("name", "type", "default", "constraint_text", "source") if k in p})
+    return out
+
+
+def parse_top_level_interfaces(md_text: str) -> List[dict]:
+    """§Per-block interface summary — NMU + NSU 各一張 table。
+
+    AXI / AXI4-Lite interface 會展成 channels[] sub-list 列出每 channel 真實方向
+    （AW/W/AR 跟 B/R 對 slave 是反向）。NoC link 本來單向，無 channels。
+    """
+    sec = _section_slice(md_text, r"^## Per-block interface summary")
+    if sec is None:
+        return []
+    interfaces = []
+    for sub_re, block in (
+        (r"^### NMU\b",  "NMU"),
+        (r"^### NSU\b",  "NSU"),
+    ):
+        sub = _section_slice(sec, sub_re)
+        if sub is None:
+            continue
+        for header, rows in _extract_all_tables(sub):
+            i_name = _col_idx(header, "Interface")
+            i_dir = _col_idx(header, "Direction")
+            i_peer = _col_idx(header, "Peer")
+            i_proto = _col_idx(header, "Protocol")
+            i_fc = _col_idx(header, "Flow control")
+            i_clk = _col_idx(header, "Clock domain")
+            i_src = _col_idx(header, "Wire source")
+            if i_name is None:
+                continue
+            for cells in rows:
+                if i_name >= len(cells):
+                    continue
+                clean = [c.replace("`", "") for c in cells]
+                entry = {"block": block, "name": clean[i_name]}
+                for key, idx in (("direction", i_dir), ("peer", i_peer),
+                                  ("protocol", i_proto), ("flow_control", i_fc),
+                                  ("clock_domain", i_clk), ("wire_source", i_src)):
+                    if idx is not None and idx < len(clean):
+                        entry[key] = clean[idx]
+                # channels[] / signals[] 在 generate_ni_signals_json 後處理（需要 ns）
+                interfaces.append(entry)
+    return interfaces
+
+
+def generate_ni_signals_json(md_dir: Union[str, Path]) -> dict:
+    """讀 signal_interface.md 產出 ni_signals.json — top-level only。
+
+    每個 interface 自帶它的 parameters (inline，不另列 standalone array)。
+    與 top-level interface 無關的 parameter (RoB / CDC / 行為相關) 不收進這份 JSON。
+    """
+    md_path = Path(md_dir) / "signal_interface.md"
+    if not md_path.exists():
+        raise FileNotFoundError(f"找不到 {md_path}")
+    md_text = md_path.read_text(encoding="utf-8")
+
+    signal_params = parse_signal_parameters(md_text)
+    interfaces = parse_top_level_interfaces(md_text)
+
+    # 兩源聯集成 params namespace（signal_interface + packet_format Group 3/6）
+    ns = _build_params_namespace(md_dir, signal_params)
+
+    # Sanity check: 所有引用的 parameter name 都要存在 namespace
+    referenced = set(_BLOCK_ENABLE_PARAMS) | set(_AXI_PORT_PARAMS)
+    for names in _INTERFACE_PARAMS.values():
+        referenced.update(names)
+    for ch_list in _AXI_CHANNEL_SIGNALS.values():
+        for _, src in ch_list:
+            if src == "ID":
+                referenced.update(_ID_WIDTH_PARAM.values())
+            else:
+                referenced.add(src)
+    missing = referenced - set(ns.keys())
+    if missing:
+        raise ValueError(f"interface param reference 不存在於 spec source: {sorted(missing)}")
+
+    # 後處理每個 interface
+    for iface in interfaces:
+        port_type = _port_type_of(iface)
+        if port_type is not None:
+            # AXI / AXI4-Lite: 展 per-channel per-signal
+            iface["channels"] = _build_axi_channels(port_type, ns, with_signals=True)
+            port_params = _select_params(ns, _AXI_PORT_PARAMS)
+            if port_params:
+                iface["port_parameters"] = port_params
+        elif iface["name"] in _NOC_INTERFACE_SIGNALS:
+            # NoC link: 展 per-signal
+            iface["signals"] = _build_noc_signals(iface["name"], ns)
+            param_names = _INTERFACE_PARAMS.get(iface["name"], [])
+            if param_names:
+                iface["parameters"] = _select_params(ns, param_names)
+        else:
+            # CSR / 其他: 簡單 parameters list
+            param_names = _INTERFACE_PARAMS.get(iface["name"], [])
+            if param_names:
+                iface["parameters"] = _select_params(ns, param_names)
+
+    return {
+        "$schema_version": "ni-spec/2.0",
+        "meta": {
+            "block": "NI signal interface (top-level)",
+            "spec_version": "v0.4.0",
+            "auto_generated_from": str(md_path).replace("\\", "/"),
+            "generator": "ni_spec.generator :: generate_ni_signals_json",
+            "do_not_edit": "Re-run validator/generator to refresh.",
+            "scope_note": "Top-level interface + parameters。AXI signal width parameters 來源 packet_format.md §1.2 Group 3。",
+        },
+        "block_enables": _select_params(ns, _BLOCK_ENABLE_PARAMS),
+        "interfaces": interfaces,
+    }
+
+
+def write_generated_signals_json(md_dir: Union[str, Path], out_path: Union[str, Path]) -> dict:
+    data = generate_ni_signals_json(md_dir)
+    p = Path(out_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return data
