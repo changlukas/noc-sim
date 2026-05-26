@@ -294,6 +294,70 @@ def check_reset_in_data_width(regs_spec, data_width: int = 32) -> List[Issue]:
     return issues
 
 
+def check_blocks_xref_packet(fb_spec, pkt_spec) -> List[Issue]:
+    """L2: every uses_packet_fields entry must exist in ni_packet.json."""
+    issues: List[Issue] = []
+    legal = {f["name"] for f in pkt_spec["flit"]["header_fields"]}
+    legal |= {c["name"] for c in pkt_spec["flit"]["payload_channels"]}
+    for block in fb_spec.get("blocks", []):
+        for feat in block.get("features", []):
+            for ref in feat.get("uses_packet_fields", []):
+                if ref not in legal:
+                    issues.append(_err("L2-FB-XREF-PKT",
+                        f"{feat['id']}: uses_packet_fields {ref!r} not in ni_packet.json"))
+    return issues
+
+
+def check_blocks_xref_registers(fb_spec, regs_spec) -> List[Issue]:
+    """L2: every configured_by entry's register name must exist in ni_registers.json."""
+    issues: List[Issue] = []
+    legal = {r["name"] for r in regs_spec.get("registers", []) if r.get("kind") == "register"}
+    for block in fb_spec.get("blocks", []):
+        for feat in block.get("features", []):
+            for ref in feat.get("configured_by", []):
+                # configured_by may include "REG.field" form — match register name part
+                reg_name = ref.split(".")[0]
+                if reg_name not in legal:
+                    issues.append(_err("L2-FB-XREF-REG",
+                        f"{feat['id']}: configured_by {ref!r} register not in ni_registers.json"))
+    return issues
+
+
+def check_blocks_param_uniqueness(fb_spec) -> List[Issue]:
+    """L2: compile_time_params name must be unique across all features."""
+    issues: List[Issue] = []
+    seen: dict = {}
+    for block in fb_spec.get("blocks", []):
+        for feat in block.get("features", []):
+            for pname in feat.get("compile_time_params", {}):
+                if pname in seen:
+                    issues.append(_err("L2-FB-PARAM",
+                        f"{pname!r} defined in both {seen[pname]} and {feat['id']}"))
+                else:
+                    seen[pname] = feat["id"]
+    return issues
+
+
+def check_blocks_related_features_symmetric(fb_spec) -> List[Issue]:
+    """L2: if A.related_features contains B, then B.related_features should contain A.
+    Issues WARN (not ERROR) since one-way pointers may be intentional."""
+    issues: List[Issue] = []
+    all_feats: dict = {}  # id -> related_features set
+    for block in fb_spec.get("blocks", []):
+        for feat in block.get("features", []):
+            all_feats[feat["id"]] = set(feat.get("related_features", []))
+    for fid, refs in all_feats.items():
+        for ref in refs:
+            if ref not in all_feats:
+                issues.append(_err("L2-FB-REL",
+                    f"{fid}: related_features {ref!r} doesn't exist"))
+                continue
+            if fid not in all_feats[ref]:
+                issues.append(_warn("L2-FB-REL",
+                    f"{fid} -> {ref} is one-way (not symmetric)"))
+    return issues
+
+
 def check_all(bundle, md_dir: Optional[str] = None) -> List[Issue]:
     """Path B：跑 Layer 1 (schema) + Layer 2 (arithmetic)。
 

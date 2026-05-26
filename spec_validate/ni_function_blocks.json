@@ -1,0 +1,313 @@
+{
+  "$schema_version": "ni-spec/2.0",
+  "meta": {
+    "spec_version": "v0.4.0",
+    "source_format": "hand-written; do not auto-gen",
+    "auto_generated_from": null,
+    "authored_from": [
+      "spec/ni/README.md §Features",
+      "spec/ni/doc/theory_of_operation.md"
+    ]
+  },
+  "blocks": [
+    {
+      "name": "NMU",
+      "fullname": "Network Master Unit",
+      "role": "AXI-side injection / response sink",
+      "features": [
+        {
+          "id": "FEAT-NMU-AXI_SLAVE_PORT",
+          "name": "AXI Slave Port",
+          "summary": "AXI4 full-protocol slave port (AW/W/AR/B/R) receiving requests from a local AXI master and driving responses back.",
+          "modes": ["Active", "Passive"],
+          "compile_time_params": {
+            "CUT_AX": 0,
+            "CUT_RSP": 0
+          },
+          "uses_packet_fields": ["AW", "W", "AR", "B", "R"],
+          "configured_by": [],
+          "related_features": ["FEAT-NMU-ROB", "FEAT-NMU-ADDR_TRANS", "FEAT-NMU-QOS_GEN"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §Driver"
+        },
+        {
+          "id": "FEAT-NMU-ADDR_TRANS",
+          "name": "Address Translation",
+          "summary": "Converts AXI awaddr/araddr to NoC dst_id + local_addr using XY-extraction, SourceRouting, or IDRouting (SAM table lookup).",
+          "modes": ["XYRouting", "SourceRouting", "IDRouting"],
+          "compile_time_params": {
+            "ROUTE_ALGO": "XYRouting",
+            "USE_ID_TABLE": 0,
+            "XY_ADDR_OFFSET_X": 32,
+            "XY_ADDR_OFFSET_Y": 36,
+            "MESH_COLS": 4,
+            "MESH_ROWS": 4,
+            "NUM_SAM_RULES": 8
+          },
+          "uses_packet_fields": ["dst_id", "src_id"],
+          "configured_by": [],
+          "related_features": ["FEAT-NMU-AXI_SLAVE_PORT"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §AddrTrans"
+        },
+        {
+          "id": "FEAT-NMU-QOS_GEN",
+          "name": "QoS Generator",
+          "summary": "Assigns flit qos from AXI awqos/arqos (Bypass), fixed value (Fixed), bandwidth-cap (Limiter), or feedback-controlled urgency escalation (Regulator).",
+          "modes": ["Bypass", "Fixed", "Limiter", "Regulator"],
+          "compile_time_params": {},
+          "uses_packet_fields": ["noc_qos"],
+          "configured_by": [
+            "QOS_MODE", "QOS_FIXED_VALUE",
+            "BANDWIDTH_LIMIT", "SATURATION_THRESHOLD", "LOW_PRIORITY",
+            "BANDWIDTH_BUDGET", "BASE_QOS", "BASE_QOS.URGENCY_STEP",
+            "SOCKET_QOS_EN", "SOCKET_QOS"
+          ],
+          "related_features": ["FEAT-NMU-VC_MAPPING"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §QoS Generator"
+        },
+        {
+          "id": "FEAT-NMU-ROB",
+          "name": "Reorder Buffer",
+          "summary": "Per-AXI-ID response reordering. Variants: NoRoB (pass-through), SimpleRoB (issue-order), NormalRoB (per-ID linked-list with prev_dest adaptive bypass).",
+          "modes": ["NoRoB", "SimpleRoB", "NormalRoB"],
+          "compile_time_params": {
+            "MAX_TXNS": 32,
+            "MAX_TXNS_PER_ID": 8,
+            "B_ROB_TYPE": "NoRoB",
+            "R_ROB_TYPE": "NoRoB",
+            "B_ROB_SIZE": 32,
+            "R_ROB_SIZE": 32,
+            "ONLY_METADATA_B": 1
+          },
+          "uses_packet_fields": ["rob_req", "rob_idx", "B", "R"],
+          "configured_by": ["PENDING_R_COUNT", "PENDING_W_COUNT"],
+          "related_features": ["FEAT-NMU-AXI_SLAVE_PORT", "FEAT-NMU-QUIESCE"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §RoB allocator"
+        },
+        {
+          "id": "FEAT-NMU-ECC_GEN",
+          "name": "Flit ECC Generation",
+          "summary": "Generates whole-flit SECDED (flit_ecc, Hsiao code) and 1-bit routing parity (route_par over dst_id+last) aligned with AMD pg313 §Parity.",
+          "modes": [],
+          "compile_time_params": {},
+          "uses_packet_fields": ["flit_ecc", "route_par", "dst_id", "last"],
+          "configured_by": [],
+          "related_features": ["FEAT-NSU-ECC_CHECK"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §ECC"
+        },
+        {
+          "id": "FEAT-NMU-VC_MAPPING",
+          "name": "VC Mapping and Arbitration",
+          "summary": "Maps outbound flits to a VC by qos-tier partition and arbitrates NUM_VC VCs onto the shared noc_req_o link via fair round-robin wormhole arbiter.",
+          "modes": [],
+          "compile_time_params": {
+            "NMU_BUFFER_DEPTH": 2
+          },
+          "uses_packet_fields": ["vc_id", "noc_qos", "last"],
+          "configured_by": [],
+          "related_features": ["FEAT-NMU-QOS_GEN"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §VC Mapping"
+        },
+        {
+          "id": "FEAT-NMU-CDC",
+          "name": "Clock Domain Crossing",
+          "summary": "Async FIFO (gray-counter pointer + 2FF synchronizer) bridging aclk_i and noc_clk_i on injection and response-reception paths within NMU.",
+          "modes": [],
+          "compile_time_params": {
+            "NMU_CDC_FIFO_DEPTH": 16
+          },
+          "uses_packet_fields": [],
+          "configured_by": [],
+          "related_features": ["FEAT-NSU-CDC"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §CDC"
+        },
+        {
+          "id": "FEAT-NMU-PERF_PROBE",
+          "name": "Performance Probes",
+          "summary": "Packet Probe (bandwidth statistics, configurable measurement window) and Transaction Probe (latency histogram with N-bin binning), CSR-mapped.",
+          "modes": [],
+          "compile_time_params": {},
+          "uses_packet_fields": [],
+          "configured_by": [
+            "PKT_PROBE_EN", "PKT_PROBE_MODE", "PKT_WINDOW_SIZE",
+            "PKT_BYTE_COUNT", "PKT_BANDWIDTH",
+            "TXN_PROBE_EN",
+            "TXN_THRESHOLD_0", "TXN_THRESHOLD_1", "TXN_THRESHOLD_2", "TXN_THRESHOLD_3",
+            "TXN_BIN_0_COUNT", "TXN_BIN_1_COUNT", "TXN_BIN_2_COUNT",
+            "TXN_BIN_3_COUNT", "TXN_BIN_4_COUNT",
+            "TXN_MIN_LATENCY", "TXN_MAX_LATENCY", "TXN_TOTAL_COUNT"
+          ],
+          "related_features": ["FEAT-NMU-CSR"],
+          "source_doc": "spec/ni/README.md §Features"
+        },
+        {
+          "id": "FEAT-NMU-ERROR_MON",
+          "name": "Error and ECC Monitoring",
+          "summary": "CSR-mapped error status (RW1C), ECC correctable/uncorrectable counters, route_par error counter, and level-sensitive irq_o output.",
+          "modes": [],
+          "compile_time_params": {},
+          "uses_packet_fields": ["flit_ecc", "route_par"],
+          "configured_by": [
+            "ERR_STATUS", "ECC_UNCORR_ERR_CNT", "ECC_CORR_ERR_CNT",
+            "ROUTE_PAR_ERR_CNT", "AXI_PARITY_ERR_CNT", "LAST_ERR_INFO", "IRQ_ENABLE"
+          ],
+          "related_features": ["FEAT-NMU-ECC_GEN", "FEAT-NMU-AXI_PARITY"],
+          "source_doc": "spec/ni/README.md §Features"
+        },
+        {
+          "id": "FEAT-NMU-AXI_PARITY",
+          "name": "AXI Host-Side Parity",
+          "summary": "Verifies per-byte parity on AXI AW/AR/W inputs; regenerates parity for outbound R data after flit_ecc correction. Log-only; no SLVERR injection.",
+          "modes": [],
+          "compile_time_params": {},
+          "uses_packet_fields": ["AW", "AR", "W", "R"],
+          "configured_by": ["ERR_STATUS", "AXI_PARITY_ERR_CNT", "IRQ_ENABLE"],
+          "related_features": ["FEAT-NMU-ECC_GEN", "FEAT-NMU-ERROR_MON"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §AXI parity handling"
+        },
+        {
+          "id": "FEAT-NMU-CSR",
+          "name": "CSR Interface",
+          "summary": "AXI4-Lite subordinate port for software access to QoS, performance probe, error monitoring, quiesce control, and transaction-count registers.",
+          "modes": [],
+          "compile_time_params": {},
+          "uses_packet_fields": [],
+          "configured_by": [
+            "QOS_MODE", "QOS_FIXED_VALUE",
+            "BANDWIDTH_LIMIT", "SATURATION_THRESHOLD", "LOW_PRIORITY",
+            "BANDWIDTH_BUDGET", "BASE_QOS", "SOCKET_QOS_EN", "SOCKET_QOS",
+            "PKT_PROBE_EN", "PKT_PROBE_MODE", "PKT_WINDOW_SIZE",
+            "TXN_PROBE_EN",
+            "ERR_STATUS", "IRQ_ENABLE",
+            "QUIESCE_CTRL", "QUIESCE_STATUS",
+            "PENDING_R_COUNT", "PENDING_W_COUNT"
+          ],
+          "related_features": ["FEAT-NMU-QOS_GEN", "FEAT-NMU-PERF_PROBE", "FEAT-NMU-ERROR_MON"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §Configuration store"
+        },
+        {
+          "id": "FEAT-NMU-QUIESCE",
+          "name": "NMU Quiesce Control",
+          "summary": "Software-driven NMU drain: quiesce_req stalls new AW/AR acceptance; quiesce_idle asserts when all outstanding transactions drain.",
+          "modes": [],
+          "compile_time_params": {},
+          "uses_packet_fields": [],
+          "configured_by": [
+            "QUIESCE_CTRL", "QUIESCE_STATUS",
+            "PENDING_R_COUNT", "PENDING_W_COUNT"
+          ],
+          "related_features": ["FEAT-NMU-ROB", "FEAT-NMU-CSR"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §Software quiesce flow"
+        }
+      ]
+    },
+    {
+      "name": "NSU",
+      "fullname": "Network Slave Unit",
+      "role": "NoC-side reception / AXI-side master",
+      "features": [
+        {
+          "id": "FEAT-NSU-AXI_MASTER_PORT",
+          "name": "AXI Master Port",
+          "summary": "AXI4 full-protocol master port (AW/W/AR/B/R) driving requests to a local AXI slave and receiving responses for NoC injection.",
+          "modes": ["Active", "Passive"],
+          "compile_time_params": {
+            "NSU_CUT_AX": 0,
+            "NSU_CUT_RSP": 0
+          },
+          "uses_packet_fields": ["AW", "W", "AR", "B", "R"],
+          "configured_by": [],
+          "related_features": ["FEAT-NSU-META_BUFFER", "FEAT-NSU-EXCLUSIVE_MON"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §Driver"
+        },
+        {
+          "id": "FEAT-NSU-META_BUFFER",
+          "name": "MetaBuffer",
+          "summary": "Snapshots request flit metadata (rob_idx, src_id, qos, axi_id) on AW/AR flit reception; retrieved at response injection time to reconstruct the return path.",
+          "modes": [],
+          "compile_time_params": {
+            "NSU_MAX_TXNS": 32
+          },
+          "uses_packet_fields": ["rob_idx", "src_id", "noc_qos", "AW", "AR"],
+          "configured_by": [],
+          "related_features": ["FEAT-NSU-AXI_MASTER_PORT"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §MetaBuffer"
+        },
+        {
+          "id": "FEAT-NSU-EXCLUSIVE_MON",
+          "name": "Exclusive Monitor",
+          "summary": "Tracks pending AXI4 Exclusive read reservations (AxLOCK=Exclusive) per AXI4 §A7; validates Exclusive writes returning EXOKAY or OKAY accordingly.",
+          "modes": [],
+          "compile_time_params": {
+            "EXCLUSIVE_MONITOR_DEPTH": 8
+          },
+          "uses_packet_fields": ["AW", "AR"],
+          "configured_by": ["EXCLUSIVE_MONITOR_CTRL", "EXCLUSIVE_MONITOR_STATUS"],
+          "related_features": ["FEAT-NSU-AXI_MASTER_PORT"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §NSU Exclusive Monitor"
+        },
+        {
+          "id": "FEAT-NSU-R_BUFFER",
+          "name": "R Response Buffer",
+          "summary": "Elastic per-AXI-ID buffer absorbing R beats from the local AXI slave before NoC R flit injection; back-pressures slave rready when full.",
+          "modes": [],
+          "compile_time_params": {
+            "NSU_R_BUFFER_DEPTH": 16
+          },
+          "uses_packet_fields": ["R"],
+          "configured_by": [],
+          "related_features": ["FEAT-NSU-AXI_MASTER_PORT"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §NSU Read response buffer"
+        },
+        {
+          "id": "FEAT-NSU-ECC_CHECK",
+          "name": "Flit ECC Check",
+          "summary": "Endpoint SECDED check on inbound flits: silently corrects single-bit errors; forwards double-bit errors with CSR logging. Also checks route_par per-hop parity.",
+          "modes": [],
+          "compile_time_params": {},
+          "uses_packet_fields": ["flit_ecc", "route_par"],
+          "configured_by": [
+            "ERR_STATUS", "ECC_UNCORR_ERR_CNT", "ECC_CORR_ERR_CNT",
+            "ROUTE_PAR_ERR_CNT", "LAST_ERR_INFO", "IRQ_ENABLE"
+          ],
+          "related_features": ["FEAT-NMU-ECC_GEN"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §ECC"
+        },
+        {
+          "id": "FEAT-NSU-VC_DEMUX",
+          "name": "VC Demux",
+          "summary": "Demultiplexes inbound noc_req_i flit to one of NUM_VC per-VC reception FIFOs based on flit header vc_id; mirrors NMU VC mapping on the receive side.",
+          "modes": [],
+          "compile_time_params": {},
+          "uses_packet_fields": ["vc_id"],
+          "configured_by": [],
+          "related_features": ["FEAT-NMU-VC_MAPPING"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §VC Mapping"
+        },
+        {
+          "id": "FEAT-NSU-CDC",
+          "name": "Clock Domain Crossing",
+          "summary": "Async FIFO (gray-counter pointer + 2FF synchronizer) bridging noc_clk_i and aclk_i on request-reception and response-injection paths within NSU.",
+          "modes": [],
+          "compile_time_params": {
+            "NSU_CDC_FIFO_DEPTH": 16
+          },
+          "uses_packet_fields": [],
+          "configured_by": [],
+          "related_features": ["FEAT-NMU-CDC"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §CDC"
+        },
+        {
+          "id": "FEAT-NSU-AXI_PARITY",
+          "name": "AXI Host-Side Parity",
+          "summary": "Generates per-byte parity for outbound AXI AW/AR/W signals after ECC check; verifies incoming rdata parity from local slave. Log-only; no SLVERR injection.",
+          "modes": [],
+          "compile_time_params": {},
+          "uses_packet_fields": ["AW", "AR", "W", "R"],
+          "configured_by": ["ERR_STATUS", "AXI_PARITY_ERR_CNT", "IRQ_ENABLE"],
+          "related_features": ["FEAT-NSU-ECC_CHECK"],
+          "source_doc": "spec/ni/doc/theory_of_operation.md §AXI parity handling"
+        }
+      ]
+    }
+  ]
+}

@@ -18,7 +18,10 @@ from .invariants import (Issue,
                          check_schema, check_flit_arithmetic,
                          check_signals_reset_domains, check_signals_pin_uniqueness,
                          check_csr_offset_alignment, check_csr_offset_unique,
-                         check_field_bit_tiling, check_reset_in_data_width)
+                         check_field_bit_tiling, check_reset_in_data_width,
+                         check_blocks_xref_packet, check_blocks_xref_registers,
+                         check_blocks_param_uniqueness,
+                         check_blocks_related_features_symmetric)
 from .report import print_report
 
 for _s in (sys.stdout, sys.stderr):
@@ -37,6 +40,9 @@ SIGNALS_SCHEMA = GENERATED_DIR / "ni_signals.schema.json"
 
 REGISTERS_JSON = GENERATED_DIR / "ni_registers.json"
 REGISTERS_SCHEMA = GENERATED_DIR / "ni_registers.schema.json"
+
+FB_JSON = SPEC_VALIDATE / "ni_function_blocks.json"
+FB_SCHEMA = SPEC_VALIDATE / "ni_function_blocks.schema.json"
 
 
 def main() -> int:
@@ -105,6 +111,22 @@ def main() -> int:
     issues += check_field_bit_tiling(registers)
     issues += check_reset_in_data_width(registers)
 
+    # Function blocks: Layer 1 (schema) + Layer 2 (cross-domain)
+    fb = None
+    if FB_JSON.exists():
+        fb = load_doc(FB_JSON)
+        fb_schema = load_doc(FB_SCHEMA) if FB_SCHEMA.exists() else None
+        if fb_schema is not None:
+            import jsonschema
+            for e in sorted(jsonschema.Draft202012Validator(fb_schema).iter_errors(fb),
+                            key=lambda e: list(e.absolute_path)):
+                loc = "/".join(str(p) for p in e.absolute_path) or "(root)"
+                issues.append(Issue("ERROR", "L1-FB-SCHEMA", f"{loc}: {e.message}"))
+        issues += check_blocks_xref_packet(fb, packet)
+        issues += check_blocks_xref_registers(fb, registers)
+        issues += check_blocks_param_uniqueness(fb)
+        issues += check_blocks_related_features_symmetric(fb)
+
     has_l1_err = any(i.check in ("L1-SCHEMA", "L1-SIG-SCHEMA", "L1-REG-SCHEMA") and i.severity == "ERROR" for i in issues)
     has_l1_skip = (signals_schema is None or
                    any(i.check == "L1-SCHEMA" and i.severity == "WARN" for i in issues))
@@ -112,16 +134,21 @@ def main() -> int:
     has_l2_packet_err = any(i.check == "L2-FLIT" and i.severity == "ERROR" for i in issues)
     has_l2_sig_err = any(i.check.startswith("L2-SIG") and i.severity == "ERROR" for i in issues)
     has_l2_reg_err = any(i.check.startswith("L2-REG") and i.severity == "ERROR" for i in issues)
+    has_l1_fb_err = any(i.check == "L1-FB-SCHEMA" and i.severity == "ERROR" for i in issues)
+    has_l2_fb_err = any(i.check.startswith("L2-FB") and i.severity == "ERROR" for i in issues)
 
     layers = {
         "Generator (MD -> JSON)":            "OK (ni_packet.json + ni_signals.json + ni_registers.json)",
         "Layer 1 (JSON Schema, packet+sig)": "SKIPPED" if has_l1_skip else ("FAIL" if has_l1_err else "PASS"),
         "Layer 1 (registers)":               "SKIPPED" if has_l1_reg_skip else ("FAIL" if any(i.check == "L1-REG-SCHEMA" and i.severity == "ERROR" for i in issues) else "PASS"),
+        "Layer 1 (function_blocks)":         "SKIPPED" if fb is None else ("FAIL" if has_l1_fb_err else "PASS"),
         "Layer 2 (packet arithmetic)":       "FAIL" if has_l2_packet_err else "PASS",
         "Layer 2 (signals reset)":           "FAIL" if has_l2_sig_err else "PASS",
         "Layer 2 (registers)":               "FAIL" if has_l2_reg_err else "PASS",
+        "Layer 2 (function_blocks)":         "SKIPPED" if fb is None else ("FAIL" if has_l2_fb_err else "PASS"),
     }
-    return print_report(issues, target_name="ni_packet.json + ni_signals.json + ni_registers.json",
+    return print_report(issues,
+                        target_name="ni_packet.json + ni_signals.json + ni_registers.json + ni_function_blocks.json",
                         show_layers=layers)
 
 

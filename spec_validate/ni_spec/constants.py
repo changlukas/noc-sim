@@ -147,15 +147,26 @@ def regs_access_mode(regs_spec, reg_name: str) -> str:
 # ---------- function blocks domain (Task 5 will implement) ----------
 
 def blocks_function_block_names(blocks_spec) -> list:
-    """Return list of FunctionBlock enum members (ROB, QOS, ...)."""
-    raise NotImplementedError("Task 5")
+    """Return list of block names (e.g. ['NMU', 'NSU'])."""
+    return [b["name"] for b in blocks_spec.get("blocks", [])]
 
 
 def blocks_modes_of(blocks_spec, block_name: str) -> list:
-    """Return list of mode enum members for a given function block."""
-    raise NotImplementedError("Task 5")
+    """Return list of (feature_id, mode) tuples for all features in the given block."""
+    out = []
+    for b in blocks_spec.get("blocks", []):
+        if b["name"] != block_name:
+            continue
+        for f in b.get("features", []):
+            for m in f.get("modes", []):
+                out.append((f["id"], m))
+    return out
 
 
 def blocks_compile_time_params(blocks_spec) -> dict:
-    """Return {param_name: int_value} across all features."""
-    raise NotImplementedError("Task 5")
+    """Return {param_name: default_value} merged across all features (all blocks)."""
+    out: dict = {}
+    for b in blocks_spec.get("blocks", []):
+        for f in b.get("features", []):
+            out.update(f.get("compile_time_params", {}))
+    return out
