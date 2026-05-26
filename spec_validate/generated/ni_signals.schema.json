@@ -46,7 +46,7 @@
         },
         "width_expr": {
           "type": ["string", "null"],
-          "description": "Width expression — must match whitelist regex"
+          "description": "Width expression (format TBD; validation added in future task)"
         }
       }
     },

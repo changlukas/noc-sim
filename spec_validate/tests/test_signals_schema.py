@@ -35,6 +35,9 @@ def test_regenerated_ni_signals_has_pin_name_field():
         for ch in iface.get("channels", []):
             for sig in ch["signals"]:
                 assert "pin_name" in sig, f"signal {sig['name']} missing pin_name field"
+        # Also cover NoC link signals at interface top level
+        for sig in iface.get("signals", []):
+            assert "pin_name" in sig, f"NoC signal {sig['name']} missing pin_name field"
 
 
 def test_regenerated_ni_signals_has_meta_reset_signals():

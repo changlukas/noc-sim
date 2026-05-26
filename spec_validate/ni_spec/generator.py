@@ -752,7 +752,7 @@ def extract_reset_signals(pin_level_reset_md: Path) -> list:
     # Find the **Reset signals:** line (with or without bold markers).
     # The heading may be formatted as **Reset signals:** (bold) so the match
     # ends before the closing ** and/or trailing whitespace on the heading line.
-    m = re.search(r"\*{0,2}Reset signals\*{0,2}\s*:\**\s*\n", text)
+    m = re.search(r"\*{0,2}Reset signals:?\*{0,2}\s*\n", text)
     if not m:
         raise ValueError(f"No 'Reset signals:' section found in {pin_level_reset_md}")
 

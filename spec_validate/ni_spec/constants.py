@@ -79,7 +79,7 @@ def field_encoding(packet_spec, field_name: str) -> Dict[str, int]:
     return {}
 
 
-# ---------- signals domain (Task 2 will implement) ----------
+# ---------- signals domain ----------
 
 def signals_pin_names(signals_spec) -> list:
     """Return list of all non-null pin_name across all signals."""
