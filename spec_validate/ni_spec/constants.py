@@ -137,6 +137,8 @@ def regs_field_mask(regs_spec, reg_name: str, field_name: str) -> int:
 def regs_access_mode(regs_spec, reg_name: str) -> str:
     """Return access mode (RO/RW/RW1C/WO/WC) for a register. Raises KeyError if not found."""
     for r in regs_spec.get("registers", []):
+        if r.get("kind") != "register":
+            continue
         if r.get("name") == reg_name:
             return r.get("access")
     raise KeyError(reg_name)

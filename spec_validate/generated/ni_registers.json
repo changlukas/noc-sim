@@ -7,9 +7,9 @@
     "do_not_edit": "Re-run validator/generator to refresh."
   },
   "csr_policy": {
-    "sub_word_write": "decerr",
-    "unmapped_read": "zero",
-    "misaligned": "decerr",
+    "sub_word_write": "slverr",
+    "unmapped_read": "decerr",
+    "misaligned": "slverr",
     "wo_read": "zero"
   },
   "registers": [

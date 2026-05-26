@@ -20,9 +20,9 @@
       "required": ["sub_word_write", "unmapped_read", "misaligned", "wo_read"],
       "additionalProperties": false,
       "properties": {
-        "sub_word_write": {"enum": ["decerr", "ignored"]},
+        "sub_word_write": {"enum": ["decerr", "ignored", "slverr"]},
         "unmapped_read": {"enum": ["decerr", "zero"]},
-        "misaligned": {"enum": ["decerr", "lower-aligned"]},
+        "misaligned": {"enum": ["decerr", "lower-aligned", "slverr"]},
         "wo_read": {"enum": ["zero", "decerr"]}
       }
     },
@@ -62,7 +62,13 @@
               }
             }
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"kind": {"const": "register"}}},
+            "then": {"required": ["access", "reset_expr"]}
+          }
+        ]
       }
     }
   }

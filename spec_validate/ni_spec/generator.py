@@ -1004,37 +1004,19 @@ def extract_reset_signals(pin_level_reset_md: Path) -> list:
 
 
 def parse_csr_policy(md_path: Path) -> dict:
-    """Extract CSR access policy from registers.md.
+    """HARDCODED: return the access policy dict for ni-spec v0.4.0.
 
-    Reads the introductory bullet list at the top of registers.md to produce
-    {sub_word_write, unmapped_read, misaligned, wo_read} as enum strings.
-
-    Access policy is encoded in the file's opening bullet list:
-      - Sub-word access: ... csr_wstrb_i != 0xF ... trigger csr_bresp_o = SLVERR
-      - Unmapped offset: ... triggers csr_bresp_o = DECERR ... return csr_rdata_o = 0x0
-      - Misaligned access: ... triggers SLVERR
-      - Write-only (WO) registers: reads return csr_rdata_o = 0x0 with csr_rresp_o = OKAY
+    Does NOT parse md_path (kept in signature for API symmetry with other
+    parse_* functions and to leave room for future MD-driven implementation).
+    Values reflect registers.md §Access policy lines 5-8 (v0.4.0). If the spec
+    updates the policy wording, update both this function and the schema enums.
     """
-    # sub_word_write: SLVERR is a bus error response; we model this as "decerr"
-    # (the spec says SLVERR but our enum only has decerr/ignored — SLVERR treated as decerr)
-    sub_word = "decerr"  # write dropped on sub-word → SLVERR (treated as decerr in policy enum)
-    # Actually: SLVERR and the write is DROPPED — that maps to "decerr" (write rejected)
-
-    # unmapped_read: DECERR response + reads return 0x0
-    unmapped = "zero"  # "Unmapped reads return csr_rdata_o = 0x0" — unmapped_read enum = zero
-    # The spec says DECERR response but return 0x0 data. Our enum asks what data we return → "zero"
-
-    # misaligned: triggers SLVERR — model as "decerr"
-    misaligned = "decerr"
-
-    # wo_read: "reads return csr_rdata_o = 0x0 with csr_rresp_o = OKAY (NOT DECERR)"
-    wo_read = "zero"
-
+    # md_path intentionally unused; see docstring
     return {
-        "sub_word_write": sub_word,
-        "unmapped_read": unmapped,
-        "misaligned": misaligned,
-        "wo_read": wo_read,
+        "sub_word_write": "slverr",
+        "unmapped_read": "decerr",
+        "misaligned": "slverr",
+        "wo_read": "zero",
     }
 
 
@@ -1048,12 +1030,14 @@ _EM_DASH_VARIANTS = {
 }
 
 
-def _is_dash(s: str) -> bool:
-    """True if the cell contains only dash/em-dash variants (reserved placeholder)."""
-    stripped = s.strip()
-    # accept plain hyphen too — some MD authors use it as a placeholder; safe because
-    # hex offsets / RW1C tokens never start with a bare hyphen
-    return stripped in _EM_DASH_VARIANTS or stripped == "—" or stripped == "–"
+def _is_dash(cell: str) -> bool:
+    """True if cell content is an em-dash / en-dash / hyphen placeholder.
+
+    Accept plain hyphen (U+002D) too — some MD authors use it as placeholder;
+    safe because real hex offsets / RW1C tokens never start with bare hyphen.
+    """
+    stripped = cell.strip().strip("`")
+    return stripped in _EM_DASH_VARIANTS
 
 
 def parse_register_map(md_path: Path) -> list:

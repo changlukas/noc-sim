@@ -224,6 +224,8 @@ def check_csr_offset_alignment(regs_spec) -> List[Issue]:
     """L2: offset must be 4-byte aligned (32-bit registers)."""
     issues: List[Issue] = []
     for r in regs_spec.get("registers", []):
+        if r.get("kind") != "register":
+            continue
         try:
             ofs = int(r["offset"], 16)
         except (ValueError, KeyError):
