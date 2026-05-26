@@ -55,3 +55,17 @@ def load_spec_bundle(spec_dir: Union[str, Path], md_dir: Optional[Union[str, Pat
     if md_dir is not None:
         bundle.md_dir = Path(md_dir)
     return bundle
+
+
+def load_spec_version() -> str:
+    """Read spec/ni/VERSION (single source of truth for spec_version).
+
+    Looks for the file relative to the spec_validate parent directory:
+        noc-sim/spec/ni/VERSION  (one-line semver, no trailing newline content).
+    """
+    from pathlib import Path
+    spec_validate_root = Path(__file__).resolve().parent.parent
+    version_file = spec_validate_root.parent / "spec" / "ni" / "VERSION"
+    if not version_file.exists():
+        raise FileNotFoundError(f"spec/ni/VERSION not found at {version_file}")
+    return version_file.read_text(encoding="utf-8").strip()

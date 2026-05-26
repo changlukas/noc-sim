@@ -77,3 +77,54 @@ def field_encoding(packet_spec, field_name: str) -> Dict[str, int]:
         if f["name"] == field_name and "encoding" in f:
             return {name: int(v) for v, name in f["encoding"].items()}
     return {}
+
+
+# ---------- signals domain (Task 2 will implement) ----------
+
+def signals_pin_names(signals_spec) -> list:
+    """Return list of all pin_name across all signals (cross-merge result)."""
+    raise NotImplementedError("Task 2")
+
+
+def signals_reset_domains(signals_spec) -> set:
+    """Return set of legal reset signal names from meta.reset_signals[]."""
+    raise NotImplementedError("Task 2")
+
+
+def signals_signal_by_pin(signals_spec, pin_name: str) -> dict:
+    """Lookup signal entry by RTL-level pin_name."""
+    raise NotImplementedError("Task 2")
+
+
+# ---------- registers domain (Task 4 will implement) ----------
+
+def regs_offsets(regs_spec) -> dict:
+    """Return {register_name: offset_int}."""
+    raise NotImplementedError("Task 4")
+
+
+def regs_field_mask(regs_spec, reg_name: str, field_name: str) -> int:
+    """Return bit mask for a specific field within a register."""
+    raise NotImplementedError("Task 4")
+
+
+def regs_access_mode(regs_spec, reg_name: str) -> str:
+    """Return access mode (RO/RW/RW1C/WO/WC) for a register."""
+    raise NotImplementedError("Task 4")
+
+
+# ---------- function blocks domain (Task 5 will implement) ----------
+
+def blocks_function_block_names(blocks_spec) -> list:
+    """Return list of FunctionBlock enum members (ROB, QOS, ...)."""
+    raise NotImplementedError("Task 5")
+
+
+def blocks_modes_of(blocks_spec, block_name: str) -> list:
+    """Return list of mode enum members for a given function block."""
+    raise NotImplementedError("Task 5")
+
+
+def blocks_compile_time_params(blocks_spec) -> dict:
+    """Return {param_name: int_value} across all features."""
+    raise NotImplementedError("Task 5")
