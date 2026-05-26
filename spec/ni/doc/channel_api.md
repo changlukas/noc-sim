@@ -33,7 +33,7 @@ stateDiagram-v2
     ENDED --> IDLE: end_phase
 ```
 
-Used by all 5 AXI4 channels (AW, W, B, AR, R). For each channel the BFM either drives VALID and waits for READY (outbound) or drives READY and waits for VALID (inbound), depending on which port (manager `axi_*_i` or subordinate `axi_*_o`) and which channel.
+Used by all 5 AXI4 channels (AW, W, B, AR, R). For each channel the BFM either drives VALID and waits for READY (outbound) or drives READY and waits for VALID (inbound), depending on which port (master `axi_*_i` or slave `axi_*_o`) and which channel.
 
 ## Channel state machine (NoC side)
 
@@ -143,7 +143,7 @@ Mirror of AR_IN: `begin_phase_AR_OUT(addr, id, len, size, burst, prot, qos)` →
 
 Mirror of R_IN: `begin_phase_R_OUT()` → `assert_ready_R_OUT` → `wait_for_valid_R_OUT(id_match)` → `end_phase_R_OUT`. Returns observed (rdata, rresp, rlast, rid).
 
-### CSR access channels (AXI4-Lite subordinate; csr_*)
+### CSR access channels (AXI4-Lite slave; csr_*)
 
 The CSR port has 5 standard AXI4-Lite channels (csr_aw / csr_w / csr_b / csr_ar / csr_r). Channel API methods follow the same shape as AXI4 channels but with no AWLEN / AWSIZE / AWBURST / AWID fields (AXI4-Lite is single-beat, no ID).
 
@@ -155,7 +155,7 @@ Methods (compact summary; full tables follow same shape as above):
 - `begin_phase_CSR_AR(addr)` / `assert_ready_CSR_AR` / `wait_for_valid_CSR_AR` / `end_phase_CSR_AR`
 - `begin_phase_CSR_R(rdata, rresp)` / `assert_valid_CSR_R` / `wait_for_ready_CSR_R` / `end_phase_CSR_R`
 
-Direction convention: BFM (NI subordinate) drives ready signals on inbound channels (AW/W/AR) and valid signals on outbound channels (B/R). All payload signals are sized per AXI4-Lite (32-bit data, 12-bit address per registers.md, 4-bit strobe).
+Direction convention: BFM (NI slave) drives ready signals on inbound channels (AW/W/AR) and valid signals on outbound channels (B/R). All payload signals are sized per AXI4-Lite (32-bit data, 12-bit address per registers.md, 4-bit strobe).
 
 ## Per-NoC-link API
 

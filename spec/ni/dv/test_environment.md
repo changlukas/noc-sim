@@ -303,6 +303,6 @@ Network-layer differential（BookSim2 / Garnet）：移除 AXI，同一 topology
 - `plan.md`：testpoints、coverage model、ABV-FPV 清單。
 - `verification_terminology.md`：標準術語、OSS 先例對映、驗證資源 OSS 清單、使用範圍與限制。
 - `../doc/signal_interface.md` §Per-block interface summary：NMU / NSU / Router 介面定義。
-- `../doc/02_flit.md`：flit 格式。
+- `../doc/packet_format.md`：flit 格式。
 - AXI-to-flit mapping 權威來源（expected flit golden 依據）：`../doc/theory_of_operation.md`（NMU 封裝架構）、`../doc/protocol_rules.md`（WSTRB regen 等規則）。
 - 系統級 C-model 平台與 co-sim 機制：noc-sim `docs/design/08_simulation.md`、`09_verification.md`。

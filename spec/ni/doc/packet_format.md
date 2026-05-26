@@ -44,7 +44,7 @@ NoC 基本傳輸單元。所有欄位寬度透過 symbol 參數表達，預設�
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `QOS_WIDTH` | 4 | QoS priority |
+| `NOC_QOS_WIDTH` | 4 | NoC-layer QoS priority placeholder (renamed from QOS_WIDTH 2026-05-25) |
 | `AXI_CH_WIDTH` | 3 | AXI channel type (5 channels: AW/W/AR/B/R) |
 | `LAST_WIDTH` | 1 | Packet end marker |
 | `ROB_REQ_WIDTH` | 1 | RoB request flag |
@@ -145,7 +145,7 @@ Header 預設 `HEADER_WIDTH = 54 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `rou
 
 | Field | Width Symbol | Default Range | Stage | Description |
 |-------|--------------|---------------|-------|-------------|
-| qos | `QOS_WIDTH` | [3:0] | arbitration | QoS priority |
+| noc_qos | `NOC_QOS_WIDTH` | [3:0] | arbitration | NoC-layer QoS priority placeholder (reserved for future router arbitration) |
 | axi_ch | `AXI_CH_WIDTH` | [6:4] | arbitration | AXI channel type (5 channels: AW/W/AR/B/R) |
 | src_id | `X_WIDTH + Y_WIDTH` | [14:7] | routing | Source node ID (X+Y coordinate) |
 | dst_id | `X_WIDTH + Y_WIDTH` | [22:15] | routing | Destination node ID (X+Y coordinate) |
@@ -172,16 +172,16 @@ Header 預設 `HEADER_WIDTH = 54 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `rou
 
 ### 2.2 Field Definitions
 
-#### 2.2.1 QoS (`QOS_WIDTH` = 4 bits)
+#### 2.2.1 NoC QoS (`NOC_QOS_WIDTH` = 4 bits)
 
-由 NI 自 AXI `awqos`（Write）或 `arqos`（Read）提取，作為 router arbitration 優先級依據。
+NoC 層級的優先級欄位，預留給未來 router arbitration 機制使用。當前版本本欄位僅作為 placeholder，NI 與 router 不對其進行特殊處理。
 
 | Value | Priority | Description |
 |-------|----------|-------------|
-| 0 | Lowest | Best effort |
+| 0 | Lowest  | Best effort |
 | 15 | Highest | Real-time critical |
 
-AW/AR payload 不重複儲存 qos，header 為唯一來源。Response flit 繼承對應 request 的 `qos`。Router arbiter 以 `qos` 為第一優先級比較依據。詳見 [QoS Design](06_qos.md)。
+**與 AXI QoS 的關係**：`noc_qos` 是 NoC 內部的 router arbitration 概念，與 AXI4 IHI 0022 規定的 `awqos` / `arqos` 是**不同層級**的概念。AXI QoS 屬於 AXI 合約的一部分，未來若 NMU 需要在 ingress 端轉換／NSU 在 egress 端還原 AXI QoS，將以獨立欄位（payload 內 `awqos` / `arqos`）處理，不與 `noc_qos` 共用同一 bit。本版本因 NoC QoS 機制尚未實作，兩者實際走的路徑相同。
 
 #### 2.2.2 AXI Channel Type (`AXI_CH_WIDTH` = 3 bits)
 
@@ -608,7 +608,7 @@ VC identification 由 header `vc_id` 欄位攜帶。NMU 的 VC mapping 政策見
 
 ## Related Documents
 
-> 註：下列連結指向 noc-sim 完整 design doc set（本 `02_flit.md` 由該處 vendored）。`06_qos.md` / `03_router.md` / `05_physical_channel.md` 不在本 BFM doc tree 內，為外部參照。NI 與寬度轉換說明見本 tree 的 `theory_of_operation.md`。
+> 註：下列連結指向 noc-sim 完整 design doc set（本 `packet_format.md` 由該處 vendored）。`06_qos.md` / `03_router.md` / `05_physical_channel.md` 不在本 BFM doc tree 內，為外部參照。NI 與寬度轉換說明見本 tree 的 `theory_of_operation.md`。
 
 - [QoS Design](06_qos.md)
 - [Router Specification](03_router.md)

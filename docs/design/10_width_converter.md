@@ -1,6 +1,6 @@
 # Width Converter
 
-本文件描述 Width Converter 元件，用於橋接不同 AXI bus 寬度與 NoC flit 格式（預設 400-bit）之間的差異。所有參數依據 [Flit Format](02_flit.md) 之預設值設計。
+本文件描述 Width Converter 元件，用於橋接不同 AXI bus 寬度與 NoC flit 格式（預設 400-bit）之間的差異。所有參數依據 [Flit Format](packet_format.md) 之預設值設計。
 
 ---
 
@@ -594,7 +594,7 @@ uint8_t resp_merge(uint8_t resp_a, uint8_t resp_b) {
 ### 9.1 設計參數
 
 ```cpp
-// 預設參數（來自 02_flit.md，可調整）
+// 預設參數（來自 packet_format.md，可調整）
 static constexpr int FLIT_WIDTH       = 400;
 static constexpr int HEADER_WIDTH     = 48;
 static constexpr int PAYLOAD_WIDTH    = 352;
@@ -797,6 +797,6 @@ Width Converter 處理以下對齊情況：
 
 ## 相關文件
 
-- [Flit Format](02_flit.md) — 參數定義與 payload 格式
+- [Flit Format](packet_format.md) — 參數定義與 payload 格式
 - [Network Interface Specification](04_network_interface.md) — NI packetization 與 RoB
 - [Router Specification](03_router.md) — `FLIT_WIDTH` flit 轉發

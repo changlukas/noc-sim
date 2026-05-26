@@ -113,7 +113,7 @@ A wire's "during reset" value is determined by its corresponding reset signal. W
 
 ### NoC Request link — NoC domain (noc_rst_ni)
 
-Single shared link per direction. `vc_id` carried in flit header (see `02_flit.md` §1.2). Backpressure governed by credits — see §"NoC credit signals".
+Single shared link per direction. `vc_id` carried in flit header (see `packet_format.md` §1.2). Backpressure governed by credits — see §"NoC credit signals".
 
 | Channel | Signal | Value during reset | Notes |
 |---------|--------|--------------------|-------|
@@ -192,23 +192,23 @@ Credit startup handshake signals:
 ### Optional AXI parity signals — AXI domain (arst_ni)
 
 Conditional presence:
-- Manager-port parity signals (`axi_awaddr_par_i`, `axi_araddr_par_i`, `axi_wdata_par_i`, `axi_rdata_par_o`) present only when `ENABLE_AXI_PARITY = true` AND `EN_MGR_PORT = 1`
-- Subordinate-port parity signals (`axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o`, `axi_rdata_par_i`) present only when `ENABLE_AXI_PARITY = true` AND `EN_SBR_PORT = 1`
+- Master-port parity signals (`axi_awaddr_par_i`, `axi_araddr_par_i`, `axi_wdata_par_i`, `axi_rdata_par_o`) present only when `ENABLE_AXI_PARITY = true` AND `EN_MST_PORT = 1`
+- Slave-port parity signals (`axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o`, `axi_rdata_par_i`) present only when `ENABLE_AXI_PARITY = true` AND `EN_SLV_PORT = 1`
 
 All address and data parity signals are per-byte (1 bit per byte), aligned with AMD pg313 §Parity standard configuration.
 
 | Channel | Signal | Value during reset | Notes |
 |---------|--------|--------------------|-------|
-| AW_IN | axi_awaddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| AR_IN | axi_araddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| W_IN | axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| R_IN | axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MGR_PORT=1`. |
-| AW_OUT | axi_awaddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Held 0 while reset. Requires `EN_SBR_PORT=1`. |
-| AR_OUT | axi_araddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
-| W_OUT | axi_wdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
-| R_OUT | axi_rdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SBR_PORT=1`. |
+| AW_IN | axi_awaddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
+| AR_IN | axi_araddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
+| W_IN | axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
+| R_IN | axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MST_PORT=1`. |
+| AW_OUT | axi_awaddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Held 0 while reset. Requires `EN_SLV_PORT=1`. |
+| AR_OUT | axi_araddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SLV_PORT=1`. |
+| W_OUT | axi_wdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SLV_PORT=1`. |
+| R_OUT | axi_rdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SLV_PORT=1`. |
 
-Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list (matches AMD pg313 §Data Integrity default-on stance). Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MGR_PORT` / `EN_SBR_PORT`.
+Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list (matches AMD pg313 §Data Integrity default-on stance). Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MST_PORT` / `EN_SLV_PORT`.
 
 ## After reset (first clock edge with respective reset deasserted)
 
@@ -317,7 +317,7 @@ The per-wire enumeration below mirrors the §"During reset" section row-for-row 
 
 ### NoC Request link — NoC domain (noc_rst_ni)
 
-Single shared link per direction. `vc_id` carried in flit header (see `02_flit.md` §1.2). Backpressure governed by credits — see §"NoC credit signals".
+Single shared link per direction. `vc_id` carried in flit header (see `packet_format.md` §1.2). Backpressure governed by credits — see §"NoC credit signals".
 
 | Channel | Signal | Value first cycle after reset | Notes |
 |---------|--------|--------------------|-------|
@@ -396,23 +396,23 @@ Credit startup handshake signals:
 ### Optional AXI parity signals — AXI domain (arst_ni)
 
 Conditional presence:
-- Manager-port parity signals (`axi_awaddr_par_i`, `axi_araddr_par_i`, `axi_wdata_par_i`, `axi_rdata_par_o`) present only when `ENABLE_AXI_PARITY = true` AND `EN_MGR_PORT = 1`
-- Subordinate-port parity signals (`axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o`, `axi_rdata_par_i`) present only when `ENABLE_AXI_PARITY = true` AND `EN_SBR_PORT = 1`
+- Master-port parity signals (`axi_awaddr_par_i`, `axi_araddr_par_i`, `axi_wdata_par_i`, `axi_rdata_par_o`) present only when `ENABLE_AXI_PARITY = true` AND `EN_MST_PORT = 1`
+- Slave-port parity signals (`axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o`, `axi_rdata_par_i`) present only when `ENABLE_AXI_PARITY = true` AND `EN_SLV_PORT = 1`
 
 All address and data parity signals are per-byte (1 bit per byte), aligned with AMD pg313 §Parity standard configuration.
 
 | Channel | Signal | Value first cycle after reset | Notes |
 |---------|--------|--------------------|-------|
-| AW_IN | axi_awaddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| AR_IN | axi_araddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| W_IN | axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MGR_PORT=1`. |
-| R_IN | axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MGR_PORT=1`. |
-| AW_OUT | axi_awaddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Held 0 while reset. Requires `EN_SBR_PORT=1`. |
-| AR_OUT | axi_araddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
-| W_OUT | axi_wdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SBR_PORT=1`. |
-| R_OUT | axi_rdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SBR_PORT=1`. |
+| AW_IN | axi_awaddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
+| AR_IN | axi_araddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
+| W_IN | axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
+| R_IN | axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MST_PORT=1`. |
+| AW_OUT | axi_awaddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Held 0 while reset. Requires `EN_SLV_PORT=1`. |
+| AR_OUT | axi_araddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SLV_PORT=1`. |
+| W_OUT | axi_wdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SLV_PORT=1`. |
+| R_OUT | axi_rdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SLV_PORT=1`. |
 
-Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list (matches AMD pg313 §Data Integrity default-on stance). Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MGR_PORT` / `EN_SBR_PORT`.
+Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list (matches AMD pg313 §Data Integrity default-on stance). Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MST_PORT` / `EN_SLV_PORT`.
 
 ## Post-reset transitions
 
@@ -421,7 +421,7 @@ After the first cycle, several wires transition over time as the BFM enables sti
 - `axi_awready_o`, `axi_wready_o`, `axi_arready_o`: 0 → 1 once NMU tracker reset is complete (1 cycle latency in active mode).
 - `axi_bready_o`: held at 1 (always-ready to drain — B is metadata-only, no NSU back-pressure path).
 - `axi_rready_o`: 1 by default; drops to 0 when NSU R-buffer is full (per `theory_of_operation.md` §NSU Read response buffer). NSU back-pressures the local AXI slave on this signal.
-- BFM-driven `*valid_o` outputs (manager-port responses `axi_bvalid_o`, `axi_rvalid_o`; subordinate-port requests `axi_awvalid_o`, `axi_wvalid_o`, `axi_arvalid_o`; NoC `noc_req_valid_o`, `noc_rsp_valid_o`; CSR `csr_bvalid_o`, `csr_rvalid_o`): 0 → asserted only when a transaction is ready to drive.
+- BFM-driven `*valid_o` outputs (master-port responses `axi_bvalid_o`, `axi_rvalid_o`; slave-port requests `axi_awvalid_o`, `axi_wvalid_o`, `axi_arvalid_o`; NoC `noc_req_valid_o`, `noc_rsp_valid_o`; CSR `csr_bvalid_o`, `csr_rvalid_o`): 0 → asserted only when a transaction is ready to drive.
 - `noc_req_credit_init_ready_o`, `noc_rsp_credit_init_ready_o`: 0 → 1 once the NMU/NSU is ready to start credit exchange (per AMD pg313 §Credit-Based Flow Control bi-directional handshake).
 - `irq_o`: 0 → 1 on the `aclk_i` edge any unmasked `ERR_STATUS` bit asserts; deasserts on the cycle software RW1C clears all set+enabled bits.
 

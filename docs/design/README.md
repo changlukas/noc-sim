@@ -17,7 +17,7 @@
 | # | 文件 | 說明 |
 |---|------|------|
 | 01 | [System Overview](01_overview.md) | 拓撲參數、固定設計參數 |
-| 02 | [Flit Format](02_flit.md) | **基準文件** — 可參數化 flit（預設 400-bit）、Header/Payload 格式 |
+| 02 | [Flit Format](packet_format.md) | **基準文件** — 可參數化 flit（預設 400-bit）、Header/Payload 格式 |
 | 03 | [Router](03_router.md) | Ports、XY Routing、Wormhole、Pipeline、QoS Arbitration |
 | 04 | [Network Interface](04_network_interface.md) | NMU/NSU、AXI ↔ Flit 轉換、RoB、ECC |
 

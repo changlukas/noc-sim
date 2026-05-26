@@ -8,7 +8,7 @@ NoC 的 Quality of Service (QoS) 機制與效能監控設計。
 
 QoS 機制確保不同 traffic 類型獲得適當的頻寬和延遲保證。
 
-QoS 機制整合 QoS Generator、Probe 架構與 flit header qos 欄位等設計，形成自有的混合設計。QoS 相關欄位寬度與 [02_flit.md](02_flit.md) 保持一致。
+QoS 機制整合 QoS Generator、Probe 架構與 flit header qos 欄位等設計，形成自有的混合設計。QoS 相關欄位寬度與 [packet_format.md](packet_format.md) 保持一致。
 
 ### 1.0 QoS 相關參數
 
@@ -16,8 +16,8 @@ QoS 機制整合 QoS Generator、Probe 架構與 flit header qos 欄位等設計
 
 | Parameter | Default | Source |
 |-----------|---------|--------|
-| `QOS_WIDTH` | 4 | 02_flit.md |
-| `X_WIDTH` / `Y_WIDTH` | 4 / 4 | 02_flit.md（src_id/dst_id 寬度 = `X_WIDTH + Y_WIDTH`） |
+| `QOS_WIDTH` | 4 | packet_format.md |
+| `X_WIDTH` / `Y_WIDTH` | 4 / 4 | packet_format.md（src_id/dst_id 寬度 = `X_WIDTH + Y_WIDTH`） |
 
 #### QoS 模組專用參數
 
@@ -44,14 +44,14 @@ Header 中的 `qos` 欄位（4 bits, 16 levels）處理方式：
 ```
 AXI Master (awqos/arqos) → NMU (QoS Generator) → NoC Flit (qos in header)
 ```
-- `QOS_MODE = Bypass`：直接使用 AXI awqos/arqos（預設行為，與 02_flit.md 描述一致）
+- `QOS_MODE = Bypass`：直接使用 AXI awqos/arqos（預設行為，與 packet_format.md 描述一致）
 - `QOS_MODE = Fixed/Limiter/Regulator`：由 QoS Generator 產生或調整
 
 **Response Path (NSU)：**
 ```
 NoC Flit (response) → NSU → AXI Slave
 ```
-- Response flit 的 qos **繼承自對應 request**（與 02_flit.md 一致）
+- Response flit 的 qos **繼承自對應 request**（與 packet_format.md 一致）
 - NI 不修改 response qos
 
 ---
@@ -386,7 +386,7 @@ Bin N: latency >= THRESHOLD_{N-1}
 
 ### 4.3 Last Error Info Register (0x10C)
 
-Register 欄位寬度依 [Flit Format](02_flit.md) 預設值（`AXI_ID_WIDTH=8`、src_id/dst_id = `X_WIDTH + Y_WIDTH = 8`）：
+Register 欄位寬度依 [Flit Format](packet_format.md) 預設值（`AXI_ID_WIDTH=8`、src_id/dst_id = `X_WIDTH + Y_WIDTH = 8`）：
 
 | Field | Bit | Width | Description |
 |-------|-----|-------|-------------|
@@ -504,7 +504,7 @@ QoS 只影響 **arbitration**，不影響 **flow control**。即使 qos=15，若
 
 ## Related Documents
 
-- [Flit Format](02_flit.md) - Header qos 欄位定義、QOS_WIDTH、X_WIDTH/Y_WIDTH
+- [Flit Format](packet_format.md) - Header qos 欄位定義、QOS_WIDTH、X_WIDTH/Y_WIDTH
 - [Network Interface](04_network_interface.md) - NI 架構
 - [Router](03_router.md) - Router arbitration
 

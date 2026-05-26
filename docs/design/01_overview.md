@@ -44,7 +44,7 @@
 
 ### 2.1 Flit 與 Link 參數
 
-以下參數與 [Flit 格式](02_flit.md) 一致，預設值對應目前實作配置；完整參數列表（含 AXI sub-field 與 ECC 細項）見 [02_flit.md §1.2](02_flit.md#12-design-parameters)。
+以下參數與 [Flit 格式](packet_format.md) 一致，預設值對應目前實作配置；完整參數列表（含 AXI sub-field 與 ECC 細項）見 [packet_format.md §1.2](packet_format.md#12-design-parameters)。
 
 | 參數 | 預設值 | 說明 |
 |------|--------|------|
@@ -89,5 +89,5 @@
 
 - [Router 規格](03_router.md)
 - [Network Interface 規格](04_network_interface.md)
-- [Flit 格式](02_flit.md)
+- [Flit 格式](packet_format.md)
 - [Simulation Platform](08_simulation.md)

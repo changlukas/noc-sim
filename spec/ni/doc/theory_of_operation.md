@@ -93,7 +93,7 @@ NSU drives the local AXI slave with the master's original `axi_id` (no internal 
 
 ### NSU Read response buffer (NSU sub-block)
 
-Per-AXI-ID elastic buffer at the NSU that absorbs R response data flits arriving from the local AXI subordinate before they are packed into NoC R flits and injected. Distinct from MetaBuffer (which holds request metadata only).
+Per-AXI-ID elastic buffer at the NSU that absorbs R response data flits arriving from the local AXI slave before they are packed into NoC R flits and injected. Distinct from MetaBuffer (which holds request metadata only).
 
 Purpose:
 
@@ -308,7 +308,7 @@ Deferred to the Width Bridge spec — the NI core does neither. These are AMD-al
 
 #### VC Mapping
 
-The NI has 2 physical channel pairs (`noc_req`, `noc_rsp`). Each physical channel carries `NUM_VC` parallel virtual channels with **independent** credit pools and per-VC injection / reception FIFOs inside the NI. The forward data link (`valid` + `flit`) is shared across all VCs on a given physical channel. Per-flit `vc_id` in the flit header (see `02_flit.md` §1.2) identifies the owning VC. Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`), one bit per VC.
+The NI has 2 physical channel pairs (`noc_req`, `noc_rsp`). Each physical channel carries `NUM_VC` parallel virtual channels with **independent** credit pools and per-VC injection / reception FIFOs inside the NI. The forward data link (`valid` + `flit`) is shared across all VCs on a given physical channel. Per-flit `vc_id` in the flit header (see `packet_format.md` §1.2) identifies the owning VC. Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`), one bit per VC.
 
 Each physical channel's VC pool is independent — there is no shared VC numbering across `noc_req` and `noc_rsp`. A flit's `vc_id` selects only within its target physical channel's VC pool.
 
@@ -354,7 +354,7 @@ While `quiesce_req=1`:
 
 - NMU stops accepting new AW/AR by holding `axi_awready_o = axi_arready_o = 0`.
 - In-flight outstanding transactions continue to drain through normal response paths.
-- NSU is **NOT** quiesced — NSU continues to service inbound NoC `noc_req_i` requests and drive the local AXI subordinate. This NI's quiesce is NMU-only, scoped to the NMU-reconfig use case. Full-NI drain (e.g., for power-down) would require an additional NSU-side quiesce knob; intentionally out of scope for v0.4.0.
+- NSU is **NOT** quiesced — NSU continues to service inbound NoC `noc_req_i` requests and drive the local AXI slave. This NI's quiesce is NMU-only, scoped to the NMU-reconfig use case. Full-NI drain (e.g., for power-down) would require an additional NSU-side quiesce knob; intentionally out of scope for v0.4.0.
 
 Software polling protocol: write `quiesce_req=1`, poll `quiesce_idle` until set, do reconfig, write `quiesce_req=0` to resume. Polling is best-effort. If a slave hangs, `quiesce_idle` never asserts — software is responsible for upper-bounded retry, NI reset, or system-level recovery. No NI-side liveness guarantee in v0.4.0.
 
@@ -368,7 +368,7 @@ Formalised in `protocol_rules.md` `NI_CFG_QUIESCE_FLOW` (steady-state contract).
 
 #### ECC
 
-Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see `02_flit.md` §ECC). Replaces the v0.3.0 per-granule scheme.
+Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see `packet_format.md` §ECC). Replaces the v0.3.0 per-granule scheme.
 
 **Layer 1 — `route_par` (per-hop routing parity)**:
 
@@ -383,7 +383,7 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 
 - SECDED Hsiao code computed over the entire flit (header + payload, *excluding* the `flit_ecc` field itself).
 - Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits for the 396-bit protected payload at default parameters).
-- SECDED bound: `FLIT_ECC_WIDTH` (= `p`) must satisfy `2^(p-1) ≥ FLIT_DATA_WIDTH + p + 1`, where `FLIT_DATA_WIDTH = FLIT_WIDTH - FLIT_ECC_WIDTH` is the protected-bits count. Derivation: a SEC (single-error-correcting) code over `k` data bits requires `r` check bits with `2^r ≥ k + r + 1`. SECDED adds one overall-parity bit, so total `p = r + 1`. The canonical bound is therefore `2^(p-1) ≥ k + p`. The spec uses the slightly stricter `2^(p-1) ≥ k + p + 1` form (one bit of margin against future flit-format growth that may push `k` to the boundary). The bound is matrix-variant-agnostic — Hsiao SECDED (used here) and classical Hamming SECDED both satisfy it. Default config: `FLIT_DATA_WIDTH = 396, p = 10` → `2^9 = 512 ≥ 396 + 10 + 1 = 407` ✓. This formula is shared verbatim with `signal_interface.md` §Parameter constraints and `02_flit.md` §3.6.
+- SECDED bound: `FLIT_ECC_WIDTH` (= `p`) must satisfy `2^(p-1) ≥ FLIT_DATA_WIDTH + p + 1`, where `FLIT_DATA_WIDTH = FLIT_WIDTH - FLIT_ECC_WIDTH` is the protected-bits count. Derivation: a SEC (single-error-correcting) code over `k` data bits requires `r` check bits with `2^r ≥ k + r + 1`. SECDED adds one overall-parity bit, so total `p = r + 1`. The canonical bound is therefore `2^(p-1) ≥ k + p`. The spec uses the slightly stricter `2^(p-1) ≥ k + p + 1` form (one bit of margin against future flit-format growth that may push `k` to the boundary). The bound is matrix-variant-agnostic — Hsiao SECDED (used here) and classical Hamming SECDED both satisfy it. Default config: `FLIT_DATA_WIDTH = 396, p = 10` → `2^9 = 512 ≥ 396 + 10 + 1 = 407` ✓. This formula is shared verbatim with `signal_interface.md` §Parameter constraints and `packet_format.md` §3.6.
 - Generated at NMU/NSU injection (whole flit). Checked **only at the destination NI sink** — NOT at intermediate routers. Routers neither check nor regenerate `flit_ecc`; they trust it end-to-end.
 - Purpose: catch single-bit (correct) and double-bit (detect) errors anywhere in the flit (header or payload) over the entire NoC traversal.
 
@@ -418,14 +418,14 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 
 Independent of NoC-fabric `flit_ecc` / `route_par`, the AXI host boundaries carry per-byte parity per AMD pg313 §Parity standard configuration ("1 bit per byte for Data" and "1 bit per byte for AxAddress"). Active when `ENABLE_AXI_PARITY = true` (default). All log-only at AXI boundary — no SLVERR injection (per (B)-philosophy).
 
-**NMU manager-side parity flow (request path)**:
+**NMU master-side parity flow (request path)**:
 
 1. AXI master drives `axi_awaddr_par_i[ADDR_WIDTH/8-1:0]`, `axi_araddr_par_i[ADDR_WIDTH/8-1:0]`, `axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0]` per AMD §Parity convention.
 2. NMU verifies parity at AW/AR/W handshake. Mismatch → log `ERR_STATUS[2]` + `AXI_PARITY_ERR_CNT` + `LAST_ERR_INFO`. Transaction proceeds.
 3. NMU forwards address into AddrTrans (which may rewrite upper bits via address-map / SAM lookup). When NMU modifies an address byte, the corresponding parity byte is regenerated (per AMD §Parity: "When an AXI field is modified by NMU/NSU logic, parity is regenerated"). Bytes the NMU does not modify carry source parity through.
 4. Once data enters the NoC fabric, `flit_ecc` (whole-flit SECDED) takes over. AXI parity does not propagate inside the NoC.
 
-**NMU manager-side parity flow (response path) — A4.6 addition**:
+**NMU master-side parity flow (response path) — A4.6 addition**:
 
 1. NMU receives R flit on `noc_rsp_i`, runs `flit_ecc` SECDED check (1-bit silent correct, 2-bit forward + log).
 2. **After the `flit_ecc` check stage**, NMU regenerates per-byte parity over the corrected `axi_rdata_o` bytes and drives `axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0]` back to the AXI master.
@@ -433,7 +433,7 @@ Independent of NoC-fabric `flit_ecc` / `route_par`, the AXI host boundaries carr
 
 This regeneration point is the verbatim AMD pg313 §Parity prescription: "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." Formalised in `protocol_rules.md` `AXI4_MST_PARITY_GEN_R`.
 
-**NSU subordinate-side parity flow**:
+**NSU slave-side parity flow**:
 
 1. NSU receives request flits, runs `flit_ecc` check, unpacks AXI fields.
 2. NSU **generates** per-byte parity for `axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o` after ECC check stage, before driving the local AXI slave (per AMD §Parity: "Address parity for read/write requests and data parity for write requests is generated by the NSU after the ECC check").

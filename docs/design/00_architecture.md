@@ -205,7 +205,7 @@
 
 ### 2.3 Flit 傳輸單位
 
-所有 data flow 使用統一的 flit（預設 400-bit：48-bit header + 352-bit payload，寬度由 [Flit Format](02_flit.md) 參數決定）。一個 AXI transaction 在 NoC 中映射為一或多個 flit：
+所有 data flow 使用統一的 flit（預設 400-bit：48-bit header + 352-bit payload，寬度由 [Flit Format](packet_format.md) 參數決定）。一個 AXI transaction 在 NoC 中映射為一或多個 flit：
 
 | AXI Transaction | Request Flits | Response Flits |
 |-----------------|:-------------:|:--------------:|
@@ -883,7 +883,7 @@ RTL Router (SV)
 ## Related Documents
 
 - [System Overview](01_overview.md) — 拓撲參數、設計參數預設值
-- [Flit Format](02_flit.md) — 可參數化 flit header/payload 定義（預設 400-bit）
+- [Flit Format](packet_format.md) — 可參數化 flit header/payload 定義（預設 400-bit）
 - [Router](03_router.md) — Router pipeline、XY routing、wormhole
 - [Network Interface](04_network_interface.md) — NMU/NSU、AXI ↔ Flit
 - [Physical Channel](05_physical_channel.md) — 2-ch / 3-ch 架構

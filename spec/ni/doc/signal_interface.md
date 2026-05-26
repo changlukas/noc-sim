@@ -2,10 +2,10 @@
 
 **Protocols:**
 - AXI side: AXI4 (ARM IHI 0022)
-- NoC side: custom flit-based packet protocol. Flit width `FLIT_WIDTH` bits (default 406 in v0.4.0). Header `HEADER_WIDTH` bits (default 54 in v0.4.0). See `./02_flit.md` for flit format details (vendored from `noc-sim/docs/design/02_flit.md`).
+- NoC side: custom flit-based packet protocol. Flit width `FLIT_WIDTH` bits (default 406 in v0.4.0). Header `HEADER_WIDTH` bits (default 54 in v0.4.0). See `./packet_format.md` for flit format details (vendored from `noc-sim/docs/design/packet_format.md`).
 - CSR side: AXI4-Lite (subset of AXI4) for software-visible configuration and monitoring registers.
 
-**Role:** Both master and slave. NMU (Network Manager Unit) acts as AXI slave on the host side (receives AXI requests from local master) and initiates flits on the NoC. NSU (Network Subordinate Unit) receives flits from the NoC and acts as AXI master on the host side (drives AXI requests to local slave).
+**Role:** Both master and slave. NMU (Network Master Unit) acts as AXI slave on the host side (receives AXI requests from local master) and initiates flits on the NoC. NSU (Network Slave Unit) receives flits from the NoC and acts as AXI master on the host side (drives AXI requests to local slave).
 
 **BFM perspective:** Direction in the tables below is from the BFM out to the connected fabric / IP. The BFM has four external interfaces: AXI4 slave port (NMU side; receives AXI from local master), AXI4 master port (NSU side; drives AXI to local slave), NoC link pair (req + rsp, bidirectional), AXI4-Lite CSR access port (software configuration access).
 
@@ -154,7 +154,7 @@ For brevity the wire-level expansion follows the slave port exactly (same fields
 
 ### NoC Request link
 
-Single shared data link per direction. One flit slot per cycle. The `vc_id` field of the flit header (see `02_flit.md` §1.2 Group 2) identifies the owning VC. Per-cycle backpressure is governed by credits, not by a `ready` handshake — see §"NoC credit signals". NMU at injection side maps each flit onto a VC per `theory_of_operation.md` §"VC Mapping" (Hybrid R/W × QoS policy, fixed at design time).
+Single shared data link per direction. One flit slot per cycle. The `vc_id` field of the flit header (see `packet_format.md` §1.2 Group 2) identifies the owning VC. Per-cycle backpressure is governed by credits, not by a `ready` handshake — see §"NoC credit signals". NMU at injection side maps each flit onto a VC per `theory_of_operation.md` §"VC Mapping" (Hybrid R/W × QoS policy, fixed at design time).
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Optional | BFM supports | Notes |
 |--------|-----------|-------|--------|-------------|-------------|----------|--------------|-------|
@@ -211,7 +211,7 @@ After reset, source-credit counters initialise to 0 per VC. Both ends must compl
 - Credit return latency is `CREDIT_DELAY` cycles (router-side parameter, default 1).
 - Credit starvation: if the receiver returns no credits, the source is permanently stalled on that VC until credits resume. There is no automatic timeout / SLVERR escalation in v0.4.0 — software detects via PENDING counters / IRQ and handles recovery externally.
 
-### CSR access port (AXI4-Lite subordinate)
+### CSR access port (AXI4-Lite slave)
 
 A dedicated AXI4-Lite slave port for software access to NMU/NSU CSR file. Width assumptions: 32-bit CSR_ADDR_WIDTH=12 (4KB region accommodates ~32 registers per `registers.md`); 32-bit CSR_DATA_WIDTH=32.
 
@@ -265,7 +265,7 @@ Coverage:
 
 對齊 AMD pg313 §Parity verbatim：「1 bit per byte for Data」與「1 bit per byte for AxAddress」standard config。
 
-**AXI Slave port (axi_*_i) parity inputs (when `EN_MGR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
+**AXI Slave port (axi_*_i) parity inputs (when `EN_MST_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------------|-------|
@@ -273,13 +273,13 @@ Coverage:
 | `axi_araddr_par_i[ADDR_WIDTH/8-1:0]` | input | ADDR_WIDTH/8 | H | pos aclk | §AXI parity row 2 | Per-byte even parity over `axi_araddr_i`. Sampled when `axi_arvalid_i=1`. |
 | `axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0]` | input | NOC_DATA_WIDTH/8 | H | pos aclk | §AXI parity row 3 | Per-byte even parity over `axi_wdata_i`. Sampled when `axi_wvalid_i=1`. |
 
-**AXI Slave port (axi_*_o) parity outputs (when `EN_MGR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
+**AXI Slave port (axi_*_o) parity outputs (when `EN_MST_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------------|-------|
 | `axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0]` | output | NOC_DATA_WIDTH/8 | H | pos aclk | §AXI parity row 8 | Per-byte even parity over `axi_rdata_o` (NMU-generated). NMU regenerates this **after** the `flit_ecc` check stage when converting the NoC packet back to AXI protocol — aligned with AMD pg313 §Parity: "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." |
 
-**AXI Master port (axi_*_o) parity outputs (when `EN_SBR_PORT=1` and `ENABLE_AXI_PARITY=1`):**
+**AXI Master port (axi_*_o) parity outputs (when `EN_SLV_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------------|-------|
@@ -314,12 +314,12 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 |------|------|---------|------------|-------------|
 | `ADDR_WIDTH` | int | 64 | 32 ≤ x ≤ 64 | AXI address width on host side |
 | `AXI_DATA_WIDTH` | int | 256 | 32 / 64 / 128 / 256 / 512 | **External Width Bridge parameter — not used by the NI core.** The local AXI master/slave-side data width handled by the bolt-on Width Bridge (see ToO §Data Width Conversion). The NI core's own AXI port operates at `NOC_DATA_WIDTH`. Interface width 32 to 512 per AMD pg313 §AXI Support and Restrictions Table 1; 1024 not supported. |
-| `NOC_DATA_WIDTH` | int | 256 | 64 / 128 / 256 / 512 | NoC flit data-lane width (the `wdata` / `rdata` field inside a flit, see `02_flit.md` §3.2, §3.4) **and the NI core's AXI port width** — the NI port is fixed at this width. The external Width Bridge adapts the local master/slave `AXI_DATA_WIDTH` to it. |
+| `NOC_DATA_WIDTH` | int | 256 | 64 / 128 / 256 / 512 | NoC flit data-lane width (the `wdata` / `rdata` field inside a flit, see `packet_format.md` §3.2, §3.4) **and the NI core's AXI port width** — the NI port is fixed at this width. The external Width Bridge adapts the local master/slave `AXI_DATA_WIDTH` to it. |
 | `USER_WIDTH` | int | 8 | 1 ≤ x ≤ 32 | AXI user signal width |
-| `IN_ID_WIDTH` | int | 8 | 1 ≤ x ≤ 16 | AXI manager (incoming) txnID width |
-| `OUT_ID_WIDTH` | int | 8 | 1 ≤ x ≤ 16 | AXI subordinate (outgoing) txnID width |
-| `EN_SBR_PORT` | bool | true | EN_SBR_PORT \|\| EN_MGR_PORT | Enable NSU |
-| `EN_MGR_PORT` | bool | true | EN_SBR_PORT \|\| EN_MGR_PORT | Enable NMU |
+| `IN_ID_WIDTH` | int | 8 | 1 ≤ x ≤ 16 | AXI master (incoming) txnID width |
+| `OUT_ID_WIDTH` | int | 8 | 1 ≤ x ≤ 16 | AXI slave (outgoing) txnID width |
+| `EN_SLV_PORT` | bool | true | EN_SLV_PORT \|\| EN_MST_PORT | Enable NSU |
+| `EN_MST_PORT` | bool | true | EN_SLV_PORT \|\| EN_MST_PORT | Enable NMU |
 | `MAX_TXNS` | int | 32 | power-of-2 | HW ceiling on outstanding transactions |
 | `MAX_UNIQUE_IDS` | int | 1 | 1 ≤ x ≤ MAX_TXNS | Number of unique downstream txnIDs |
 | `MAX_TXNS_PER_ID` | int | 32 | 1 ≤ x ≤ MAX_TXNS | Outstanding count per unique ID |
@@ -347,7 +347,7 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | array length = `NUM_SAM_RULES` | SAM rule table. **Compile-time parameter, not a port** — aligns with FlooNoC `floo_axi_chimney.sv` `Sam` parameter. All NIs share the same content. Each `sam_rule_t` carries `{match, mask, dst_id}`. Used when `USE_ID_TABLE=1` (`SourceRouting`/`IDRouting`). Runtime modification is **out of scope for v0.4.0** — no `SAM_RULE_*` CSR exists; to change the table, re-elaborate the design |
 | `MESH_COLS` | int | 4 | 1 ≤ x ≤ 2^X_WIDTH | Mesh column count; bounds `dst_id.x` for `NOC_FLIT_HDR_DST_ID_VALID` |
 | `MESH_ROWS` | int | 4 | 1 ≤ x ≤ 2^Y_WIDTH | Mesh row count; bounds `dst_id.y` |
-| `NUM_VC` | int | 1 | 1 ≤ x ≤ 8; when x > 1, both `R_ROB_TYPE` and `B_ROB_TYPE` MUST be != `NoRoB` (see `theory_of_operation.md` §RoB allocator §"NoRoB single-VC restriction") | Number of virtual channels per NoC link. Upper bound 8 matches `VC_ID_WIDTH = 3` in flit header (see `02_flit.md` §1.2 Group 2). Forward data link is shared (single 1-bit `valid` + 1× FLIT_WIDTH `flit`). Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`). `NUM_VC=1` (default) collapses to single-VC operation. `NUM_VC > 1` adds VC mapping at NMU per `theory_of_operation.md` §"VC Mapping" (Hybrid R/W × QoS policy at flit-construct time) and cycle-level VC arbitration at the network switch per `06_qos.md §5` (NPS scope, out of NI). Deadlock-free routing across VCs is the integrator's responsibility. |
+| `NUM_VC` | int | 1 | 1 ≤ x ≤ 8; when x > 1, both `R_ROB_TYPE` and `B_ROB_TYPE` MUST be != `NoRoB` (see `theory_of_operation.md` §RoB allocator §"NoRoB single-VC restriction") | Number of virtual channels per NoC link. Upper bound 8 matches `VC_ID_WIDTH = 3` in flit header (see `packet_format.md` §1.2 Group 2). Forward data link is shared (single 1-bit `valid` + 1× FLIT_WIDTH `flit`). Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`). `NUM_VC=1` (default) collapses to single-VC operation. `NUM_VC > 1` adds VC mapping at NMU per `theory_of_operation.md` §"VC Mapping" (Hybrid R/W × QoS policy at flit-construct time) and cycle-level VC arbitration at the network switch per `06_qos.md §5` (NPS scope, out of NI). Deadlock-free routing across VCs is the integrator's responsibility. |
 | `CDC_FIFO_DEPTH` | int | 16 | 4 ≤ x ≤ 64 (power-of-2 recommended) | Internal AXI ↔ NoC async-FIFO depth (gray-counter pointer + 2FF synchroniser). Sized to absorb `2 × max_round_trip_cycles × max(aclk_period, noc_clk_period) / min(aclk_period, noc_clk_period) + 2`; default 16 is conservative for ratio range [0.1, 10]. |
 | `MAX_OUTSTANDING` | int | 8 | 1 ≤ x ≤ MAX_TXNS | Test-author-configurable (BFM knob via `transaction_api.md`) or compile-time parameter (RTL); **not CSR-accessible** (no `MAX_OUTSTANDING` CSR exists in `registers.md`). Caps concurrent outstanding transactions below the `MAX_TXNS` hardware ceiling for stress-testing scenarios. Default 8 when set as compile-time parameter. |
 | `MAX_BURST_LEN` | int | 16 | 1 ≤ x ≤ 256 | BFM W-reassembly buffer-depth limit — a capacity bound, **not** an AXI4 legality check (`awlen` up to 255 is legal AXI4). A burst with `len + 1 > MAX_BURST_LEN` exceeds the configured buffer (raise the parameter). The BFM returns `BURST_LEN_EXCEEDS_MAX`. See `transaction_api.md`. |
@@ -389,7 +389,7 @@ Multiple logical channels across two AXI ports + NoC + CSR. Protocol-rule IDs in
 | RSP_IN | `noc_rsp_valid_i`, `noc_rsp_flit_i`, `noc_rsp_credit_o[NUM_VC-1:0]` |
 | CSR_AW / CSR_W / CSR_B / CSR_AR / CSR_R | csr_aw* / csr_w* / csr_b* / csr_ar* / csr_r* |
 
-This separates manager-side and subordinate-side channels (e.g., `AW_IN` vs `AW_OUT`) so rules can be specific to which port a given AXI4 STABLE rule applies to.
+This separates master-side and slave-side channels (e.g., `AW_IN` vs `AW_OUT`) so rules can be specific to which port a given AXI4 STABLE rule applies to.
 
 ## Signal bundles (struct dot-notation)
 

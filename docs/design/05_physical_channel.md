@@ -1,6 +1,6 @@
 # Physical Channel Architecture
 
-本文件描述 NoC 的 Physical Channel 架構，重點在 2-channel 與 3-channel 的設計差異。Flit 格式、header 欄位、payload layout 等定義請參見 [Flit Format](02_flit.md)。
+本文件描述 NoC 的 Physical Channel 架構，重點在 2-channel 與 3-channel 的設計差異。Flit 格式、header 欄位、payload layout 等定義請參見 [Flit Format](packet_format.md)。
 
 ---
 
@@ -34,7 +34,7 @@ NoC 採用 Request / Response 雙通道分離架構。每個邏輯 Router 內部
         Total per router pair: 4 × LINK_WIDTH (預設 1,608) bits (bidirectional)
 ```
 
-預設值：`FLIT_WIDTH = 400`、`LINK_WIDTH = 402`，詳見 [Flit Format](02_flit.md) §1.2。
+預設值：`FLIT_WIDTH = 400`、`LINK_WIDTH = 402`，詳見 [Flit Format](packet_format.md) §1.2。
 
 ### 1.3 Deadlock Avoidance
 
@@ -186,7 +186,7 @@ Response network（B + R）同理：R burst 會鎖定路徑阻塞 B flit，但 B
 
 ### 3.2 三通道定義
 
-3-channel 模式引入兩個本節區域性參數（不在 [Flit Format](02_flit.md) 全域參數列表中）：
+3-channel 模式引入兩個本節區域性參數（不在 [Flit Format](packet_format.md) 全域參數列表中）：
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -230,7 +230,7 @@ Response network（B + R）同理：R burst 會鎖定路徑阻塞 B flit，但 B
 
 ### 3.5 Narrow Flit Format
 
-Narrow flit 使用與 [Flit Format](02_flit.md) **相同的 `HEADER_WIDTH` header**，payload 寬度為 `NARROW_FLIT_WIDTH - HEADER_WIDTH`：
+Narrow flit 使用與 [Flit Format](packet_format.md) **相同的 `HEADER_WIDTH` header**，payload 寬度為 `NARROW_FLIT_WIDTH - HEADER_WIDTH`：
 
 ```
   NARROW_FLIT_WIDTH-1   HEADER_WIDTH HEADER_WIDTH-1     0
@@ -324,7 +324,7 @@ ReqRouter 和 RspRouter 共用同一 `NARROW_FLIT_WIDTH` 寬度設計，可複�
 
 ## Related Documents
 
-- [Flit Format](02_flit.md) — Flit 結構、header 欄位定義、payload format、physical link format
+- [Flit Format](packet_format.md) — Flit 結構、header 欄位定義、payload format、physical link format
 - [Router Specification](03_router.md) — Router pipeline、ReqRouter/RspRouter 架構、wormhole switching
 - [Network Interface Specification](04_network_interface.md) — NI 的 AXI-to-Flit 轉換與 network 分流
 - [Simulation Platform](08_simulation.md) — Abstract Interface、8-phase cycle model、Channel\<T\>

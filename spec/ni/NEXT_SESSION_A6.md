@@ -21,7 +21,7 @@ A5 結束時 git head：`32d3f08`（spec(ni): D1->D2 triage — Round 2 cross-re
 | `IMPLEMENTER_REVIEW_LOG.md` | up-to-date through Round 2 |  |
 | SLIDES.md | v0.4.0 A5 baseline 14-slide deck | user-curated；仍待優化（見 §2） |
 | RTL skeleton | `nmu.sv` / `nsu.sv` empty shells 已 commit `517eb53` |  |
-| 02_flit.md | vendored 進 spec/ni/doc/ | 上游 `docs/design/02_flit.md` 同步 |
+| packet_format.md | vendored 進 spec/ni/doc/ | 上游 `docs/design/packet_format.md` 同步 |
 
 ---
 
@@ -93,7 +93,7 @@ A5 implementer-review 把 spec content ambiguity 清完；但有 4 個 architect
 - **Why this is small but blocking**：v0.4.0 wire-equivalence contract 寫了 “MUST consume the same H-matrix”，這 artifact 是該條 contract 的 ground truth。沒有就 D3 sign-off 不過。
 - **Effort**：~半天～1 天（含 CI check）。
 - **Blocker for**：D3 stage gate。
-- **Note**：FLIT_DATA_WIDTH=396 跟 FLIT_ECC_WIDTH=10 兩個數字要先跟 `signal_interface.md` §Parameters / `02_flit.md` 對齊；目前 `02_flit.md` 寫 “FLIT_DATA_WIDTH default 256” 跟其它地方需 cross-check。**先做這個 verify 再下 secded_gen.py 的命令。**
+- **Note**：FLIT_DATA_WIDTH=396 跟 FLIT_ECC_WIDTH=10 兩個數字要先跟 `signal_interface.md` §Parameters / `packet_format.md` 對齊；目前 `packet_format.md` 寫 “FLIT_DATA_WIDTH default 256” 跟其它地方需 cross-check。**先做這個 verify 再下 secded_gen.py 的命令。**
 
 ---
 
@@ -189,6 +189,6 @@ A6 wave 進場前 5 分鐘做的事：
 ## 5. 給未來 self 的提醒
 
 - **不要重新觸發 implementer-review** — A5 wave 跑過 Round 1+2 並 21 個 ambiguities 全 triage；除非 A6 寫了大改動，否則跑這個是浪費 budget。
-- **02_flit.md 在兩處**：`spec/ni/doc/02_flit.md`（spec-local vendored，SoT for this spec）、`docs/design/02_flit.md`（upstream，project-wide）。改 spec 內容只動 spec/ni/doc/；同步上游時兩邊都 grep 確認。
+- **packet_format.md 在兩處**：`spec/ni/doc/packet_format.md`（spec-local vendored，SoT for this spec）、`docs/design/packet_format.md`（upstream，project-wide）。改 spec 內容只動 spec/ni/doc/；同步上游時兩邊都 grep 確認。
 - **Writing-protocol 違反提醒**：A5 wave 的 working-protocol 違反主要是 numeric claim 沒 cite tool（51 vs 50 就是一例）；A6 強化 grep-verify-then-claim。
 - **每個 commit 邊界**：T1.x 是 design decisions，每個獨立 commit；T2 (H-matrix) 是另一個獨立 commit（含 CI check）；T3 lint cleanups 可以一個 commit 包三項。

@@ -81,14 +81,14 @@ The model supports the following features:
 
 ## Flit Format
 
-The full bit-level flit specification is documented in [02_flit.md](02_flit.md) (canonical source). Summary:
+The full bit-level flit specification is documented in [packet_format.md](packet_format.md) (canonical source). Summary:
 
 - All five AXI channels (AW, W, AR, B, R) share unified `FLIT_WIDTH` (v0.4.0 default 406 bits = 54-bit header + 352-bit payload). Shorter payloads zero-padded to `PAYLOAD_WIDTH`.
 - Header carries routing/QoS/VC/RoB metadata plus integrity fields (`route_par` 1-bit even parity over `{dst_id, last}`, `flit_ecc` 10-bit whole-flit SECDED). Per AMD pg313 §Parity / §Data Integrity.
 - Each NoC link uses credit-based flow control (single shared forward link + per-VC reverse credit return + bi-directional credit-init-ready handshake at startup). VC identification by header `vc_id` field.
 - `LINK_WIDTH` (forward bundle: valid + flit) = 407 bits in default config.
 
-For bit allocation, payload field tables, ECC scheme, and physical-link wire breakdown, see [02_flit.md](02_flit.md).
+For bit allocation, payload field tables, ECC scheme, and physical-link wire breakdown, see [packet_format.md](packet_format.md).
 
 ---
 
@@ -283,7 +283,7 @@ The model works through a single configuration object, NocConfig, which serves a
 
 ### Flit Design Parameters (Defaults)
 
-The following parameters match [Flit Format](02_flit.md); defaults correspond to the current implementation configuration. Full parameter list (including AXI sub-fields and ECC details) is in 02_flit.md §1.2.
+The following parameters match [Flit Format](packet_format.md); defaults correspond to the current implementation configuration. Full parameter list (including AXI sub-fields and ECC details) is in packet_format.md §1.2.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|

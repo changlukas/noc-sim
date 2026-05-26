@@ -138,8 +138,8 @@ NI 使用 config struct 組織參數，由上層 instantiation 時傳入。
 
 | Parameter | Description | 來源 |
 |-----------|-------------|------|
-| `flit_t` | Flit data type（`FLIT_WIDTH` bits, 預設 406） | [Flit Format](02_flit.md) |
-| `hdr_t` | Flit header type（`HEADER_WIDTH` bits, 預設 54） | [Flit Format](02_flit.md) |
+| `flit_t` | Flit data type（`FLIT_WIDTH` bits, 預設 406） | [Flit Format](packet_format.md) |
+| `hdr_t` | Flit header type（`HEADER_WIDTH` bits, 預設 54） | [Flit Format](packet_format.md) |
 | `id_t` | Node ID type | `logic[ID_WIDTH-1:0]` |
 | `noc_req_t` | Request link type（valid + flit） | Req network |
 | `noc_rsp_t` | Response link type（valid + flit） | Rsp network |
@@ -286,11 +286,11 @@ SAM 規則表 (`Sam`) 為 compile-time parameter (per §3.3)，不是 input port
 | B | RSP | 20 | 44 | bid, bresp, buser, rsvd_mc_status |
 | R | RSP | 275 | 77 | rlast, rid, rresp, ruser, rdata[256] |
 
-ECC 不再 per-channel 散布在 payload 中。改為 whole-flit SECDED 在 header `flit_ecc` 欄位（預設 10-bit syndrome 涵蓋 396 bits）。詳見 §FR-06 與 [Flit Format](02_flit.md) §3.6。
+ECC 不再 per-channel 散布在 payload 中。改為 whole-flit SECDED 在 header `flit_ecc` 欄位（預設 10-bit syndrome 涵蓋 396 bits）。詳見 §FR-06 與 [Flit Format](packet_format.md) §3.6。
 
 Header 預設 54 bits 的欄位來源（NMU request path）：`qos` ← QoSGen、`src_id` ← 本地座標、`dst_id` ← AddrTrans、`last` ← single-flit(AW/AR)=1 / W 末尾=1、`rob_idx` ← RoB allocate、`route_par` ← XOR over `{dst_id, last}`、`flit_ecc` ← whole-flit SECDED syndrome、`rsvd_commtype` ← 0。
 
-Payload bit-level layout 詳見 [Flit Format](02_flit.md) Section 3。
+Payload bit-level layout 詳見 [Flit Format](packet_format.md) Section 3。
 
 ### FR-03: Flit Unpacking（Flit → AXI）
 
@@ -380,7 +380,7 @@ FREE ──► ALLOCATED ──► RESPONSE_RECEIVED ──► READY_TO_RELEASE 
 
 對齊 AMD pg313 §Data Integrity：「Uncorrectable ECC errors result in a fatal interrupt」— 我們也是 interrupt，**不**合成 AXI rresp/bresp = SLVERR。Spec 內唯一合成 SLVERR 的 fabric 錯誤路徑是 `AXI4_MST_TIMEOUT_SLVERR`（NMU outstanding-transaction tracker timeout）。
 
-詳見 [Flit Format §3.6 ECC Design](02_flit.md#36-ecc-design-whole-flit-secded--route-parity)。
+詳見 [Flit Format §3.6 ECC Design](packet_format.md#36-ecc-design-whole-flit-secded--route-parity)。
 
 ### FR-07: QoS Generation
 
@@ -433,7 +433,7 @@ W flit 的 `qos` 繼承對應 AW flit 值。Response flit 的 `qos` 繼承 reque
 ## 7. Related Documents
 
 - [System Overview](01_overview.md) — Mesh 拓撲與系統架構
-- [Flit Format](02_flit.md) — Header/Payload bit-level 定義、ECC 設計
+- [Flit Format](packet_format.md) — Header/Payload bit-level 定義、ECC 設計
 - [Router Specification](03_router.md) — Router port interface
 - [QoS Design](06_qos.md) — QoS Generator 模式、CSR Memory Map
 - [Simulation](08_simulation.md) — NocSystem API、NocConfig、Channel\<T\>

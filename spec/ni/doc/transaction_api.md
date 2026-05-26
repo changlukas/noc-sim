@@ -41,7 +41,7 @@ Transaction API covers ~95% of typical tests (single-master single-slave, RoB or
 | **NoC monitor (any mode)** ||
 | Monitor | `expect_noc_request(addr_match=<opt>, [timeout]) -> (status_t, flit_t)` | Wait for a NoC request flit on `noc_req_o`. |
 | Monitor | `expect_noc_response(rob_idx_match=<opt>, [timeout]) -> (status_t, flit_t)` | Wait for a NoC response flit on `noc_rsp_o`. |
-| Monitor | `get_observed_axi_writes(port) -> list` | Return all observed AXI writes since last reset_state, on specified port (manager or sub). |
+| Monitor | `get_observed_axi_writes(port) -> list` | Return all observed AXI writes since last reset_state, on specified port (master or sub). |
 | Monitor | `get_observed_axi_reads(port) -> list` | Same for reads. |
 | Monitor | `get_observed_noc_flits(link, direction) -> list` | Return observed NoC flits (link ∈ {req, rsp}; direction ∈ {out, in}). |
 | **CSR-mapped configuration (via AXI4-Lite CSR port)** ||
@@ -375,7 +375,7 @@ If only one of the two resets is asserted (partial reset): cross-domain transact
 
 ## Outstanding-limit overflow behavior
 
-When a test issues a new transaction while the BFM's outstanding tracker is already full (`total outstanding == MAX_TXNS`, or `outstanding count for id == MAX_TXNS_PER_ID`), the BFM **mirrors RTL back-pressure**: the `apply_axi_*` call holds `axi_awready_o`/`axi_arready_o` LOW (or, on the subordinate-port direction, holds `axi_awvalid_o`/`axi_arvalid_o` until the local slave's ready accepts) and blocks until a tracker slot frees (i.e., a previously-issued transaction's response is received and consumed). The call then resumes, drives the AW/AR phase, and continues to the response phase as usual.
+When a test issues a new transaction while the BFM's outstanding tracker is already full (`total outstanding == MAX_TXNS`, or `outstanding count for id == MAX_TXNS_PER_ID`), the BFM **mirrors RTL back-pressure**: the `apply_axi_*` call holds `axi_awready_o`/`axi_arready_o` LOW (or, on the slave-port direction, holds `axi_awvalid_o`/`axi_arvalid_o` until the local slave's ready accepts) and blocks until a tracker slot frees (i.e., a previously-issued transaction's response is received and consumed). The call then resumes, drives the AW/AR phase, and continues to the response phase as usual.
 
 The `Preconditions` line `outstanding count for id < MAX_TXNS_PER_ID; total outstanding < MAX_TXNS` in `apply_axi_write` / `apply_axi_read` is a **performance / liveness guideline, not a hard contract violation**: a test that exceeds the limit will not return an error, but will see the API call stall until back-pressure relief arrives. If the test's slave path is also stalled (deadlock scenario), the call hangs indefinitely — software-side test framework is responsible for upper-bounded watchdog detection.
 

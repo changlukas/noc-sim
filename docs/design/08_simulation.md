@@ -136,7 +136,7 @@ NocConfig 為**全局唯一的參數定義處**（single source of truth）。�
 
 ### 3.2 Flit 設計參數（預設值）
 
-以下參數與 [Flit Format](02_flit.md) 一致，預設值對應目前實作配置（完整參數列表見 02_flit.md §1.2）：
+以下參數與 [Flit Format](packet_format.md) 一致，預設值對應目前實作配置（完整參數列表見 packet_format.md §1.2）：
 
 | 參數 | 預設值 | 說明 |
 |------|--------|------|
@@ -642,7 +642,7 @@ DPI-C bridge 為 thin wrapper，提供 SystemVerilog 與 C++ model 的互操作�
 ## 12. Related Documents
 
 - [System Overview](01_overview.md)
-- [Flit Format](02_flit.md) — 參數化基準
+- [Flit Format](packet_format.md) — 參數化基準
 - [Router](03_router.md) — 8-phase pipeline、CppRouter pipeline stages
 - [Network Interface](04_network_interface.md) — NMU/NSU、CppNI functions
 - [Verification](09_verification.md) — Golden 驗證、效能指標、測試策略

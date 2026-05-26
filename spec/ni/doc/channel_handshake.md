@@ -89,7 +89,7 @@ flowchart LR
 - NMU MUST hold credit > 0 on the chosen VC before asserting `noc_req_valid_o` (per `NOC_MST_FLIT_ON_CREDIT_ONLY`). The credit counter for that VC decrements by 1 on the cycle `noc_req_valid_o = 1`.
 - `noc_req_flit_o[FLIT_WIDTH-1:0]` carries the flit data on the same cycle as `noc_req_valid_o = 1`. The flit slot is single-cycle. There is no multi-cycle stall on the wire — credit accounting is the only back-pressure mechanism.
 - NSU returns one credit per cycle per VC on `noc_req_credit_o[vc]` after popping a flit from its per-VC input buffer (per AMD pg313 verbatim: "up to one credit per cycle, per virtual channel"). Credit return on the reverse path is independent of valid/flit on the forward path.
-- The `vc_id` for each flit is encoded in the flit header (see `02_flit.md` §1.2). Forward data link is shared across VCs; multiplexing is at the source via Hybrid R/W × QoS mapping (per `NOC_VC_MAPPING_HYBRID_RW_QOS`).
+- The `vc_id` for each flit is encoded in the flit header (see `packet_format.md` §1.2). Forward data link is shared across VCs; multiplexing is at the source via Hybrid R/W × QoS mapping (per `NOC_VC_MAPPING_HYBRID_RW_QOS`).
 
 ### Response link (noc_rsp_*)
 

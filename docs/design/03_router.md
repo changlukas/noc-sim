@@ -128,10 +128,10 @@ Router 使用 compile-time parameter 定義結構，由上層 instantiation 時�
 
 | Parameter | Description | 來源 |
 |-----------|-------------|------|
-| `flit_t` | Flit data type（`FLIT_WIDTH` bits, 預設 400） | [Flit Format](02_flit.md) |
+| `flit_t` | Flit data type（`FLIT_WIDTH` bits, 預設 400） | [Flit Format](packet_format.md) |
 | `id_t` | Node ID type（`logic[ID_WIDTH-1:0]`） | ID_WIDTH 推導 |
 | `addr_rule_t` | Address routing rule（IdTable 用） | 上層定義 |
-| `payload_t` | Flit payload type（`PAYLOAD_WIDTH` bits, 預設 352） | [Flit Format](02_flit.md) |
+| `payload_t` | Flit payload type（`PAYLOAD_WIDTH` bits, 預設 352） | [Flit Format](packet_format.md) |
 
 ### 3.5 Simulation Parameters（C++ model 專用）
 
@@ -432,7 +432,7 @@ Router 為 flit 透通轉發器，不檢查/修改 ECC。XY routing 保證 deadl
 ## 7. Related Documents
 
 - [System Overview](01_overview.md) — Mesh 拓撲與系統架構
-- [Flit Format](02_flit.md) — Header/Payload 格式、physical link 定義
+- [Flit Format](packet_format.md) — Header/Payload 格式、physical link 定義
 - [Network Interface](04_network_interface.md) — NI 與 LOCAL port 連接
 - [Physical Channel](05_physical_channel.md) — 2-channel / 3-channel 架構
 - [QoS Design](06_qos.md) — QoS arbitration policy

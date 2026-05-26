@@ -24,7 +24,7 @@ Full transcripts of Round 1 outputs are in this session's conversation log (2026
 
 **Round 1 ambiguities raised** (6):
 
-1. **Flit-header bit layout** — described prose-only; SECDED, route_par, every per-field accessor depends on exact bit positions; tentative resolution: jointly publish `02_flit.md` field map.
+1. **Flit-header bit layout** — described prose-only; SECDED, route_par, every per-field accessor depends on exact bit positions; tentative resolution: jointly publish `packet_format.md` field map.
 2. **Hamming SECDED vs Hsiao SECDED** — `theory_of_operation.md` §ECC says "Hamming"; `transaction_api.md set_inject_ecc_error` says "Hsiao"; tentative: implement Hsiao.
 3. **`INPUT_BUFFER_DEPTH`** described as router-side parameter, no NI port exists; tentative: BFM construction parameter, default 4.
 4. **ECC counter widths** — only `ECC_CORR_ERR_CNT` width is `ERR_COUNTER_WIDTH=16`; other 3 counters not pinned; tentative: all four are 16-bit in `[15:0]`.
@@ -43,7 +43,7 @@ Full transcripts of Round 1 outputs are in this session's conversation log (2026
 
 **Round 1 ambiguities raised** (9):
 
-1. **Flit format / field offsets** not in `spec/ni/` (in `noc-sim/docs/design/02_flit.md`).
+1. **Flit format / field offsets** not in `spec/ni/` (in `noc-sim/docs/design/packet_format.md`).
 2. **NSU MetaBuffer indexing** — slot vs `axi_id`-keyed vs rob_idx-mirrored; tentative: slot-keyed, `(rob_idx, src_id)` lookup.
 3. **`NMU_BUFFER_DEPTH=2` vs `CDC_FIFO_DEPTH=16`** relationship; tentative: different stages.
 4. **Hamming vs Hsiao SECDED**; tentative: Hsiao (per dv/plan + test-knob references).
@@ -101,7 +101,7 @@ Each agent received the OTHER agent's Round 1 output and produced a peer review.
 
 | Rank | Issue | Both flagged? | Affected wire/cycle behavior | Proposed resolution |
 |------|-------|---------------|------------------------------|---------------------|
-| 1 | Flit bit-layout (`02_flit.md` outside `spec/ni/`) | Both R1 #1 | Every flit on `noc_*_flit_o` | Publish `flit_layout.h` (SV pkg + C struct) checked into `spec/ni/`, version-locked |
+| 1 | Flit bit-layout (`packet_format.md` outside `spec/ni/`) | Both R1 #1 | Every flit on `noc_*_flit_o` | Publish `flit_layout.h` (SV pkg + C struct) checked into `spec/ni/`, version-locked |
 | 2 | Hamming vs Hsiao SECDED | Both R1, **R2 disagree on which** | Every bit of `flit_ecc` | **Designer ruling** — spec self-contradicts; one side must change (3 sites Hamming vs 1 Hsiao) |
 | 3 | `(R/W, qos) → vc_id` mapping function | RTL R1 #5; both R2 | Which VC each flit lands on (NUM_VC≥4) | Publish full `(R/W, qos[3:0], NUM_VC) → vc_id` table (not formula) |
 | 4 | Credit-init epoch exact cycle | Both R1 wire-level lockdowns; C R2 expansion | Link bring-up timing + credit accounting | Seed counters cycle both `*_credit_init_ready_*` first concurrently HIGH; first injectable cycle = next |
@@ -382,42 +382,42 @@ implying VCs are partitioned across `noc_req` and `noc_rsp` from a single shared
 
 - `pin_level_reset.md` §CDC FIFO reset: full rewrite. New text aligns with FlooNoC pattern (cdc_fifo_gray wrapping, no chimney-level flush). Cross-domain partial-reset is explicitly stated as not-automatically-recoverable. Integrator responsibility is stated with two acceptable coordination patterns (simultaneous reset hold, or system-level coordination signal). The earlier `flush_on_full_reset` wording is explicitly retracted with rationale.
 
-### 2026-05-10 — Bucket 3 #1 Flit bit-layout (closed by vendoring 02_flit.md into spec/ni/doc/)
+### 2026-05-10 — Bucket 3 #1 Flit bit-layout (closed by vendoring packet_format.md into spec/ni/doc/)
 
-**Designer ruling**: vendor `02_flit.md` from `noc-sim/docs/design/02_flit.md` into `spec/ni/doc/02_flit.md`. The flit-format authoritative reference now lives inside the spec tree.
+**Designer ruling**: vendor `packet_format.md` from `noc-sim/docs/design/packet_format.md` into `spec/ni/doc/packet_format.md`. The flit-format authoritative reference now lives inside the spec tree.
 
 **Rationale**: both Round 1 implementer-review agents flagged this as the #1 highest-priority ambiguity. The flit bit-layout is the contract every implementation must agree on bit-for-bit, but it lived in a separate file outside `spec/ni/`. Either implementer reading just `spec/ni/` would lack the authoritative bit layout. Two options were considered:
 
 - (a) Publish a `flit_layout.h` header file (SV pkg + C struct) checked into `spec/ni/`.
-- (b) Vendor the existing `02_flit.md` from `docs/design/` into `spec/ni/doc/`.
+- (b) Vendor the existing `packet_format.md` from `docs/design/` into `spec/ni/doc/`.
 
 Option (b) chosen because:
-- `02_flit.md` (614 lines, 37 KB) already contains the authoritative bit-layout from the v0.4.0 flit format restructure. Re-publishing as a header would duplicate the source of truth.
-- Per `memory/project_noc_sim_design_doc_priority.md`, only `02_flit.md` is the authoritative design doc going forward. Bringing it into the spec tree aligns with that priority decision.
+- `packet_format.md` (614 lines, 37 KB) already contains the authoritative bit-layout from the v0.4.0 flit format restructure. Re-publishing as a header would duplicate the source of truth.
+- Per `memory/project_noc_sim_design_doc_priority.md`, only `packet_format.md` is the authoritative design doc going forward. Bringing it into the spec tree aligns with that priority decision.
 - Cross-references from `theory_of_operation.md`, `signal_interface.md`, `pin_level_reset.md`, `channel_handshake.md`, `protocol_rules.md` now resolve to a local file inside `spec/ni/doc/`, removing the cross-repo dependency.
 
 **Spec edits applied**:
 
-- Copied `noc-sim/docs/design/02_flit.md` → `noc-sim/spec/ni/doc/02_flit.md` (614 lines, identical content).
-- Mirror updated: `hw-spec-author-plugin/dogfood/noc-sim-ni-bfm/doc/02_flit.md` synced.
-- `theory_of_operation.md`: updated 2 explicit cross-repo paths (`docs/design/02_flit.md §ECC` and `docs/design/02_flit.md §3.6`) → `02_flit.md §ECC` / `02_flit.md §3.6` (local).
-- `signal_interface.md` line 5: updated "See `02_flit.md` in noc-sim source repo for flit format details" → "See `./02_flit.md` for flit format details (vendored from `noc-sim/docs/design/02_flit.md` per `IMPLEMENTER_REVIEW_LOG.md` #1 resolution)".
+- Copied `noc-sim/docs/design/packet_format.md` → `noc-sim/spec/ni/doc/packet_format.md` (614 lines, identical content).
+- Mirror updated: `hw-spec-author-plugin/dogfood/noc-sim-ni-bfm/doc/packet_format.md` synced.
+- `theory_of_operation.md`: updated 2 explicit cross-repo paths (`docs/design/packet_format.md §ECC` and `docs/design/packet_format.md §3.6`) → `packet_format.md §ECC` / `packet_format.md §3.6` (local).
+- `signal_interface.md` line 5: updated "See `packet_format.md` in noc-sim source repo for flit format details" → "See `./packet_format.md` for flit format details (vendored from `noc-sim/docs/design/packet_format.md` per `IMPLEMENTER_REVIEW_LOG.md` #1 resolution)".
 
-Other cross-refs in the spec that say just `02_flit.md §1.2` (no path) now resolve locally without text changes.
+Other cross-refs in the spec that say just `packet_format.md §1.2` (no path) now resolve locally without text changes.
 
-**Maintenance contract**: when `02_flit.md` updates upstream in `docs/design/`, the spec/ni/doc/ copy MUST be re-vendored. Tracked via simple `diff` of the two paths during D1+ gate reviews. Alternative for future: convert to a symlink (Windows-incompatible) or a build-time copy step in spec verification workflow.
+**Maintenance contract**: when `packet_format.md` updates upstream in `docs/design/`, the spec/ni/doc/ copy MUST be re-vendored. Tracked via simple `diff` of the two paths during D1+ gate reviews. Alternative for future: convert to a symlink (Windows-incompatible) or a build-time copy step in spec verification workflow.
 
 **Bucket 3 status post-#1**: 8/8 ambiguities closed. D1→D2 ambiguity triage complete for the implementer-review surfaced items. Bucket 4 (architecture: BFM language, NMU/NSU shell evolution, DV scaffolding, coverage plan) remains, deferred to dedicated session.
 
 ### 2026-05-10 — Round 2 cross-paradigm peer review (post-Bucket-3 spec re-read)
 
-After all Bucket 1/2/3 + partition-table + 02_flit.md vendoring resolutions landed, a fresh Round 2 was run: each implementer agent (c-bfm, rtl) read the OTHER's Round 1 (the post-triage independent re-read) and produced a peer review. Plus `/spec-lint` was run for mechanical consistency cross-check.
+After all Bucket 1/2/3 + partition-table + packet_format.md vendoring resolutions landed, a fresh Round 2 was run: each implementer agent (c-bfm, rtl) read the OTHER's Round 1 (the post-triage independent re-read) and produced a peer review. Plus `/spec-lint` was run for mechanical consistency cross-check.
 
-**Lint result**: 0 blocking, 4 LINT-002 hygiene (TBD wording in vendored 02_flit.md — fixed in-session).
+**Lint result**: 0 blocking, 4 LINT-002 hygiene (TBD wording in vendored packet_format.md — fixed in-session).
 
 **Round 2 cross-review NEW DISCOVERIES** (not in Round 1):
 
-- **A. `02_flit.md` has 5 stale v0.3.0 SLVERR mentions** that contradict the (B)-philosophy expressed in ToO + protocol_rules + signal_interface. c-bfm Round 1 found 4; RTL Round 2 spot-check found a 5th (the R-flit specific paragraph at line 367). The vendoring did not scrub upstream's pre-v0.4.0 wording.
+- **A. `packet_format.md` has 5 stale v0.3.0 SLVERR mentions** that contradict the (B)-philosophy expressed in ToO + protocol_rules + signal_interface. c-bfm Round 1 found 4; RTL Round 2 spot-check found a 5th (the R-flit specific paragraph at line 367). The vendoring did not scrub upstream's pre-v0.4.0 wording.
 - **B. `INPUT_BUFFER_DEPTH` / `CREDIT_DELAY` undeclared**. After user clarification, these are router-side parameters; their absence from NI spec is correct. Router spec is not yet written. **Dropped from action list** as not-a-NI-spec-bug.
 - **C. ATOP termination point ambiguous**. NMU local SLVERR synthesis vs NoC traversal then NSU termination. Wire-visible difference (`noc_req_o` carries ATOP flit or not).
 - **D. `prev_dest_q` reset value undefined**. Reset to 0 collides with legitimate dst `(0,0)`. Mitigated by empty-queue first-push guard.
@@ -430,20 +430,20 @@ After all Bucket 1/2/3 + partition-table + 02_flit.md vendoring resolutions land
 
 **Round 2 cross-review RESOLVED** (Round 1 ambiguities dropped after spot-check):
 
-- RTL Round 1 #3 (B-payload over-pad): c-bfm Round 2 cited `02_flit.md:132/301` mandating zero-padding — resolved.
+- RTL Round 1 #3 (B-payload over-pad): c-bfm Round 2 cited `packet_format.md:132/301` mandating zero-padding — resolved.
 - RTL Round 1 #6 (PENDING width contradiction): c-bfm Round 2 cited `registers.md:140` "always within 32-bit register" — resolved.
 - RTL Round 1 #4 (QOS_MODE reset disagreement): c-bfm spot-check found no actual disagreement — withdrawn.
 
 ### 2026-05-10 — Round 2 resolutions applied
 
-**A. 02_flit.md SLVERR scrub** (4 edit sites; the 5th at line 367 covered by the §3.4 edit):
+**A. packet_format.md SLVERR scrub** (4 edit sites; the 5th at line 367 covered by the §3.4 edit):
 
 - Line 88 (`ECC_FAIL_WIDTH` retired note): rewrote to state (B)-philosophy explicitly — uncorrectable ECC forwards flit as-is with `bresp=OKAY`, surfaces via CSR + IRQ.
 - Lines 348-353 (W ECC uncorrectable description): replaced "直接以 `bresp=SLVERR` in-band 回報" with (B)-philosophy text matching ToO §ECC.
 - Line 367 (R ECC uncorrectable description): same replacement for R-direction.
 - Line 420 (ECC failures bullet): "2-bit→`bresp/rresp = SLVERR`" replaced with "forward as-is with `bresp/rresp = OKAY` ((B)-philosophy, no SLVERR synthesis)".
 
-Upstream `noc-sim/docs/design/02_flit.md` synced to match.
+Upstream `noc-sim/docs/design/packet_format.md` synced to match.
 
 **E. Hsiao H-matrix source-of-truth mandate**:
 
