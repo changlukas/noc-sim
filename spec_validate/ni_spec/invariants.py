@@ -358,6 +358,20 @@ def check_blocks_related_features_symmetric(fb_spec) -> List[Issue]:
     return issues
 
 
+def check_protocol_rules_id_uniqueness(rule_spec) -> List[Issue]:
+    """L2: no two rules share the same id."""
+    issues = []
+    seen: dict = {}
+    for r in rule_spec.get("rules", []):
+        rid = r["id"]
+        if rid in seen:
+            issues.append(_err("L2-PROTO-ID",
+                f"rule id {rid!r} duplicated (first at line {seen[rid]}, also at line {r['source_line']})"))
+        else:
+            seen[rid] = r["source_line"]
+    return issues
+
+
 def check_all(bundle, md_dir: Optional[str] = None) -> List[Issue]:
     """Path B：跑 Layer 1 (schema) + Layer 2 (arithmetic)。
 

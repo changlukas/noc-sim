@@ -12,7 +12,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from .generator import write_generated_json, write_generated_signals_json, generate_ni_registers_json
+from .generator import write_generated_json, write_generated_signals_json, generate_ni_registers_json, generate_ni_protocol_rule_index_json
 from .loader import load_doc
 from .invariants import (Issue,
                          check_schema, check_flit_arithmetic,
@@ -21,7 +21,8 @@ from .invariants import (Issue,
                          check_field_bit_tiling, check_reset_in_data_width,
                          check_blocks_xref_packet, check_blocks_xref_registers,
                          check_blocks_param_uniqueness,
-                         check_blocks_related_features_symmetric)
+                         check_blocks_related_features_symmetric,
+                         check_protocol_rules_id_uniqueness)
 from .report import print_report
 
 for _s in (sys.stdout, sys.stderr):
@@ -43,6 +44,9 @@ REGISTERS_SCHEMA = GENERATED_DIR / "ni_registers.schema.json"
 
 FB_JSON = SPEC_VALIDATE / "ni_function_blocks.json"
 FB_SCHEMA = SPEC_VALIDATE / "ni_function_blocks.schema.json"
+
+PROTO_JSON = GENERATED_DIR / "ni_protocol_rule_index.json"
+PROTO_SCHEMA = GENERATED_DIR / "ni_protocol_rule_index.schema.json"
 
 
 def main() -> int:
@@ -111,6 +115,25 @@ def main() -> int:
     issues += check_field_bit_tiling(registers)
     issues += check_reset_in_data_width(registers)
 
+    # Step: generate protocol rule index JSON
+    try:
+        proto_rules = generate_ni_protocol_rule_index_json(md_dir, PROTO_JSON)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"[FATAL] protocol_rules generator: {e}", file=sys.stderr)
+        return 2
+
+    # Layer 1 for protocol rules schema
+    proto_schema = load_doc(PROTO_SCHEMA) if PROTO_SCHEMA.exists() else None
+    if proto_schema is not None:
+        import jsonschema
+        for e in sorted(jsonschema.Draft202012Validator(proto_schema).iter_errors(proto_rules),
+                        key=lambda e: list(e.absolute_path)):
+            loc = "/".join(str(p) for p in e.absolute_path) or "(root)"
+            issues.append(Issue("ERROR", "L1-PROTO-SCHEMA", f"{loc}: {e.message}"))
+
+    # Layer 2 for protocol rules: id uniqueness
+    issues += check_protocol_rules_id_uniqueness(proto_rules)
+
     # Function blocks: Layer 1 (schema) + Layer 2 (cross-domain)
     fb = None
     if FB_JSON.exists():
@@ -136,19 +159,24 @@ def main() -> int:
     has_l2_reg_err = any(i.check.startswith("L2-REG") and i.severity == "ERROR" for i in issues)
     has_l1_fb_err = any(i.check == "L1-FB-SCHEMA" and i.severity == "ERROR" for i in issues)
     has_l2_fb_err = any(i.check.startswith("L2-FB") and i.severity == "ERROR" for i in issues)
+    has_l1_proto_skip = proto_schema is None
+    has_l1_proto_err = any(i.check == "L1-PROTO-SCHEMA" and i.severity == "ERROR" for i in issues)
+    has_l2_proto_err = any(i.check == "L2-PROTO-ID" and i.severity == "ERROR" for i in issues)
 
     layers = {
-        "Generator (MD -> JSON)":            "OK (ni_packet.json + ni_signals.json + ni_registers.json)",
+        "Generator (MD -> JSON)":            "OK (ni_packet.json + ni_signals.json + ni_registers.json + ni_protocol_rule_index.json)",
         "Layer 1 (JSON Schema, packet+sig)": "SKIPPED" if has_l1_skip else ("FAIL" if has_l1_err else "PASS"),
         "Layer 1 (registers)":               "SKIPPED" if has_l1_reg_skip else ("FAIL" if any(i.check == "L1-REG-SCHEMA" and i.severity == "ERROR" for i in issues) else "PASS"),
         "Layer 1 (function_blocks)":         "SKIPPED" if fb is None else ("FAIL" if has_l1_fb_err else "PASS"),
+        "Layer 1 (protocol_rules)":          "SKIPPED" if has_l1_proto_skip else ("FAIL" if has_l1_proto_err else "PASS"),
         "Layer 2 (packet arithmetic)":       "FAIL" if has_l2_packet_err else "PASS",
         "Layer 2 (signals reset)":           "FAIL" if has_l2_sig_err else "PASS",
         "Layer 2 (registers)":               "FAIL" if has_l2_reg_err else "PASS",
         "Layer 2 (function_blocks)":         "SKIPPED" if fb is None else ("FAIL" if has_l2_fb_err else "PASS"),
+        "Layer 2 (protocol_rules)":          "FAIL" if has_l2_proto_err else "PASS",
     }
     return print_report(issues,
-                        target_name="ni_packet.json + ni_signals.json + ni_registers.json + ni_function_blocks.json",
+                        target_name="ni_packet.json + ni_signals.json + ni_registers.json + ni_function_blocks.json + ni_protocol_rule_index.json",
                         show_layers=layers)
 
 

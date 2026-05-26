@@ -1,0 +1,956 @@
+{
+  "$schema_version": "ni-spec/2.0",
+  "meta": {
+    "spec_version": "v0.4.0",
+    "auto_generated_from": "spec/ni/doc/protocol_rules.md",
+    "generator": "ni_spec.generator :: generate_ni_protocol_rule_index_json",
+    "do_not_edit": "Re-run validator/generator to refresh."
+  },
+  "rules": [
+    {
+      "id": "NI_RST_OUTPUTS_LOW_AXI",
+      "severity": "FAIL",
+      "source_section": "Reset rules",
+      "source_line": 53,
+      "proto": "RESET"
+    },
+    {
+      "id": "NI_RST_OUTPUTS_LOW_NOC",
+      "severity": "FAIL",
+      "source_section": "Reset rules",
+      "source_line": 54,
+      "proto": "RESET"
+    },
+    {
+      "id": "NI_RST_DURATION_AXI",
+      "severity": "FAIL",
+      "source_section": "Reset rules",
+      "source_line": 55,
+      "proto": "RESET"
+    },
+    {
+      "id": "NI_RST_DURATION_NOC",
+      "severity": "FAIL",
+      "source_section": "Reset rules",
+      "source_line": 56,
+      "proto": "RESET"
+    },
+    {
+      "id": "NI_RST_PARTIAL",
+      "severity": "RECOMMEND",
+      "source_section": "Reset rules",
+      "source_line": 57,
+      "proto": "RESET"
+    },
+    {
+      "id": "NI_CDC_AXI_TO_NOC_FIFO",
+      "severity": "FAIL",
+      "source_section": "CDC rules",
+      "source_line": 63,
+      "proto": "CDC"
+    },
+    {
+      "id": "NI_CDC_NOC_TO_AXI_FIFO",
+      "severity": "FAIL",
+      "source_section": "CDC rules",
+      "source_line": 64,
+      "proto": "CDC"
+    },
+    {
+      "id": "NI_CDC_NO_COMBINATIONAL_PATH",
+      "severity": "FAIL",
+      "source_section": "CDC rules",
+      "source_line": 65,
+      "proto": "CDC"
+    },
+    {
+      "id": "AXI4_MST_AW_AWVALID_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 75,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AW_AWADDR_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 76,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AW_AWLEN_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 77,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AW_AWSIZE_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 78,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AW_AWBURST_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 79,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AW_AWID_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 80,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AW_AWQOS_USED",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 81,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_AW_BURST_4KB_BOUNDARY",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 82,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AW_AWUSER_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 83,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AW_AWCACHE_STABLE",
+      "severity": "RECOMMEND",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 84,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AW_AWPROT_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 85,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_W_WVALID_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 91,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_W_WDATA_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 92,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_W_WSTRB_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 93,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_W_WUSER_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 94,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_W_WLAST_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 95,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_W_WLAST_LEN_CONSISTENT",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 96,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_W_WSTRB_NARROW",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 97,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_B_BVALID_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 103,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_B_BID_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 104,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_B_BRESP_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 105,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_B_BUSER_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 106,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_B_BRESP_VALUES",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 107,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_B_BID_MATCH",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 108,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AR_ARVALID_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 114,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AR_ARADDR_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 115,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AR_ARLEN_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 116,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AR_ARSIZE_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 117,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AR_ARBURST_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 118,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AR_ARID_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 119,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AR_ARCACHE_STABLE",
+      "severity": "RECOMMEND",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 120,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AR_ARPROT_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 121,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_AR_ARQOS_USED",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 122,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_AR_BURST_4KB_BOUNDARY",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 123,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_R_RVALID_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 129,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_R_RID_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 130,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_R_RDATA_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 131,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_R_RRESP_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 132,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_R_RLAST_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 133,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_R_RUSER_STABLE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 134,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_R_RRESP_VALUES",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 135,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_R_RLAST_LEN_CONSISTENT",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 136,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_R_RID_MATCH",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 137,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_XCH_W_AFTER_AW",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 143,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_XCH_B_AFTER_AW_AND_W",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 144,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_XCH_R_AFTER_AR",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 145,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_XCH_R_LAST_CONSISTENT",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 146,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_ROB_PER_ID_ORDER",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 152,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_ROB_OUTSTANDING_LIMIT",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 153,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_R_INTERLEAVE_CROSS_ID",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 154,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_NSU_AW_BURST_FIXED_REPLAY",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 156,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_EXCLUSIVE_SINGLE_BEAT",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 164,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_EXCLUSIVE_MONITOR_OVERFLOW",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 165,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_EXCLUSIVE_OVERLAP_INVALIDATE",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 166,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_PARITY_CHECK",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 174,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_SLV_PARITY_CHECK",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 175,
+      "proto": "AXI4"
+    },
+    {
+      "id": "AXI4_MST_PARITY_GEN_R",
+      "severity": "FAIL",
+      "source_section": "AXI4 host-side rules",
+      "source_line": 176,
+      "proto": "AXI4"
+    },
+    {
+      "id": "NOC_MST_FLIT_ON_CREDIT_ONLY",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 184,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_MST_WORMHOLE_LOCK",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 185,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_CREDIT_STARTUP_HANDSHAKE",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 186,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_QOS_4BIT",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 192,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_AWAR_PAYLOAD_NO_QOS",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 193,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_DST_ID_VALID",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 194,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_ROB_IDX_UNIQUE",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 195,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_SRC_ID_VALID",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 196,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_AXI_CH_VALUES",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 197,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_LAST_CONSISTENT",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 198,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_ROB_REQ_GEN",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 199,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_RSVD_ZERO_TX",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 200,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_RSVD_IGNORE_RX",
+      "severity": "RECOMMEND",
+      "source_section": "NoC flit-side rules",
+      "source_line": 201,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_RSP_QOS_INHERIT",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 202,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_RSP_ROB_IDX_INHERIT",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 203,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_AW_W_ORDER",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 204,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_ROUTE_PAR_GEN",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 212,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_ROUTE_PAR_CHECK",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 213,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_FLIT_ECC_GEN",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 214,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_HDR_FLIT_ECC_CHECK",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 215,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_VC_HARDLOCK",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 223,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_VC_PARTITION",
+      "severity": "RECOMMEND",
+      "source_section": "NoC flit-side rules",
+      "source_line": 224,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_VC_MAPPING_HYBRID_RW_QOS",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 225,
+      "proto": "NOC"
+    },
+    {
+      "id": "NOC_FLIT_INORDER_PER_VC",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 226,
+      "proto": "NOC"
+    },
+    {
+      "id": "AXI4_MST_WSTRB_REGEN",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 236,
+      "proto": "NOC"
+    },
+    {
+      "id": "AXI4_SLV_OVERFETCH_FILTER",
+      "severity": "FAIL",
+      "source_section": "NoC flit-side rules",
+      "source_line": 237,
+      "proto": "NOC"
+    },
+    {
+      "id": "AXI4LITE_SLV_AW_AWVALID_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 247,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_AW_AWADDR_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 248,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_AW_AWPROT_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 249,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_AW_AWADDR_ALIGNED",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 250,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_W_WVALID_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 251,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_W_WDATA_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 252,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_W_WSTRB_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 253,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_B_BVALID_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 254,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_B_BRESP_VALUES",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 255,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_XCH_W_AFTER_AW",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 256,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_XCH_B_AFTER_AW_AND_W",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 257,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_AR_ARVALID_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 263,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_AR_ARADDR_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 264,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_AR_ARPROT_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 265,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_AR_ARADDR_ALIGNED",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 266,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_R_RVALID_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 267,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_R_RDATA_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 268,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_R_RRESP_STABLE",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 269,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_R_RRESP_VALUES",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 270,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_R_RLAST_NOT_REQUIRED",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 271,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_XCH_R_AFTER_AR",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 272,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_UNMAPPED_DECERR",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 278,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_RO_WRITE_IGNORED",
+      "severity": "RECOMMEND",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 279,
+      "proto": "CSR"
+    },
+    {
+      "id": "AXI4LITE_SLV_RW1C_WRITE_BIT_LEVEL",
+      "severity": "FAIL",
+      "source_section": "CSR access (AXI4-Lite) rules",
+      "source_line": 280,
+      "proto": "CSR"
+    },
+    {
+      "id": "NI_CFG_QOS_MODE_TRANSITION",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 286,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_QOS_FIXED_VALUE",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 287,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_BANDWIDTH_LIMIT_BOUND",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 288,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_BANDWIDTH_BUDGET_BOUND",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 289,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_REGULATOR_FINAL_QOS",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 290,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_PROBE_EN_TRANSITION",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 291,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_PROBE_PKT_BYTE_COUNT",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 292,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_PROBE_TXN_LATENCY",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 293,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_ERR_STATUS_RW1C",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 294,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_LAST_ERR_INFO_CAPTURE",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 295,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_MODE_SWITCH",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 296,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_RESPONSE_DELAY_AXI",
+      "severity": "RECOMMEND",
+      "source_section": "Configuration-knob rules",
+      "source_line": 297,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_RESPONSE_DELAY_NOC",
+      "severity": "RECOMMEND",
+      "source_section": "Configuration-knob rules",
+      "source_line": 298,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_INJECT_ECC_ERROR",
+      "severity": "RECOMMEND",
+      "source_section": "Configuration-knob rules",
+      "source_line": 299,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_RESPONSE_FAULT",
+      "severity": "RECOMMEND",
+      "source_section": "Configuration-knob rules",
+      "source_line": 300,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_PENDING_COUNT_ACCURACY",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 301,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_QUIESCE_FLOW",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 302,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_EXCLUSIVE_CLEAR_RACE",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 303,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_CFG_EXCLUSIVE_OCCUPANCY_ACCURACY",
+      "severity": "FAIL",
+      "source_section": "Configuration-knob rules",
+      "source_line": 304,
+      "proto": "CONFIG"
+    },
+    {
+      "id": "NI_IRQ_LEVEL",
+      "severity": "FAIL",
+      "source_section": "Interrupt assertion",
+      "source_line": 312,
+      "proto": "INTERRUPT"
+    }
+  ]
+}

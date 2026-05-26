@@ -1246,6 +1246,101 @@ _REGISTERS_WITH_FIELDS = [
 ]
 
 
+# ════════════════════════════════════════════════════════════════════
+# protocol_rules.md — Task 6: minimal metadata lift-shift
+# Extracts: id, severity, source_section, source_line, proto only.
+# Does NOT extract prose columns (condition_summary, channels, etc.).
+# ════════════════════════════════════════════════════════════════════
+
+
+_PROTO_MAP = [
+    ("Reset", "RESET"),
+    ("CDC", "CDC"),
+    ("AXI4 host-side", "AXI4"),
+    ("NoC flit-side", "NOC"),
+    ("CSR access", "CSR"),
+    ("Configuration-knob", "CONFIG"),
+    ("Interrupt", "INTERRUPT"),
+]
+
+_SECTION_PAT = re.compile(r"^##\s+(.+)$")
+# Rule row: ID is uppercase+underscores, severity is FAIL/WARN/RECOMMEND.
+# Pattern: | ID | (anything) | (anything) | SEVERITY | ...
+_ROW_PAT = re.compile(
+    r"^\|\s*([A-Z][A-Z0-9_]+)\s*\|[^|]*\|[^|]*\|\s*(FAIL|WARN|RECOMMEND)\s*\|"
+)
+
+
+def _infer_proto(section: str) -> str:
+    """Map section heading to proto enum via substring match (case-insensitive)."""
+    for key, val in _PROTO_MAP:
+        if key.lower() in section.lower():
+            return val
+    return "CONFIG"  # default fallback (unreachable for known spec sections)
+
+
+def parse_protocol_rule_index(md_path: Path) -> list:
+    """Extract structured metadata from protocol_rules.md.
+
+    Returns list of dicts with: id, severity, source_section, source_line, proto.
+    Prose columns (Condition, Required behavior, ARM SVA equivalent) are NOT parsed.
+
+    The MD has tables structured:
+        | ID | Condition | Required behavior | Severity | ARM SVA equivalent |
+    under `## <section name>` headings. Sub-headings `### ...` belong to same proto.
+    """
+    text = md_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    rules = []
+    cur_section = None  # tracked from `## ` headings only
+
+    for i, line in enumerate(lines, start=1):
+        ms = _SECTION_PAT.match(line)
+        if ms:
+            cur_section = ms.group(1).strip()
+            continue
+        m = _ROW_PAT.match(line)
+        if not m or cur_section is None:
+            continue
+        rid, severity = m.group(1), m.group(2)
+        # Skip header rows: literal "ID" can't match UPPER pattern but guard anyway.
+        if rid == "ID":
+            continue
+        rules.append({
+            "id": rid,
+            "severity": severity,
+            "source_section": cur_section,
+            "source_line": i,
+            "proto": _infer_proto(cur_section),
+        })
+    return rules
+
+
+def generate_ni_protocol_rule_index_json(md_dir, out_path: Path) -> dict:
+    """Compose ni_protocol_rule_index.json from protocol_rules.md."""
+    md_dir_path = Path(md_dir) if not isinstance(md_dir, Path) else md_dir
+    version_file = md_dir_path.parent / "VERSION"
+    if not version_file.exists():
+        raise FileNotFoundError(f"spec/ni/VERSION not found at {version_file}")
+    spec_version = version_file.read_text(encoding="utf-8").strip()
+
+    result = {
+        "$schema_version": "ni-spec/2.0",
+        "meta": {
+            "spec_version": spec_version,
+            "auto_generated_from": "spec/ni/doc/protocol_rules.md",
+            "generator": "ni_spec.generator :: generate_ni_protocol_rule_index_json",
+            "do_not_edit": "Re-run validator/generator to refresh.",
+        },
+        "rules": parse_protocol_rule_index(md_dir_path / "protocol_rules.md"),
+    }
+    out_path_p = Path(out_path)
+    out_path_p.parent.mkdir(parents=True, exist_ok=True)
+    out_path_p.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    return result
+
+
 def generate_ni_registers_json(md_dir: Union[str, Path], out_path: Union[str, Path]) -> dict:
     """Compose ni_registers.json from registers.md.
 
