@@ -7,6 +7,7 @@
 from __future__ import annotations
 import json
 import re
+import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -720,13 +721,13 @@ def write_generated_signals_json(md_dir: Union[str, Path], out_path: Union[str, 
             for sig in ch.get("signals", []):
                 pin_name = _derive_pin_name(iface, ch, sig)
                 sig["pin_name"] = pin_name
-                sig["reset_behavior"] = reset_map.get(pin_name) or _default_reset_for(sig, iface)
+                sig["reset_behavior"] = reset_map.get(pin_name) or _default_reset_for(sig, iface, pin_name)
                 sig.setdefault("presence", None)
                 sig.setdefault("width_expr", None)
         for sig in iface.get("signals", []):
             pin_name = _derive_pin_name(iface, None, sig)
             sig["pin_name"] = pin_name
-            sig["reset_behavior"] = reset_map.get(pin_name) or _default_reset_for(sig, iface)
+            sig["reset_behavior"] = reset_map.get(pin_name) or _default_reset_for(sig, iface, pin_name)
             sig.setdefault("presence", None)
             sig.setdefault("width_expr", None)
 
@@ -785,18 +786,12 @@ def parse_pin_level_reset(md_path: Path) -> dict:
             rb = {"kind": "external_driven"}
         elif re.match(r"^0\s*(\(.*\))?$", reset_text) or reset_text in ("1'b0", "0x0") \
                 or re.match(r"^0x0+$", reset_text) or reset_text == "0 (all bits)":
-            # Determine reset domain by pin prefix
-            if pin.startswith("noc_") or pin.startswith("csr_") is False and (
-                    "REQ" in channel_tag or "RSP" in channel_tag):
-                domain = "noc_rst_ni"
-            elif pin.startswith("noc_"):
-                domain = "noc_rst_ni"
-            else:
-                domain = "arst_ni"
-            # Refine: noc_ prefix always → noc_rst_ni; csr_/axi_ → arst_ni
             if pin.startswith("noc_"):
                 domain = "noc_rst_ni"
             elif pin.startswith("csr_") or pin.startswith("axi_"):
+                domain = "arst_ni"
+            else:
+                # Unknown prefix — default to arst_ni and let L2 catch domain whitelist violation
                 domain = "arst_ni"
             rb = {"kind": "async-active-low", "value": "0", "domain": domain}
         elif re.match(r"^1\s*(\(.*\))?$", reset_text) or reset_text == "1'b1":
@@ -806,7 +801,11 @@ def parse_pin_level_reset(md_path: Path) -> dict:
                 domain = "arst_ni"
             rb = {"kind": "async-active-low", "value": "1", "domain": domain}
         else:
-            # Unknown reset format — skip
+            warnings.warn(
+                f"parse_pin_level_reset: unrecognized reset text {reset_text!r} for pin {pin!r} "
+                f"in {pin_level_reset_md.name}; skipping (will use _default_reset_for)",
+                stacklevel=2,
+            )
             continue
 
         result[pin] = rb
@@ -853,7 +852,7 @@ def _derive_pin_name(iface: dict, ch: Optional[dict], sig: dict) -> str:
         return f"axi_{ch_name.lower()}{sig_suffix}{dir_suffix}"
 
 
-def _default_reset_for(sig: dict, iface: dict) -> dict:
+def _default_reset_for(sig: dict, iface: dict, pin_name: str) -> dict:
     """Fallback reset_behavior for signals not found in pin_level_reset.md table.
 
     Output wire → async-active-low, value=0, domain depends on interface.
@@ -862,7 +861,7 @@ def _default_reset_for(sig: dict, iface: dict) -> dict:
     direction = sig.get("direction", "")
     # For AXI channel signals, direction comes from the channel, not the sig entry.
     # sig entries under channels[] don't have a "direction" key — use pin suffix.
-    pin = sig.get("pin_name", "") or ""
+    pin = pin_name or ""
     is_output = (direction == "output") or pin.endswith("_o")
     if is_output:
         iface_name = iface.get("name", "")

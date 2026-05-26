@@ -31,7 +31,7 @@ def test_every_signal_has_reset_behavior():
 
 
 def test_input_wires_are_external_driven():
-    """At least one AXI input wire (e.g. axi_awvalid_i) must be external_driven with no value."""
+    """At least one AXI input wire (e.g. axi_awid_i) must be external_driven with no value."""
     spec = loader.load_doc(SPEC_VALIDATE / "generated" / "ni_signals.json")
     sig = constants.signals_signal_by_pin(spec, "axi_awid_i")
     assert sig is not None, "axi_awid_i not found"

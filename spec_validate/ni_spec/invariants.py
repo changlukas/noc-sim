@@ -187,7 +187,10 @@ def _check_one_reset(sig: dict, legal_domains: set, issues: List[Issue]) -> None
                 f"signal {sig.get('name')}: external_driven must not carry value"))
         return
     domain = rb.get("domain")
-    if domain and domain not in legal_domains:
+    if not domain:
+        issues.append(_err("L2-SIG-RST",
+            f"signal {sig.get('name')}: non-external_driven must specify domain"))
+    elif domain not in legal_domains:
         issues.append(_err("L2-SIG-RST",
             f"signal {sig.get('name')}: reset domain {domain!r} not in meta.reset_signals"))
 
