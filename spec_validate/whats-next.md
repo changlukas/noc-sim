@@ -418,7 +418,7 @@ git clone https://github.com/changlukas/noc-sim d:\03_CLAUDE\spec\noc-sim
 ## 換機器 setup checklist
 
 1. **Clone source（含 spec_validate）**：
-   - `git clone https://github.com/changlukas/noc-sim d:\03_CLAUDE\spec\noc-sim` ← 自從 commit XXXXX 起，spec_validate/ 也在 repo 內，clone 完整套就到位
+   - `git clone https://github.com/changlukas/noc-sim d:\03_CLAUDE\spec\noc-sim` ← 自從 commit `60c2916` (2026-05-26) 起，spec_validate/ 也在 repo 內，clone 完整套就到位
 
 2. **Python 環境**：
    ```
