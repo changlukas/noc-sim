@@ -29,15 +29,15 @@ def test_signals_reset_domains_after_extract():
 
 
 def test_regenerated_ni_signals_has_pin_name_field():
-    """After regen, every signal entry has pin_name key (may be null until Task 3)."""
+    """After regen, every signal entry has pin_name key (non-null since Task 3)."""
     spec = loader.load_doc(SPEC_VALIDATE / "generated" / "ni_signals.json")
     for iface in spec["interfaces"]:
         for ch in iface.get("channels", []):
             for sig in ch["signals"]:
-                assert "pin_name" in sig, f"signal {sig['name']} missing pin_name field"
+                assert "pin_name" in sig, f"signal {sig.get('pin_name','<no pin_name>')} missing pin_name field"
         # Also cover NoC link signals at interface top level
         for sig in iface.get("signals", []):
-            assert "pin_name" in sig, f"NoC signal {sig['name']} missing pin_name field"
+            assert "pin_name" in sig, f"NoC signal {sig.get('pin_name','<no pin_name>')} missing pin_name field"
 
 
 def test_regenerated_ni_signals_has_meta_reset_signals():

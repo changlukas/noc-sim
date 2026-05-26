@@ -28,14 +28,14 @@
   ],
   "interfaces": [
     {
+      "name": "AXI_SLAVE_PORT",
+      "description": "AXI slave port to local AXI master (host-side, NMU injection path)",
       "block": "NMU",
-      "name": "AXI slave port (host)",
       "direction": "in request, out response",
-      "peer": "local AXI master",
       "protocol": "AXI4",
-      "flow_control": "ready/valid per channel",
-      "clock_domain": "aclk_i / arst_ni",
-      "wire_source": "AW_IN W_IN AR_IN B_IN R_IN",
+      "clock": "aclk_i",
+      "reset": "arst_ni",
+      "flow_control": "valid-ready",
       "channels": [
         {
           "name": "AW",
@@ -43,8 +43,7 @@
           "carrier": "request",
           "signals": [
             {
-              "name": "AW_ID",
-              "width_param": "IN_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "axi_awid_i",
               "reset_behavior": {
@@ -54,8 +53,7 @@
               "width_expr": null
             },
             {
-              "name": "AW_ADDR",
-              "width_param": "ADDR_WIDTH",
+              "width_param": "AXI_ADDR_WIDTH",
               "default": "64",
               "pin_name": "axi_awaddr_i",
               "reset_behavior": {
@@ -65,7 +63,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_LEN",
               "width_param": "AXI_LEN_WIDTH",
               "default": "8",
               "pin_name": "axi_awlen_i",
@@ -76,7 +73,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
               "default": "3",
               "pin_name": "axi_awsize_i",
@@ -87,7 +83,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_BURST",
               "width_param": "AXI_BURST_WIDTH",
               "default": "2",
               "pin_name": "axi_awburst_i",
@@ -98,7 +93,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
               "default": "4",
               "pin_name": "axi_awcache_i",
@@ -109,7 +103,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
               "default": "1",
               "pin_name": "axi_awlock_i",
@@ -120,7 +113,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_PROT",
               "width_param": "AXI_PROT_WIDTH",
               "default": "3",
               "pin_name": "axi_awprot_i",
@@ -131,7 +123,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_REGION",
               "width_param": "AXI_REGION_WIDTH",
               "default": "4",
               "pin_name": "axi_awregion_i",
@@ -142,8 +133,7 @@
               "width_expr": null
             },
             {
-              "name": "AW_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_AWUSER_WIDTH",
               "default": "8",
               "pin_name": "axi_awuser_i",
               "reset_behavior": {
@@ -153,8 +143,7 @@
               "width_expr": null
             },
             {
-              "name": "AW_QOS",
-              "width_param": "NOC_QOS_WIDTH",
+              "width_param": "AXI_QOS_WIDTH",
               "default": "4",
               "pin_name": "axi_awqos_i",
               "reset_behavior": {
@@ -171,8 +160,7 @@
           "carrier": "request",
           "signals": [
             {
-              "name": "W_DATA",
-              "width_param": "NOC_DATA_WIDTH",
+              "width_param": "AXI_DATA_WIDTH",
               "default": "256",
               "pin_name": "axi_wdata_i",
               "reset_behavior": {
@@ -182,8 +170,7 @@
               "width_expr": null
             },
             {
-              "name": "W_STRB",
-              "width_param": "WSTRB_WIDTH",
+              "width_param": "AXI_STRB_WIDTH",
               "default": "32",
               "pin_name": "axi_wstrb_i",
               "reset_behavior": {
@@ -193,7 +180,6 @@
               "width_expr": null
             },
             {
-              "name": "W_LAST",
               "width_param": "AXI_LAST_WIDTH",
               "default": "1",
               "pin_name": "axi_wlast_i",
@@ -204,8 +190,7 @@
               "width_expr": null
             },
             {
-              "name": "W_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_WUSER_WIDTH",
               "default": "8",
               "pin_name": "axi_wuser_i",
               "reset_behavior": {
@@ -222,8 +207,7 @@
           "carrier": "request",
           "signals": [
             {
-              "name": "AR_ID",
-              "width_param": "IN_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "axi_arid_i",
               "reset_behavior": {
@@ -233,8 +217,7 @@
               "width_expr": null
             },
             {
-              "name": "AR_ADDR",
-              "width_param": "ADDR_WIDTH",
+              "width_param": "AXI_ADDR_WIDTH",
               "default": "64",
               "pin_name": "axi_araddr_i",
               "reset_behavior": {
@@ -244,7 +227,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_LEN",
               "width_param": "AXI_LEN_WIDTH",
               "default": "8",
               "pin_name": "axi_arlen_i",
@@ -255,7 +237,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
               "default": "3",
               "pin_name": "axi_arsize_i",
@@ -266,7 +247,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_BURST",
               "width_param": "AXI_BURST_WIDTH",
               "default": "2",
               "pin_name": "axi_arburst_i",
@@ -277,7 +257,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
               "default": "4",
               "pin_name": "axi_arcache_i",
@@ -288,7 +267,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
               "default": "1",
               "pin_name": "axi_arlock_i",
@@ -299,7 +277,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_PROT",
               "width_param": "AXI_PROT_WIDTH",
               "default": "3",
               "pin_name": "axi_arprot_i",
@@ -310,7 +287,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_REGION",
               "width_param": "AXI_REGION_WIDTH",
               "default": "4",
               "pin_name": "axi_arregion_i",
@@ -321,8 +297,7 @@
               "width_expr": null
             },
             {
-              "name": "AR_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_ARUSER_WIDTH",
               "default": "8",
               "pin_name": "axi_aruser_i",
               "reset_behavior": {
@@ -332,8 +307,7 @@
               "width_expr": null
             },
             {
-              "name": "AR_QOS",
-              "width_param": "NOC_QOS_WIDTH",
+              "width_param": "AXI_QOS_WIDTH",
               "default": "4",
               "pin_name": "axi_arqos_i",
               "reset_behavior": {
@@ -350,8 +324,7 @@
           "carrier": "response",
           "signals": [
             {
-              "name": "B_ID",
-              "width_param": "IN_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "axi_bid_o",
               "reset_behavior": {
@@ -363,7 +336,6 @@
               "width_expr": null
             },
             {
-              "name": "B_RESP",
               "width_param": "AXI_RESP_WIDTH",
               "default": "2",
               "pin_name": "axi_bresp_o",
@@ -376,8 +348,7 @@
               "width_expr": null
             },
             {
-              "name": "B_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_BUSER_WIDTH",
               "default": "8",
               "pin_name": "axi_buser_o",
               "reset_behavior": {
@@ -396,8 +367,7 @@
           "carrier": "response",
           "signals": [
             {
-              "name": "R_ID",
-              "width_param": "IN_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "axi_rid_o",
               "reset_behavior": {
@@ -409,8 +379,7 @@
               "width_expr": null
             },
             {
-              "name": "R_DATA",
-              "width_param": "NOC_DATA_WIDTH",
+              "width_param": "AXI_DATA_WIDTH",
               "default": "256",
               "pin_name": "axi_rdata_o",
               "reset_behavior": {
@@ -422,7 +391,6 @@
               "width_expr": null
             },
             {
-              "name": "R_RESP",
               "width_param": "AXI_RESP_WIDTH",
               "default": "2",
               "pin_name": "axi_rresp_o",
@@ -435,7 +403,6 @@
               "width_expr": null
             },
             {
-              "name": "R_LAST",
               "width_param": "AXI_LAST_WIDTH",
               "default": "1",
               "pin_name": "axi_rlast_o",
@@ -448,8 +415,7 @@
               "width_expr": null
             },
             {
-              "name": "R_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_RUSER_WIDTH",
               "default": "8",
               "pin_name": "axi_ruser_o",
               "reset_behavior": {
@@ -473,14 +439,14 @@
       ]
     },
     {
+      "name": "NOC_REQ_OUT",
+      "description": "NoC request flit link out to router local input",
       "block": "NMU",
-      "name": "NoC request out",
       "direction": "out",
-      "peer": "Router local input",
       "protocol": "NoC request flit link",
-      "flow_control": "per-VC credit return",
-      "clock_domain": "noc_clk_i / noc_rst_ni",
-      "wire_source": "REQ_OUT + req credit",
+      "clock": "noc_clk_i",
+      "reset": "noc_rst_ni",
+      "flow_control": "credit",
       "signals": [
         {
           "name": "req_valid_o",
@@ -565,14 +531,14 @@
       ]
     },
     {
+      "name": "NOC_RSP_IN",
+      "description": "NoC response flit link in from router local output",
       "block": "NMU",
-      "name": "NoC response in",
       "direction": "in",
-      "peer": "Router local output",
       "protocol": "NoC response flit link",
-      "flow_control": "per-VC credit",
-      "clock_domain": "noc_clk_i / noc_rst_ni",
-      "wire_source": "RSP_IN + credit",
+      "clock": "noc_clk_i",
+      "reset": "noc_rst_ni",
+      "flow_control": "credit",
       "signals": [
         {
           "name": "rsp_valid_i",
@@ -629,14 +595,14 @@
       ]
     },
     {
-      "block": "NMU",
       "name": "CSR",
+      "description": "AXI4-Lite CSR port for software configuration access",
+      "block": "NMU",
       "direction": "in request, out response",
-      "peer": "software CSR master",
       "protocol": "AXI4-Lite",
-      "flow_control": "ready/valid",
-      "clock_domain": "aclk_i / arst_ni",
-      "wire_source": "CSR_",
+      "clock": "aclk_i",
+      "reset": "arst_ni",
+      "flow_control": "valid-ready",
       "channels": [
         {
           "name": "AW",
@@ -644,8 +610,7 @@
           "carrier": "request",
           "signals": [
             {
-              "name": "AW_ID",
-              "width_param": "IN_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "csr_awid_i",
               "reset_behavior": {
@@ -655,8 +620,7 @@
               "width_expr": null
             },
             {
-              "name": "AW_ADDR",
-              "width_param": "ADDR_WIDTH",
+              "width_param": "AXI_ADDR_WIDTH",
               "default": "64",
               "pin_name": "csr_awaddr_i",
               "reset_behavior": {
@@ -666,7 +630,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_LEN",
               "width_param": "AXI_LEN_WIDTH",
               "default": "8",
               "pin_name": "csr_awlen_i",
@@ -677,7 +640,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
               "default": "3",
               "pin_name": "csr_awsize_i",
@@ -688,7 +650,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_BURST",
               "width_param": "AXI_BURST_WIDTH",
               "default": "2",
               "pin_name": "csr_awburst_i",
@@ -699,7 +660,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
               "default": "4",
               "pin_name": "csr_awcache_i",
@@ -710,7 +670,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
               "default": "1",
               "pin_name": "csr_awlock_i",
@@ -721,7 +680,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_PROT",
               "width_param": "AXI_PROT_WIDTH",
               "default": "3",
               "pin_name": "csr_awprot_i",
@@ -732,7 +690,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_REGION",
               "width_param": "AXI_REGION_WIDTH",
               "default": "4",
               "pin_name": "csr_awregion_i",
@@ -743,8 +700,7 @@
               "width_expr": null
             },
             {
-              "name": "AW_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_AWUSER_WIDTH",
               "default": "8",
               "pin_name": "csr_awuser_i",
               "reset_behavior": {
@@ -754,8 +710,7 @@
               "width_expr": null
             },
             {
-              "name": "AW_QOS",
-              "width_param": "NOC_QOS_WIDTH",
+              "width_param": "AXI_QOS_WIDTH",
               "default": "4",
               "pin_name": "csr_awqos_i",
               "reset_behavior": {
@@ -772,8 +727,7 @@
           "carrier": "request",
           "signals": [
             {
-              "name": "W_DATA",
-              "width_param": "NOC_DATA_WIDTH",
+              "width_param": "AXI_DATA_WIDTH",
               "default": "256",
               "pin_name": "csr_wdata_i",
               "reset_behavior": {
@@ -783,8 +737,7 @@
               "width_expr": null
             },
             {
-              "name": "W_STRB",
-              "width_param": "WSTRB_WIDTH",
+              "width_param": "AXI_STRB_WIDTH",
               "default": "32",
               "pin_name": "csr_wstrb_i",
               "reset_behavior": {
@@ -794,7 +747,6 @@
               "width_expr": null
             },
             {
-              "name": "W_LAST",
               "width_param": "AXI_LAST_WIDTH",
               "default": "1",
               "pin_name": "csr_wlast_i",
@@ -805,8 +757,7 @@
               "width_expr": null
             },
             {
-              "name": "W_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_WUSER_WIDTH",
               "default": "8",
               "pin_name": "csr_wuser_i",
               "reset_behavior": {
@@ -823,8 +774,7 @@
           "carrier": "request",
           "signals": [
             {
-              "name": "AR_ID",
-              "width_param": "IN_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "csr_arid_i",
               "reset_behavior": {
@@ -834,8 +784,7 @@
               "width_expr": null
             },
             {
-              "name": "AR_ADDR",
-              "width_param": "ADDR_WIDTH",
+              "width_param": "AXI_ADDR_WIDTH",
               "default": "64",
               "pin_name": "csr_araddr_i",
               "reset_behavior": {
@@ -845,7 +794,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_LEN",
               "width_param": "AXI_LEN_WIDTH",
               "default": "8",
               "pin_name": "csr_arlen_i",
@@ -856,7 +804,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
               "default": "3",
               "pin_name": "csr_arsize_i",
@@ -867,7 +814,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_BURST",
               "width_param": "AXI_BURST_WIDTH",
               "default": "2",
               "pin_name": "csr_arburst_i",
@@ -878,7 +824,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
               "default": "4",
               "pin_name": "csr_arcache_i",
@@ -889,7 +834,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
               "default": "1",
               "pin_name": "csr_arlock_i",
@@ -900,7 +844,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_PROT",
               "width_param": "AXI_PROT_WIDTH",
               "default": "3",
               "pin_name": "csr_arprot_i",
@@ -911,7 +854,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_REGION",
               "width_param": "AXI_REGION_WIDTH",
               "default": "4",
               "pin_name": "csr_arregion_i",
@@ -922,8 +864,7 @@
               "width_expr": null
             },
             {
-              "name": "AR_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_ARUSER_WIDTH",
               "default": "8",
               "pin_name": "csr_aruser_i",
               "reset_behavior": {
@@ -933,8 +874,7 @@
               "width_expr": null
             },
             {
-              "name": "AR_QOS",
-              "width_param": "NOC_QOS_WIDTH",
+              "width_param": "AXI_QOS_WIDTH",
               "default": "4",
               "pin_name": "csr_arqos_i",
               "reset_behavior": {
@@ -951,8 +891,7 @@
           "carrier": "response",
           "signals": [
             {
-              "name": "B_ID",
-              "width_param": "IN_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "csr_bid_o",
               "reset_behavior": {
@@ -964,7 +903,6 @@
               "width_expr": null
             },
             {
-              "name": "B_RESP",
               "width_param": "AXI_RESP_WIDTH",
               "default": "2",
               "pin_name": "csr_bresp_o",
@@ -977,8 +915,7 @@
               "width_expr": null
             },
             {
-              "name": "B_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_BUSER_WIDTH",
               "default": "8",
               "pin_name": "csr_buser_o",
               "reset_behavior": {
@@ -997,8 +934,7 @@
           "carrier": "response",
           "signals": [
             {
-              "name": "R_ID",
-              "width_param": "IN_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "csr_rid_o",
               "reset_behavior": {
@@ -1010,8 +946,7 @@
               "width_expr": null
             },
             {
-              "name": "R_DATA",
-              "width_param": "NOC_DATA_WIDTH",
+              "width_param": "AXI_DATA_WIDTH",
               "default": "256",
               "pin_name": "csr_rdata_o",
               "reset_behavior": {
@@ -1023,7 +958,6 @@
               "width_expr": null
             },
             {
-              "name": "R_RESP",
               "width_param": "AXI_RESP_WIDTH",
               "default": "2",
               "pin_name": "csr_rresp_o",
@@ -1036,7 +970,6 @@
               "width_expr": null
             },
             {
-              "name": "R_LAST",
               "width_param": "AXI_LAST_WIDTH",
               "default": "1",
               "pin_name": "csr_rlast_o",
@@ -1049,8 +982,7 @@
               "width_expr": null
             },
             {
-              "name": "R_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_RUSER_WIDTH",
               "default": "8",
               "pin_name": "csr_ruser_o",
               "reset_behavior": {
@@ -1074,14 +1006,14 @@
       ]
     },
     {
+      "name": "NOC_REQ_IN",
+      "description": "NoC request flit link in from router local output",
       "block": "NSU",
-      "name": "NoC request in",
       "direction": "in",
-      "peer": "Router local output",
       "protocol": "NoC request flit link",
-      "flow_control": "per-VC credit",
-      "clock_domain": "noc_clk_i / noc_rst_ni",
-      "wire_source": "REQ_IN + credit",
+      "clock": "noc_clk_i",
+      "reset": "noc_rst_ni",
+      "flow_control": "credit",
       "signals": [
         {
           "name": "req_valid_i",
@@ -1138,14 +1070,14 @@
       ]
     },
     {
+      "name": "AXI_MASTER_PORT",
+      "description": "AXI master port to local AXI slave (host-side, NSU ejection path)",
       "block": "NSU",
-      "name": "AXI master port (host)",
       "direction": "out request, in response",
-      "peer": "local AXI slave",
       "protocol": "AXI4",
-      "flow_control": "ready/valid per channel",
-      "clock_domain": "aclk_i / arst_ni",
-      "wire_source": "AW_OUT W_OUT AR_OUT B_OUT R_OUT",
+      "clock": "aclk_i",
+      "reset": "arst_ni",
+      "flow_control": "valid-ready",
       "channels": [
         {
           "name": "AW",
@@ -1153,8 +1085,7 @@
           "carrier": "request",
           "signals": [
             {
-              "name": "AW_ID",
-              "width_param": "OUT_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "axi_awid_o",
               "reset_behavior": {
@@ -1166,8 +1097,7 @@
               "width_expr": null
             },
             {
-              "name": "AW_ADDR",
-              "width_param": "ADDR_WIDTH",
+              "width_param": "AXI_ADDR_WIDTH",
               "default": "64",
               "pin_name": "axi_awaddr_o",
               "reset_behavior": {
@@ -1179,7 +1109,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_LEN",
               "width_param": "AXI_LEN_WIDTH",
               "default": "8",
               "pin_name": "axi_awlen_o",
@@ -1192,7 +1121,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
               "default": "3",
               "pin_name": "axi_awsize_o",
@@ -1205,7 +1133,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_BURST",
               "width_param": "AXI_BURST_WIDTH",
               "default": "2",
               "pin_name": "axi_awburst_o",
@@ -1218,7 +1145,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
               "default": "4",
               "pin_name": "axi_awcache_o",
@@ -1231,7 +1157,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
               "default": "1",
               "pin_name": "axi_awlock_o",
@@ -1244,7 +1169,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_PROT",
               "width_param": "AXI_PROT_WIDTH",
               "default": "3",
               "pin_name": "axi_awprot_o",
@@ -1257,7 +1181,6 @@
               "width_expr": null
             },
             {
-              "name": "AW_REGION",
               "width_param": "AXI_REGION_WIDTH",
               "default": "4",
               "pin_name": "axi_awregion_o",
@@ -1270,8 +1193,7 @@
               "width_expr": null
             },
             {
-              "name": "AW_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_AWUSER_WIDTH",
               "default": "8",
               "pin_name": "axi_awuser_o",
               "reset_behavior": {
@@ -1283,8 +1205,7 @@
               "width_expr": null
             },
             {
-              "name": "AW_QOS",
-              "width_param": "NOC_QOS_WIDTH",
+              "width_param": "AXI_QOS_WIDTH",
               "default": "4",
               "pin_name": "axi_awqos_o",
               "reset_behavior": {
@@ -1303,8 +1224,7 @@
           "carrier": "request",
           "signals": [
             {
-              "name": "W_DATA",
-              "width_param": "NOC_DATA_WIDTH",
+              "width_param": "AXI_DATA_WIDTH",
               "default": "256",
               "pin_name": "axi_wdata_o",
               "reset_behavior": {
@@ -1316,8 +1236,7 @@
               "width_expr": null
             },
             {
-              "name": "W_STRB",
-              "width_param": "WSTRB_WIDTH",
+              "width_param": "AXI_STRB_WIDTH",
               "default": "32",
               "pin_name": "axi_wstrb_o",
               "reset_behavior": {
@@ -1329,7 +1248,6 @@
               "width_expr": null
             },
             {
-              "name": "W_LAST",
               "width_param": "AXI_LAST_WIDTH",
               "default": "1",
               "pin_name": "axi_wlast_o",
@@ -1342,8 +1260,7 @@
               "width_expr": null
             },
             {
-              "name": "W_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_WUSER_WIDTH",
               "default": "8",
               "pin_name": "axi_wuser_o",
               "reset_behavior": {
@@ -1362,8 +1279,7 @@
           "carrier": "request",
           "signals": [
             {
-              "name": "AR_ID",
-              "width_param": "OUT_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "axi_arid_o",
               "reset_behavior": {
@@ -1375,8 +1291,7 @@
               "width_expr": null
             },
             {
-              "name": "AR_ADDR",
-              "width_param": "ADDR_WIDTH",
+              "width_param": "AXI_ADDR_WIDTH",
               "default": "64",
               "pin_name": "axi_araddr_o",
               "reset_behavior": {
@@ -1388,7 +1303,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_LEN",
               "width_param": "AXI_LEN_WIDTH",
               "default": "8",
               "pin_name": "axi_arlen_o",
@@ -1401,7 +1315,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_SIZE",
               "width_param": "AXI_SIZE_WIDTH",
               "default": "3",
               "pin_name": "axi_arsize_o",
@@ -1414,7 +1327,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_BURST",
               "width_param": "AXI_BURST_WIDTH",
               "default": "2",
               "pin_name": "axi_arburst_o",
@@ -1427,7 +1339,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_CACHE",
               "width_param": "AXI_CACHE_WIDTH",
               "default": "4",
               "pin_name": "axi_arcache_o",
@@ -1440,7 +1351,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_LOCK",
               "width_param": "AXI_LOCK_WIDTH",
               "default": "1",
               "pin_name": "axi_arlock_o",
@@ -1453,7 +1363,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_PROT",
               "width_param": "AXI_PROT_WIDTH",
               "default": "3",
               "pin_name": "axi_arprot_o",
@@ -1466,7 +1375,6 @@
               "width_expr": null
             },
             {
-              "name": "AR_REGION",
               "width_param": "AXI_REGION_WIDTH",
               "default": "4",
               "pin_name": "axi_arregion_o",
@@ -1479,8 +1387,7 @@
               "width_expr": null
             },
             {
-              "name": "AR_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_ARUSER_WIDTH",
               "default": "8",
               "pin_name": "axi_aruser_o",
               "reset_behavior": {
@@ -1492,8 +1399,7 @@
               "width_expr": null
             },
             {
-              "name": "AR_QOS",
-              "width_param": "NOC_QOS_WIDTH",
+              "width_param": "AXI_QOS_WIDTH",
               "default": "4",
               "pin_name": "axi_arqos_o",
               "reset_behavior": {
@@ -1512,8 +1418,7 @@
           "carrier": "response",
           "signals": [
             {
-              "name": "B_ID",
-              "width_param": "OUT_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "axi_bid_i",
               "reset_behavior": {
@@ -1523,7 +1428,6 @@
               "width_expr": null
             },
             {
-              "name": "B_RESP",
               "width_param": "AXI_RESP_WIDTH",
               "default": "2",
               "pin_name": "axi_bresp_i",
@@ -1534,8 +1438,7 @@
               "width_expr": null
             },
             {
-              "name": "B_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_BUSER_WIDTH",
               "default": "8",
               "pin_name": "axi_buser_i",
               "reset_behavior": {
@@ -1552,8 +1455,7 @@
           "carrier": "response",
           "signals": [
             {
-              "name": "R_ID",
-              "width_param": "OUT_ID_WIDTH",
+              "width_param": "AXI_ID_WIDTH",
               "default": "8",
               "pin_name": "axi_rid_i",
               "reset_behavior": {
@@ -1563,8 +1465,7 @@
               "width_expr": null
             },
             {
-              "name": "R_DATA",
-              "width_param": "NOC_DATA_WIDTH",
+              "width_param": "AXI_DATA_WIDTH",
               "default": "256",
               "pin_name": "axi_rdata_i",
               "reset_behavior": {
@@ -1574,7 +1475,6 @@
               "width_expr": null
             },
             {
-              "name": "R_RESP",
               "width_param": "AXI_RESP_WIDTH",
               "default": "2",
               "pin_name": "axi_rresp_i",
@@ -1585,7 +1485,6 @@
               "width_expr": null
             },
             {
-              "name": "R_LAST",
               "width_param": "AXI_LAST_WIDTH",
               "default": "1",
               "pin_name": "axi_rlast_i",
@@ -1596,8 +1495,7 @@
               "width_expr": null
             },
             {
-              "name": "R_USER",
-              "width_param": "USER_WIDTH",
+              "width_param": "AXI_RUSER_WIDTH",
               "default": "8",
               "pin_name": "axi_ruser_i",
               "reset_behavior": {
@@ -1619,14 +1517,14 @@
       ]
     },
     {
+      "name": "NOC_RSP_OUT",
+      "description": "NoC response flit link out to router local input",
       "block": "NSU",
-      "name": "NoC response out",
       "direction": "out",
-      "peer": "Router local input",
       "protocol": "NoC response flit link",
-      "flow_control": "per-VC credit return",
-      "clock_domain": "noc_clk_i / noc_rst_ni",
-      "wire_source": "RSP_OUT + credit",
+      "clock": "noc_clk_i",
+      "reset": "noc_rst_ni",
+      "flow_control": "credit",
       "signals": [
         {
           "name": "rsp_valid_o",

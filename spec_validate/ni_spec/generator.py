@@ -405,14 +405,18 @@ _AXI_CHANNELS_MASTER = [
 
 
 def _port_type_of(entry: dict) -> Optional[str]:
-    """slave / master / None。"""
+    """slave / master / None。
+
+    Uses UPPER_SNAKE_CASE name (e.g. AXI_SLAVE_PORT, AXI_MASTER_PORT, CSR).
+    AXI4-Lite CSR is treated as slave (same channel directions as AXI slave).
+    """
     proto = entry.get("protocol", "")
-    name = entry.get("name", "").lower()
+    name = entry.get("name", "").upper()
     if proto not in ("AXI4", "AXI4-Lite"):
         return None
-    if "slave" in name or proto == "AXI4-Lite":
+    if "SLAVE" in name or proto == "AXI4-Lite":
         return "slave"
-    if "master" in name:
+    if "MASTER" in name:
         return "master"
     return None
 
@@ -421,7 +425,8 @@ def _build_axi_channels(port_type: str, ns: Dict[str, dict],
                          with_signals: bool) -> List[dict]:
     """組 AXI 5 channel list。with_signals=True 時每 channel 帶 signals[] (展 per-signal)。
 
-    port_type: 'slave' 或 'master'，決定方向 + ID 寬度 source。
+    port_type: 'slave' 或 'master'。AXI_ID_WIDTH 在所有 port 共用；per-port 預設值
+    在 interface port_parameters[] 裡，不在 signal entry 裡。
     """
     template = _AXI_CHANNELS_SLAVE if port_type == "slave" else _AXI_CHANNELS_MASTER
     channels = []
@@ -430,13 +435,10 @@ def _build_axi_channels(port_type: str, ns: Dict[str, dict],
         if with_signals:
             ch["signals"] = []
             for sig_suffix, src_param in _AXI_CHANNEL_SIGNALS[ch_name]:
-                # ID width 依 port type 動態 resolve
-                actual = _ID_WIDTH_PARAM[port_type] if src_param == "ID" else src_param
-                p = ns.get(actual)
-                sig_entry = {
-                    "name": f"{ch_name}_{sig_suffix}",
-                    "width_param": actual,
-                }
+                p = ns.get(src_param)
+                # _sig_suffix is a build-time helper consumed by _derive_pin_name;
+                # it is stripped by write_generated_signals_json before writing.
+                sig_entry = {"width_param": src_param, "_sig_suffix": sig_suffix}
                 if p and "default" in p:
                     sig_entry["default"] = p["default"]
                 ch["signals"].append(sig_entry)
@@ -452,9 +454,11 @@ def _build_axi_channels(port_type: str, ns: Dict[str, dict],
 # 不列 valid/ready (1-bit fixed handshake)。
 
 _AXI_CHANNEL_SIGNALS = {
+    # Per AMBA AXI4 IHI 0022; USER signals are per-channel per spec.
+    # src_param must exist in the params namespace built by _build_params_namespace.
     "AW": [
-        ("ID",     "ID"),           # → IN_ID_WIDTH / OUT_ID_WIDTH（依 port type）
-        ("ADDR",   "ADDR_WIDTH"),   # signal_interface.md
+        ("ID",     "AXI_ID_WIDTH"),
+        ("ADDR",   "AXI_ADDR_WIDTH"),
         ("LEN",    "AXI_LEN_WIDTH"),
         ("SIZE",   "AXI_SIZE_WIDTH"),
         ("BURST",  "AXI_BURST_WIDTH"),
@@ -462,23 +466,23 @@ _AXI_CHANNEL_SIGNALS = {
         ("LOCK",   "AXI_LOCK_WIDTH"),
         ("PROT",   "AXI_PROT_WIDTH"),
         ("REGION", "AXI_REGION_WIDTH"),
-        ("USER",   "USER_WIDTH"),
-        ("QOS",    "NOC_QOS_WIDTH"),  # noc-layer qos (renamed from QOS_WIDTH)
+        ("USER",   "AXI_AWUSER_WIDTH"),  # per-channel per AMBA
+        ("QOS",    "AXI_QOS_WIDTH"),
     ],
     "W": [
-        ("DATA",   "NOC_DATA_WIDTH"),
-        ("STRB",   "WSTRB_WIDTH"),
+        ("DATA",   "AXI_DATA_WIDTH"),
+        ("STRB",   "AXI_STRB_WIDTH"),
         ("LAST",   "AXI_LAST_WIDTH"),
-        ("USER",   "USER_WIDTH"),
+        ("USER",   "AXI_WUSER_WIDTH"),   # per-channel per AMBA
     ],
     "B": [
-        ("ID",     "ID"),
+        ("ID",     "AXI_ID_WIDTH"),
         ("RESP",   "AXI_RESP_WIDTH"),
-        ("USER",   "USER_WIDTH"),
+        ("USER",   "AXI_BUSER_WIDTH"),   # per-channel per AMBA
     ],
     "AR": [
-        ("ID",     "ID"),
-        ("ADDR",   "ADDR_WIDTH"),
+        ("ID",     "AXI_ID_WIDTH"),
+        ("ADDR",   "AXI_ADDR_WIDTH"),
         ("LEN",    "AXI_LEN_WIDTH"),
         ("SIZE",   "AXI_SIZE_WIDTH"),
         ("BURST",  "AXI_BURST_WIDTH"),
@@ -486,20 +490,17 @@ _AXI_CHANNEL_SIGNALS = {
         ("LOCK",   "AXI_LOCK_WIDTH"),
         ("PROT",   "AXI_PROT_WIDTH"),
         ("REGION", "AXI_REGION_WIDTH"),
-        ("USER",   "USER_WIDTH"),
-        ("QOS",    "NOC_QOS_WIDTH"),
+        ("USER",   "AXI_ARUSER_WIDTH"),  # per-channel per AMBA
+        ("QOS",    "AXI_QOS_WIDTH"),
     ],
     "R": [
-        ("ID",     "ID"),
-        ("DATA",   "NOC_DATA_WIDTH"),
+        ("ID",     "AXI_ID_WIDTH"),
+        ("DATA",   "AXI_DATA_WIDTH"),
         ("RESP",   "AXI_RESP_WIDTH"),
         ("LAST",   "AXI_LAST_WIDTH"),
-        ("USER",   "USER_WIDTH"),
+        ("USER",   "AXI_RUSER_WIDTH"),   # per-channel per AMBA
     ],
 }
-
-# Per-port ID width override
-_ID_WIDTH_PARAM = {"slave": "IN_ID_WIDTH", "master": "OUT_ID_WIDTH"}
 
 
 # 每個 NoC link interface 帶的 signals（per-signal name + width_param + direction）
@@ -507,24 +508,25 @@ _ID_WIDTH_PARAM = {"slave": "IN_ID_WIDTH", "master": "OUT_ID_WIDTH"}
 # Credit return 是反向走（_o 側 interface 收 _i credit；_i 側 interface 送 _o credit）。
 # Credit init handshake 雙向，只在 _o 側 interface 有（per signal_interface.md §Channel grouping）。
 _NOC_INTERFACE_SIGNALS = {
-    "NoC request out": [
+    # Keys are UPPER_SNAKE_CASE (post Task 3.5 canonical names).
+    "NOC_REQ_OUT": [
         ("req_valid_o",              "1",          "output"),
         ("req_flit_o",               "FLIT_WIDTH", "output"),
         ("req_credit_i",             "NUM_VC",     "input"),
         ("req_credit_init_ready_o",  "1",          "output"),
         ("req_credit_init_ready_i",  "1",          "input"),
     ],
-    "NoC response in": [
+    "NOC_RSP_IN": [
         ("rsp_valid_i",              "1",          "input"),
         ("rsp_flit_i",               "FLIT_WIDTH", "input"),
         ("rsp_credit_o",             "NUM_VC",     "output"),
     ],
-    "NoC request in": [
+    "NOC_REQ_IN": [
         ("req_valid_i",              "1",          "input"),
         ("req_flit_i",               "FLIT_WIDTH", "input"),
         ("req_credit_o",             "NUM_VC",     "output"),
     ],
-    "NoC response out": [
+    "NOC_RSP_OUT": [
         ("rsp_valid_o",              "1",          "output"),
         ("rsp_flit_o",               "FLIT_WIDTH", "output"),
         ("rsp_credit_i",             "NUM_VC",     "input"),
@@ -535,11 +537,11 @@ _NOC_INTERFACE_SIGNALS = {
 
 # NoC port-level parameters (knobs that configure the link)
 _INTERFACE_PARAMS = {
-    "NoC request out":  ["NUM_VC", "FLIT_WIDTH"],
-    "NoC response in":  ["NUM_VC", "FLIT_WIDTH"],
-    "NoC request in":   ["NUM_VC", "FLIT_WIDTH"],
-    "NoC response out": ["NUM_VC", "FLIT_WIDTH"],
-    "CSR":              [],  # AXI4-Lite，width 寫死 32/12
+    "NOC_REQ_OUT":  ["NUM_VC", "FLIT_WIDTH"],
+    "NOC_RSP_IN":   ["NUM_VC", "FLIT_WIDTH"],
+    "NOC_REQ_IN":   ["NUM_VC", "FLIT_WIDTH"],
+    "NOC_RSP_OUT":  ["NUM_VC", "FLIT_WIDTH"],
+    "CSR":          [],  # AXI4-Lite，width 寫死 32/12
 }
 
 # AXI port 層級 parameter（不屬任一 channel，是整個 port 的 toggle）
@@ -565,6 +567,36 @@ def _build_noc_signals(interface_name: str, ns: Dict[str, dict]) -> List[dict]:
 # Block-level presence toggle（不屬於任一 interface 而是 block 本身）
 _BLOCK_ENABLE_PARAMS = ["EN_MST_PORT", "EN_SLV_PORT"]
 
+# Interface name normalisation: MD prose string → UPPER_SNAKE_CASE identifier.
+_IFACE_NAME_MAP: Dict[str, str] = {
+    "AXI slave port (host)":  "AXI_SLAVE_PORT",
+    "AXI master port (host)": "AXI_MASTER_PORT",
+    "NoC request out":        "NOC_REQ_OUT",
+    "NoC response in":        "NOC_RSP_IN",
+    "NoC request in":         "NOC_REQ_IN",
+    "NoC response out":       "NOC_RSP_OUT",
+    "CSR":                    "CSR",
+}
+
+# Flow-control enum mapping: MD prose → canonical enum string.
+_FLOW_CTRL_MAP: Dict[str, str] = {
+    "ready/valid per channel": "valid-ready",
+    "ready/valid":             "valid-ready",
+    "per-VC credit return":    "credit",
+    "per-VC credit":           "credit",
+}
+
+# Description for each interface (prose previously split across name/peer fields).
+_IFACE_DESCRIPTION: Dict[str, str] = {
+    "AXI_SLAVE_PORT":  "AXI slave port to local AXI master (host-side, NMU injection path)",
+    "AXI_MASTER_PORT": "AXI master port to local AXI slave (host-side, NSU ejection path)",
+    "NOC_REQ_OUT":     "NoC request flit link out to router local input",
+    "NOC_RSP_IN":      "NoC response flit link in from router local output",
+    "NOC_REQ_IN":      "NoC request flit link in from router local output",
+    "NOC_RSP_OUT":     "NoC response flit link out to router local input",
+    "CSR":             "AXI4-Lite CSR port for software configuration access",
+}
+
 
 def _build_params_namespace(md_dir: Union[str, Path],
                              signal_params: List[dict]) -> Dict[str, dict]:
@@ -572,6 +604,16 @@ def _build_params_namespace(md_dir: Union[str, Path],
 
     signal_interface 提供 type / constraint / description；
     packet_format 只提供 default value（field width 是 fixed-by-AXI4-spec）。
+
+    在聯集後，加入 AMBA-canonical 別名（packet_format / signal_interface 用舊名；
+    generator 輸出用新名，保持 JSON 與 AMBA IHI 0022 對齊）：
+      ADDR_WIDTH        → AXI_ADDR_WIDTH
+      NOC_QOS_WIDTH     → AXI_QOS_WIDTH    (QOS is AXI-layer, not NOC-layer)
+      NOC_DATA_WIDTH    → AXI_DATA_WIDTH   (for AXI W/R channel signals)
+      WSTRB_WIDTH       → AXI_STRB_WIDTH
+      USER_WIDTH        → AXI_AWUSER_WIDTH / AXI_WUSER_WIDTH / AXI_BUSER_WIDTH /
+                          AXI_ARUSER_WIDTH / AXI_RUSER_WIDTH  (per-channel per AMBA)
+      AXI_ID_WIDTH is already in packet_format.md Group 3 — no alias needed.
     """
     by_name = {p["name"]: p for p in signal_params}
 
@@ -586,6 +628,25 @@ def _build_params_namespace(md_dir: Union[str, Path],
                 "default": str(val),
                 "source": "packet_format.md §1.2",
             }
+
+    # Inject AMBA-canonical aliases for names used in _AXI_CHANNEL_SIGNALS.
+    # Source of truth for the default value is the old (pre-alias) entry.
+    _ALIASES: List[Tuple[str, str]] = [
+        ("ADDR_WIDTH",    "AXI_ADDR_WIDTH"),
+        ("NOC_QOS_WIDTH", "AXI_QOS_WIDTH"),
+        ("NOC_DATA_WIDTH","AXI_DATA_WIDTH"),
+        ("WSTRB_WIDTH",   "AXI_STRB_WIDTH"),
+        ("USER_WIDTH",    "AXI_AWUSER_WIDTH"),
+        ("USER_WIDTH",    "AXI_WUSER_WIDTH"),
+        ("USER_WIDTH",    "AXI_BUSER_WIDTH"),
+        ("USER_WIDTH",    "AXI_ARUSER_WIDTH"),
+        ("USER_WIDTH",    "AXI_RUSER_WIDTH"),
+    ]
+    for src_name, alias in _ALIASES:
+        if alias not in by_name and src_name in by_name:
+            src = by_name[src_name]
+            by_name[alias] = {k: src[k] for k in src if k != "name"} | {"name": alias}
+
     return by_name
 
 
@@ -604,6 +665,17 @@ def parse_top_level_interfaces(md_text: str) -> List[dict]:
 
     AXI / AXI4-Lite interface 會展成 channels[] sub-list 列出每 channel 真實方向
     （AW/W/AR 跟 B/R 對 slave 是反向）。NoC link 本來單向，無 channels。
+
+    Interface entry shape (Task 3.5 clean shape):
+      name        — UPPER_SNAKE_CASE identifier (from _IFACE_NAME_MAP)
+      description — prose (from _IFACE_DESCRIPTION)
+      block       — NMU | NSU
+      direction   — as-parsed from MD table
+      protocol    — as-parsed from MD table
+      clock       — split from clock_domain (before " / ")
+      reset       — split from clock_domain (after " / ")
+      flow_control — enum "valid-ready" | "credit" (from _FLOW_CTRL_MAP)
+    Removed: peer, wire_source, clock_domain.
     """
     sec = _section_slice(md_text, r"^## Per-block interface summary")
     if sec is None:
@@ -619,23 +691,48 @@ def parse_top_level_interfaces(md_text: str) -> List[dict]:
         for header, rows in _extract_all_tables(sub):
             i_name = _col_idx(header, "Interface")
             i_dir = _col_idx(header, "Direction")
-            i_peer = _col_idx(header, "Peer")
             i_proto = _col_idx(header, "Protocol")
             i_fc = _col_idx(header, "Flow control")
             i_clk = _col_idx(header, "Clock domain")
-            i_src = _col_idx(header, "Wire source")
             if i_name is None:
                 continue
             for cells in rows:
                 if i_name >= len(cells):
                     continue
                 clean = [c.replace("`", "") for c in cells]
-                entry = {"block": block, "name": clean[i_name]}
-                for key, idx in (("direction", i_dir), ("peer", i_peer),
-                                  ("protocol", i_proto), ("flow_control", i_fc),
-                                  ("clock_domain", i_clk), ("wire_source", i_src)):
-                    if idx is not None and idx < len(clean):
-                        entry[key] = clean[idx]
+                raw_name = clean[i_name]
+                clean_name = _IFACE_NAME_MAP.get(raw_name, raw_name)
+
+                # Split clock_domain "aclk_i / arst_ni" → clock + reset
+                clock_val: Optional[str] = None
+                reset_val: Optional[str] = None
+                if i_clk is not None and i_clk < len(clean):
+                    clk_str = clean[i_clk]
+                    if " / " in clk_str:
+                        clock_val, reset_val = [s.strip() for s in clk_str.split(" / ", 1)]
+                    else:
+                        clock_val = clk_str.strip()
+
+                # Normalise flow_control to enum
+                fc_raw = ""
+                if i_fc is not None and i_fc < len(clean):
+                    fc_raw = clean[i_fc]
+                fc_enum = _FLOW_CTRL_MAP.get(fc_raw, fc_raw)
+
+                entry: dict = {
+                    "name": clean_name,
+                    "description": _IFACE_DESCRIPTION.get(clean_name, ""),
+                    "block": block,
+                }
+                if i_dir is not None and i_dir < len(clean):
+                    entry["direction"] = clean[i_dir]
+                if i_proto is not None and i_proto < len(clean):
+                    entry["protocol"] = clean[i_proto]
+                if clock_val is not None:
+                    entry["clock"] = clock_val
+                if reset_val is not None:
+                    entry["reset"] = reset_val
+                entry["flow_control"] = fc_enum
                 # channels[] / signals[] 在 generate_ni_signals_json 後處理（需要 ns）
                 interfaces.append(entry)
     return interfaces
@@ -663,11 +760,8 @@ def generate_ni_signals_json(md_dir: Union[str, Path]) -> dict:
     for names in _INTERFACE_PARAMS.values():
         referenced.update(names)
     for ch_list in _AXI_CHANNEL_SIGNALS.values():
-        for _, src in ch_list:
-            if src == "ID":
-                referenced.update(_ID_WIDTH_PARAM.values())
-            else:
-                referenced.add(src)
+        for _, src_param in ch_list:
+            referenced.add(src_param)
     missing = referenced - set(ns.keys())
     if missing:
         raise ValueError(f"interface param reference 不存在於 spec source: {sorted(missing)}")
@@ -724,6 +818,7 @@ def write_generated_signals_json(md_dir: Union[str, Path], out_path: Union[str, 
                 sig["reset_behavior"] = reset_map.get(pin_name) or _default_reset_for(sig, iface, pin_name)
                 sig.setdefault("presence", None)
                 sig.setdefault("width_expr", None)
+                sig.pop("_sig_suffix", None)  # build-time helper; not part of schema
         for sig in iface.get("signals", []):
             pin_name = _derive_pin_name(iface, None, sig)
             sig["pin_name"] = pin_name
@@ -816,35 +911,31 @@ def _derive_pin_name(iface: dict, ch: Optional[dict], sig: dict) -> str:
     """Derive the RTL-level pin name from interface / channel / signal context.
 
     Rules:
-    - NoC interfaces: signal name is already pin-style without noc_ prefix; add it.
+    - NoC interfaces: signal 'name' is already pin-style (without noc_ prefix); add it.
     - AXI slave/master port: axi_<ch_lower><sig_suffix_lower>_i/o
-      where sig_suffix is the part after 'CH_' (e.g. AW_ID → id).
+      sig_suffix comes from sig['_sig_suffix'] (e.g. "ID" → "id"), set during build.
       Direction suffix (_i/_o) matches the channel direction.
     - CSR interface (AXI4-Lite slave): csr_<ch_lower><sig_suffix_lower>_i/o
       Same direction logic as AXI slave.
     """
     iface_name = iface.get("name", "")
-    sig_name = sig.get("name", "")  # e.g. "AW_ID", "req_valid_o"
 
-    # --- NoC interfaces: prepend noc_ to the existing name ---
+    # --- NoC interfaces: prepend noc_ to the signal name field ---
     if iface_name in _NOC_INTERFACE_SIGNALS:
+        sig_name = sig.get("name", "")
         return f"noc_{sig_name}"
 
     # --- CSR (AXI4-Lite) or AXI port ---
     if ch is None:
         # Fallback: should not happen for AXI/CSR interfaces
-        return sig_name.lower()
+        return sig.get("_sig_suffix", "").lower()
 
     ch_name = ch.get("name", "")  # "AW", "W", "B", "AR", "R"
     ch_dir = ch.get("direction", "")  # "input" or "output"
     dir_suffix = "_i" if ch_dir == "input" else "_o"
 
-    # Strip channel prefix from signal name: "AW_ID" → "id", "W_DATA" → "data"
-    prefix = ch_name + "_"
-    if sig_name.upper().startswith(prefix.upper()):
-        sig_suffix = sig_name[len(prefix):].lower()
-    else:
-        sig_suffix = sig_name.lower()
+    # _sig_suffix is the signal suffix set during _build_axi_channels (e.g. "ID", "ADDR")
+    sig_suffix = sig.get("_sig_suffix", "").lower()
 
     if iface_name.startswith("CSR") or iface.get("protocol") == "AXI4-Lite":
         return f"csr_{ch_name.lower()}{sig_suffix}{dir_suffix}"

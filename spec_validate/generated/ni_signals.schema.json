@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ni-spec/ni_signals.schema.json",
-  "title": "NoC NI Signal Interface Schema — top-level only",
+  "title": "NoC NI Signal Interface Schema — top-level only (Task 3.5 clean shape)",
   "type": "object",
   "required": ["meta", "block_enables", "interfaces"],
   "additionalProperties": true,
@@ -20,19 +20,21 @@
     },
     "signal": {
       "type": "object",
-      "required": ["name", "width_param"],
-      "additionalProperties": true,
+      "description": "Signal entry. AXI channel signals: no 'name' field; identifier is pin_name. NoC signals: 'name' carries the logical name (e.g. req_valid_o) used to derive pin_name.",
+      "required": ["width_param", "pin_name"],
+      "additionalProperties": false,
       "properties": {
-        "name":        {"type": "string"},
+        "name":        {"type": "string", "description": "NoC signals only — logical signal name used to derive pin_name via noc_ prefix"},
         "width_param": {"type": "string"},
         "direction":   {"enum": ["input", "output"]},
         "default":     {"type": "string"},
         "pin_name": {
           "type": ["string", "null"],
-          "description": "RTL-level concrete pin name (e.g. axi_awvalid_i); null until Task 3 cross-merges with pin_level_reset.md"
+          "description": "RTL-level concrete pin name (e.g. axi_awvalid_i)"
         },
         "reset_behavior": {
           "type": ["object", "null"],
+          "additionalProperties": false,
           "properties": {
             "kind": {"enum": ["async-active-low", "sync-active-high", "external_driven"]},
             "value": {"type": "string"},
@@ -42,6 +44,7 @@
         },
         "presence": {
           "type": ["object", "null"],
+          "additionalProperties": true,
           "properties": {"condition_text": {"type": "string"}}
         },
         "width_expr": {
@@ -53,6 +56,7 @@
     "channel": {
       "type": "object",
       "required": ["name", "direction"],
+      "additionalProperties": false,
       "properties": {
         "name":      {"enum": ["AW", "W", "AR", "B", "R"]},
         "direction": {"enum": ["input", "output"]},
@@ -92,16 +96,20 @@
       "items": {
         "type": "object",
         "required": ["block", "name"],
-        "additionalProperties": true,
+        "additionalProperties": false,
         "properties": {
-          "block":         {"enum": ["NMU", "NSU"]},
-          "name":          {"type": "string", "minLength": 1},
-          "direction":     {"type": "string"},
-          "peer":          {"type": "string"},
-          "protocol":      {"type": "string"},
-          "flow_control":  {"type": "string"},
-          "clock_domain":  {"type": "string"},
-          "wire_source":   {"type": "string"},
+          "block":        {"enum": ["NMU", "NSU"]},
+          "name":         {
+            "type": "string",
+            "minLength": 1,
+            "description": "UPPER_SNAKE_CASE identifier (e.g. AXI_SLAVE_PORT, NOC_REQ_OUT)"
+          },
+          "description":  {"type": "string"},
+          "direction":    {"type": "string"},
+          "protocol":     {"type": "string"},
+          "clock":        {"type": "string", "description": "Clock signal name (e.g. aclk_i)"},
+          "reset":        {"type": "string", "description": "Reset signal name (e.g. arst_ni)"},
+          "flow_control": {"enum": ["valid-ready", "credit"]},
           "channels": {
             "type": "array",
             "description": "AXI / AXI4-Lite only — 5 channels (AW/W/B/AR/R) each with signals[].",

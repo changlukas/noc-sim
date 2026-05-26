@@ -11,9 +11,9 @@ def test_every_signal_has_pin_name():
     for iface in spec["interfaces"]:
         for ch in iface.get("channels", []):
             for sig in ch["signals"]:
-                assert sig["pin_name"] is not None, f"signal {sig['name']} pin_name still null"
+                assert sig["pin_name"] is not None, f"AXI signal in {iface['name']}/{ch['name']} pin_name still null"
         for sig in iface.get("signals", []):
-            assert sig["pin_name"] is not None, f"NoC signal {sig['name']} pin_name still null"
+            assert sig["pin_name"] is not None, f"NoC signal {sig.get('pin_name','<no pin_name>')} pin_name still null"
 
 
 def test_every_signal_has_reset_behavior():
@@ -22,11 +22,11 @@ def test_every_signal_has_reset_behavior():
         for ch in iface.get("channels", []):
             for sig in ch["signals"]:
                 rb = sig["reset_behavior"]
-                assert rb is not None, f"signal {sig['name']} reset_behavior null"
+                assert rb is not None, f"signal {sig['pin_name']} reset_behavior null"
                 assert rb["kind"] in ("async-active-low", "sync-active-high", "external_driven")
         for sig in iface.get("signals", []):
             rb = sig["reset_behavior"]
-            assert rb is not None, f"NoC {sig['name']} reset_behavior null"
+            assert rb is not None, f"NoC {sig['pin_name']} reset_behavior null"
             assert rb["kind"] in ("async-active-low", "sync-active-high", "external_driven")
 
 
