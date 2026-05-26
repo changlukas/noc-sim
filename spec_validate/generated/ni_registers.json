@@ -1,0 +1,515 @@
+{
+  "$schema_version": "ni-spec/2.0",
+  "meta": {
+    "spec_version": "v0.4.0",
+    "auto_generated_from": "spec/ni/doc/registers.md",
+    "generator": "ni_spec.generator :: generate_ni_registers_json",
+    "do_not_edit": "Re-run validator/generator to refresh."
+  },
+  "csr_policy": {
+    "sub_word_write": "decerr",
+    "unmapped_read": "zero",
+    "misaligned": "decerr",
+    "wo_read": "zero"
+  },
+  "registers": [
+    {
+      "offset": "0x000",
+      "name": "QOS_MODE",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "QoS 模式選擇 (0=Bypass, 1=Fixed, 2=Limiter, 3=Regulator). See §QOS_MODE.",
+      "fields": [
+        {
+          "name": "QOS_MODE",
+          "bit_high": 1,
+          "bit_low": 0,
+          "reset": "0x0",
+          "description": "0=Bypass, 1=Fixed, 2=Limiter, 3=Regulator"
+        }
+      ]
+    },
+    {
+      "offset": "0x004",
+      "name": "QOS_FIXED_VALUE",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Fixed mode qos 值. See §QOS_FIXED_VALUE.",
+      "fields": [
+        {
+          "name": "QOS_FIXED_VALUE",
+          "bit_high": 3,
+          "bit_low": 0,
+          "reset": "0x0",
+          "description": "Fixed mode 輸出 qos 值 (0~15)"
+        }
+      ]
+    },
+    {
+      "offset": "0x008",
+      "name": "BANDWIDTH_LIMIT",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Limiter 頻寬限制 (1/256 bytes/cycle)."
+    },
+    {
+      "offset": "0x00C",
+      "name": "SATURATION_THRESHOLD",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Limiter 飽和閾值 (bytes)."
+    },
+    {
+      "offset": "0x010",
+      "name": "LOW_PRIORITY",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Limiter 超標時 qos."
+    },
+    {
+      "offset": "0x014",
+      "name": "BANDWIDTH_BUDGET",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Regulator 頻寬預算 (1/256 bytes/cycle)."
+    },
+    {
+      "offset": "0x018",
+      "name": "BASE_QOS",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Regulator 基礎 qos + URGENCY_STEP combined. See §BASE_QOS for field layout. <!-- source: 06_qos.md §4.1 + §4.5 (post-fix) -->",
+      "fields": [
+        {
+          "name": "BASE_QOS",
+          "bit_high": 3,
+          "bit_low": 0,
+          "reset": "0x0",
+          "description": "Regulator mode 基礎 QoS 值 (urgency_level=0 時使用，0~15). See ToO §QoSGen."
+        },
+        {
+          "name": "URGENCY_STEP",
+          "bit_high": 5,
+          "bit_low": 4,
+          "reset": "0x0",
+          "description": "Urgency 每次調整的步進值 (1~3；軟體寫 0 時硬體視同 1). See ToO §QoSGen Regulator mode."
+        }
+      ]
+    },
+    {
+      "offset": "0x01C",
+      "name": "SOCKET_QOS_EN",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Regulator Socket QoS 啟用."
+    },
+    {
+      "offset": "0x020",
+      "name": "SOCKET_QOS",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Regulator Socket QoS 下限."
+    },
+    {
+      "offset": "0x040",
+      "name": "PKT_PROBE_EN",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "啟用 Packet Probe."
+    },
+    {
+      "offset": "0x044",
+      "name": "PKT_PROBE_MODE",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "統計模式 (0=Combined, 1=Read, 2=Write)."
+    },
+    {
+      "offset": "0x048",
+      "name": "PKT_WINDOW_SIZE",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "統計視窗 (cycles)."
+    },
+    {
+      "offset": "0x04C",
+      "name": "PKT_BYTE_COUNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "傳輸 bytes 累計 (saturating)."
+    },
+    {
+      "offset": "0x050",
+      "name": "PKT_BANDWIDTH",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "計算的頻寬 (per current window)."
+    },
+    {
+      "offset": "0x060",
+      "name": "TXN_PROBE_EN",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "啟用 Transaction Probe."
+    },
+    {
+      "offset": "0x064",
+      "name": "TXN_THRESHOLD_0",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "延遲閾值 0 (cycles)."
+    },
+    {
+      "offset": "0x068",
+      "name": "TXN_THRESHOLD_1",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "延遲閾值 1."
+    },
+    {
+      "offset": "0x06C",
+      "name": "TXN_THRESHOLD_2",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "延遲閾值 2."
+    },
+    {
+      "offset": "0x070",
+      "name": "TXN_THRESHOLD_3",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "延遲閾值 3."
+    },
+    {
+      "offset": "0x080",
+      "name": "TXN_BIN_0_COUNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Bin 0 計數 (saturating)."
+    },
+    {
+      "offset": "0x084",
+      "name": "TXN_BIN_1_COUNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Bin 1 計數."
+    },
+    {
+      "offset": "0x088",
+      "name": "TXN_BIN_2_COUNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Bin 2 計數."
+    },
+    {
+      "offset": "0x08C",
+      "name": "TXN_BIN_3_COUNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Bin 3 計數."
+    },
+    {
+      "offset": "0x090",
+      "name": "TXN_BIN_4_COUNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Bin 4 計數."
+    },
+    {
+      "offset": "0x094",
+      "name": "TXN_MIN_LATENCY",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0xFFFF",
+      "width_expr": "32",
+      "description": "最小延遲 (16-bit; initialised to all-1s sentinel value; first observed transaction-latency overwrites; subsequent observations write only if smaller). Cleared back to 0xFFFF via `TXN_PROBE_EN` 1→0→1 transition."
+    },
+    {
+      "offset": "0x098",
+      "name": "TXN_MAX_LATENCY",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "最大延遲."
+    },
+    {
+      "offset": "0x09C",
+      "name": "TXN_TOTAL_COUNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "總 transaction 數 (saturating)."
+    },
+    {
+      "offset": "0x100",
+      "name": "ERR_STATUS",
+      "kind": "register",
+      "access": "RW1C",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "錯誤狀態 — write 1 to clear bit and the associated saturating counter. See §ERR_STATUS. <!-- source: 06_qos.md §4.1, post-fix RW1C -->",
+      "fields": [
+        {
+          "name": "ecc_uncorr_err",
+          "bit_high": 0,
+          "bit_low": 0,
+          "reset": "0x0",
+          "description": "flit_ecc 雙位元錯偵測到 (corrupted flit forwarded; AXI rresp 不變). Write 1 clears bit + `ECC_UNCORR_ERR_CNT`."
+        },
+        {
+          "name": "route_par_err",
+          "bit_high": 1,
+          "bit_low": 1,
+          "reset": "0x0",
+          "description": "route_par mismatch detected by router or NI sink (offending flit dropped). Write 1 clears bit + `ROUTE_PAR_ERR_CNT`."
+        },
+        {
+          "name": "axi_parity_err",
+          "bit_high": 2,
+          "bit_low": 2,
+          "reset": "0x0",
+          "description": "AXI host-side parity mismatch (NMU-side AW/AR/W input parity OR NSU-side rdata parity). Transaction is logged but not aborted. Write 1 clears bit + `AXI_PARITY_ERR_CNT`."
+        }
+      ]
+    },
+    {
+      "offset": "0x108",
+      "name": "ECC_UNCORR_ERR_CNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "ECC uncorrectable 錯誤計數 (saturating, `ERR_COUNTER_WIDTH` bits). Cleared via `ERR_STATUS[0]` write-1 (ecc_uncorr_err)."
+    },
+    {
+      "offset": "0x10C",
+      "name": "LAST_ERR_INFO",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "最近錯誤資訊 (sticky semantics; see §LAST_ERR_INFO for field layout).",
+      "fields": [
+        {
+          "name": "err_axi_id",
+          "bit_high": 7,
+          "bit_low": 0,
+          "reset": "0x0",
+          "description": "錯誤 transaction 的 AXI ID."
+        },
+        {
+          "name": "err_src_id",
+          "bit_high": 15,
+          "bit_low": 8,
+          "reset": "0x0",
+          "description": "錯誤來源 node ID."
+        },
+        {
+          "name": "err_dst_id",
+          "bit_high": 23,
+          "bit_low": 16,
+          "reset": "0x0",
+          "description": "錯誤目標 node ID."
+        }
+      ]
+    },
+    {
+      "offset": "0x110",
+      "name": "(reserved for `LAST_ERR_INFO_HI`)",
+      "kind": "reserved",
+      "access": null,
+      "reset_expr": null,
+      "description": "Allocated for compile-time `LAST_ERR_INFO` extension when total field width exceeds 32 bits (e.g., `AXI_ID_WIDTH=16` with extended `X_WIDTH+Y_WIDTH`). Unused at default parameters; reads as DECERR until activated."
+    },
+    {
+      "offset": "0x114",
+      "name": "IRQ_ENABLE",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "Per-bit IRQ mask, layout 1:1 with `ERR_STATUS`. `irq_o = OR over i of (ERR_STATUS[i] & IRQ_ENABLE[i])`. Default 0 = all IRQs masked; software opts in. See §IRQ_ENABLE for field layout.",
+      "fields": [
+        {
+          "name": "ecc_uncorr_irq_en",
+          "bit_high": 0,
+          "bit_low": 0,
+          "reset": "0x0",
+          "description": "Allow `ERR_STATUS[0]` to drive `irq_o`."
+        },
+        {
+          "name": "route_par_irq_en",
+          "bit_high": 1,
+          "bit_low": 1,
+          "reset": "0x0",
+          "description": "Allow `ERR_STATUS[1]` to drive `irq_o`."
+        },
+        {
+          "name": "axi_parity_irq_en",
+          "bit_high": 2,
+          "bit_low": 2,
+          "reset": "0x0",
+          "description": "Allow `ERR_STATUS[2]` to drive `irq_o`."
+        }
+      ]
+    },
+    {
+      "offset": "0x118",
+      "name": "ECC_CORR_ERR_CNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "flit_ecc 單位元（已修正）錯誤累計 (saturating, `ERR_COUNTER_WIDTH` bits). Pure informational; cumulative since hardware reset; no software clear path. Software polls and tracks deltas for health-monitoring purposes."
+    },
+    {
+      "offset": "0x11C",
+      "name": "ROUTE_PAR_ERR_CNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "route_par mismatch (flit dropped at router/sink) 累計 (saturating, `ERR_COUNTER_WIDTH` bits). Cleared via `ERR_STATUS[1]` write-1 (route_par_err)."
+    },
+    {
+      "offset": "0x120",
+      "name": "AXI_PARITY_ERR_CNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "AXI host-side parity mismatch 累計 (saturating, `ERR_COUNTER_WIDTH` bits). Covers both NMU-side `axi_*_i_par_i` checks and NSU-side `axi_rdata_par_i` checks. Cleared via `ERR_STATUS[2]` write-1 (axi_parity_err)."
+    },
+    {
+      "offset": "0x130",
+      "name": "PENDING_R_COUNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "NMU live outstanding read transactions. Width = `ceil(log2(MAX_TXNS+1))`. AXI-edge-defined per `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY`. See §PENDING_R_COUNT."
+    },
+    {
+      "offset": "0x134",
+      "name": "PENDING_W_COUNT",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "NMU live outstanding write transactions. Same width formula and contract as `PENDING_R_COUNT`. See §PENDING_W_COUNT."
+    },
+    {
+      "offset": "0x13C",
+      "name": "QUIESCE_CTRL",
+      "kind": "register",
+      "access": "RW",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "NMU-side quiesce request bit. See §QUIESCE_CTRL.",
+      "fields": [
+        {
+          "name": "quiesce_req",
+          "bit_high": 0,
+          "bit_low": 0,
+          "reset": "0x0",
+          "description": "Software requests NMU quiesce. `1`: NMU stops accepting new AW/AR (holds `axi_awready_o = axi_arready_o = 0`); existing in-flight transactions drain via normal response paths. `0`: resume normal NMU operation. NSU continues servicing inbound NoC requests in either state — quiesce is NMU-only by design."
+        }
+      ]
+    },
+    {
+      "offset": "0x140",
+      "name": "QUIESCE_STATUS",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "NMU quiesce drain-complete indicator. See §QUIESCE_STATUS.",
+      "fields": [
+        {
+          "name": "quiesce_idle",
+          "bit_high": 0,
+          "bit_low": 0,
+          "reset": "0x0",
+          "description": "Asserts when `(QUIESCE_CTRL.quiesce_req=1) AND (PENDING_R_COUNT=0) AND (PENDING_W_COUNT=0)`. Combinational over `aclk_i`-domain values (no CDC). Software polls this bit after writing `quiesce_req=1` to know when reconfig is safe. Polling is best-effort — no NI-side liveness guarantee in v0.4.0. If a slave hangs, `quiesce_idle` never asserts and software handles upper-bounded retry / reset externally. Deasserts on the cycle `quiesce_req` is cleared (because the AND-condition's first term goes false)."
+        }
+      ]
+    },
+    {
+      "offset": "0x144",
+      "name": "EXCLUSIVE_MONITOR_CTRL",
+      "kind": "register",
+      "access": "WO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "NSU Exclusive Monitor `clear_all` trigger (W1 self-clearing). See §EXCLUSIVE_MONITOR_CTRL.",
+      "fields": [
+        {
+          "name": "clear_all",
+          "bit_high": 0,
+          "bit_low": 0,
+          "reset": "0x0",
+          "description": "Write-1 self-clearing trigger: invalidates all pending NSU Exclusive Monitor entries on the `aclk_i` edge that completes the CSR write handshake (the \"clear epoch\" boundary). The bit self-clears on the next `aclk_i` edge after the clear epoch (latency = 1 cycle); subsequent reads return 0. Use case: OS bookkeeping when a process is killed mid-Exclusive. Race semantics with concurrent NSU events formalised in `protocol_rules.md` `NI_CFG_EXCLUSIVE_CLEAR_RACE`."
+        }
+      ]
+    },
+    {
+      "offset": "0x148",
+      "name": "EXCLUSIVE_MONITOR_STATUS",
+      "kind": "register",
+      "access": "RO",
+      "reset_expr": "0x0",
+      "width_expr": "32",
+      "description": "NSU Exclusive Monitor live `occupancy` count. See §EXCLUSIVE_MONITOR_STATUS."
+    }
+  ]
+}

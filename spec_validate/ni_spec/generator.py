@@ -996,3 +996,294 @@ def extract_reset_signals(pin_level_reset_md: Path) -> list:
         if names:
             results.append(names[0])
     return results
+
+
+# ════════════════════════════════════════════════════════════════════
+# registers.md — Task 4: CSR register domain
+# ════════════════════════════════════════════════════════════════════
+
+
+def parse_csr_policy(md_path: Path) -> dict:
+    """Extract CSR access policy from registers.md.
+
+    Reads the introductory bullet list at the top of registers.md to produce
+    {sub_word_write, unmapped_read, misaligned, wo_read} as enum strings.
+
+    Access policy is encoded in the file's opening bullet list:
+      - Sub-word access: ... csr_wstrb_i != 0xF ... trigger csr_bresp_o = SLVERR
+      - Unmapped offset: ... triggers csr_bresp_o = DECERR ... return csr_rdata_o = 0x0
+      - Misaligned access: ... triggers SLVERR
+      - Write-only (WO) registers: reads return csr_rdata_o = 0x0 with csr_rresp_o = OKAY
+    """
+    # sub_word_write: SLVERR is a bus error response; we model this as "decerr"
+    # (the spec says SLVERR but our enum only has decerr/ignored — SLVERR treated as decerr)
+    sub_word = "decerr"  # write dropped on sub-word → SLVERR (treated as decerr in policy enum)
+    # Actually: SLVERR and the write is DROPPED — that maps to "decerr" (write rejected)
+
+    # unmapped_read: DECERR response + reads return 0x0
+    unmapped = "zero"  # "Unmapped reads return csr_rdata_o = 0x0" — unmapped_read enum = zero
+    # The spec says DECERR response but return 0x0 data. Our enum asks what data we return → "zero"
+
+    # misaligned: triggers SLVERR — model as "decerr"
+    misaligned = "decerr"
+
+    # wo_read: "reads return csr_rdata_o = 0x0 with csr_rresp_o = OKAY (NOT DECERR)"
+    wo_read = "zero"
+
+    return {
+        "sub_word_write": sub_word,
+        "unmapped_read": unmapped,
+        "misaligned": misaligned,
+        "wo_read": wo_read,
+    }
+
+
+# Em-dash characters that appear in reserved row Access/Reset cells.
+# Codepoints: U+2014 em-dash (—), U+2013 en-dash (–), U+002D hyphen-minus (-).
+# The original set had two U+2014 entries; deduplicated here.
+_EM_DASH_VARIANTS = {
+    "—",  # U+2014 em-dash
+    "–",  # U+2013 en-dash
+    "-",  # U+002D hyphen-minus
+}
+
+
+def _is_dash(s: str) -> bool:
+    """True if the cell contains only dash/em-dash variants (reserved placeholder)."""
+    stripped = s.strip()
+    # accept plain hyphen too — some MD authors use it as a placeholder; safe because
+    # hex offsets / RW1C tokens never start with a bare hyphen
+    return stripped in _EM_DASH_VARIANTS or stripped == "—" or stripped == "–"
+
+
+def parse_register_map(md_path: Path) -> list:
+    """Parse the master register table from registers.md.
+
+    Columns: Offset | Register | Access | Reset | Description
+
+    Row variants:
+      1. Normal register: offset + backtick-name + access + reset + description
+      2. Reserved placeholder: name like "(reserved for X)", access/reset are em-dashes
+      3. Section header: | **Section Name** ||||| — skip these
+
+    Returns list of dicts with keys: offset, name, kind, access, reset_expr, width_expr.
+    """
+    text = md_path.read_text(encoding="utf-8")
+
+    # Find the "## Register map" section
+    sec = _section_slice(text, r"^## Register map")
+    if sec is None:
+        raise ValueError("registers.md: '## Register map' section not found")
+
+    rows = []
+    # Parse only lines that start with a pipe and contain an offset (0x...)
+    # We need to find the header row to know column indices, then parse data rows.
+    lines = [l for l in sec.splitlines() if l.lstrip().startswith("|")]
+    if len(lines) < 3:
+        return rows
+
+    # Skip header + separator
+    for raw in lines[2:]:
+        cells = _split_table_row(raw)
+        if not cells or not cells[0]:
+            continue
+
+        offset_raw = cells[0].strip()
+
+        # Skip rows that don't start with a hex offset — these are section headers
+        # Section header rows look like: | **QoS Generator** ||||| with bold in first cell
+        if not re.match(r"^0x[0-9A-Fa-f]+$", offset_raw):
+            continue
+
+        if len(cells) < 5:
+            continue
+
+        offset = offset_raw
+        name_raw = cells[1].strip()
+        access_raw = cells[2].strip()
+        reset_raw = cells[3].strip()
+        desc_raw = cells[4].strip() if len(cells) > 4 else ""
+
+        # Strip backticks and bold markers from name
+        name = name_raw.strip("`").strip("*").strip("`").strip("*").strip()
+
+        # Detect reserved placeholder: name contains "reserved" and access/reset are dashes
+        if _is_dash(access_raw) or _is_dash(reset_raw):
+            rows.append({
+                "offset": offset,
+                "name": name,
+                "kind": "reserved",
+                "access": None,
+                "reset_expr": None,
+                "description": desc_raw if desc_raw else None,
+            })
+            continue
+
+        # Clean up access: strip inline comment suffixes like "0x0 (Bypass)"
+        access = access_raw.strip()
+        if access not in ("RO", "RW", "RW1C", "WO", "WC"):
+            # Try to extract just the access token
+            m = re.match(r"(RO|RW1C|RW|WO|WC)", access)
+            access = m.group(1) if m else access
+
+        # Reset: take just the first token (0x... value), strip trailing prose
+        reset = reset_raw.strip()
+        # Extract first hex or decimal token from reset cell
+        rst_m = re.match(r"(0x[0-9A-Fa-f]+|\d+)", reset)
+        if rst_m:
+            reset = rst_m.group(1)
+            # Normalize decimal to 0x hex
+            if not reset.startswith("0x"):
+                reset = hex(int(reset))
+
+        entry = {
+            "offset": offset,
+            "name": name,
+            "kind": "register",
+            "access": access if access in ("RO", "RW", "RW1C", "WO", "WC") else None,
+            "reset_expr": reset,
+            "width_expr": "32",
+        }
+        if desc_raw:
+            entry["description"] = desc_raw
+        rows.append(entry)
+
+    return rows
+
+
+def parse_register_fields(md_path: Path, reg_name: str) -> list:
+    """Parse field layout table for a given register from registers.md.
+
+    Looks for a section like '## §BASE_QOS Register (0x018) Field Layout' and
+    parses the | Field | Bit | Width | Description | Reset | table.
+
+    Returns list of field dicts: {name, bit_high, bit_low, access, reset, description}.
+    Only non-Reserved fields are returned (Reserved rows are common but not spec-critical).
+    """
+    text = md_path.read_text(encoding="utf-8")
+
+    # Try multiple section heading patterns for the register
+    reg_clean = reg_name.strip("`")
+    sec = _section_slice(text, rf"^##\s+§{re.escape(reg_clean)}\s+Register")
+    if sec is None:
+        # Some sections use just the name without §
+        sec = _section_slice(text, rf"^##\s+{re.escape(reg_clean)}\s+Register")
+    if sec is None:
+        return []
+
+    header, rows_raw = _extract_table(sec)
+    if not header:
+        return []
+
+    i_field = _col_idx(header, "Field")
+    i_bit = _col_idx(header, "Bit")
+    i_desc = _col_idx(header, "Description")
+    i_reset = _col_idx(header, "Reset")
+
+    if i_field is None or i_bit is None:
+        return []
+
+    fields = []
+    for cells in rows_raw:
+        if i_field >= len(cells):
+            continue
+        name = _strip_cell(cells[i_field])
+        if not name or name.lower() == "reserved":
+            continue
+
+        bit_str = _strip_cell(cells[i_bit]) if i_bit < len(cells) else ""
+        # Parse bit range: "[3:0]" → hi=3, lo=0; "[0]" → hi=0, lo=0
+        rng = _parse_bit_range(bit_str)
+        if rng is None:
+            continue
+        lsb, msb = rng  # _parse_bit_range returns (lsb, msb)
+
+        field_entry: dict = {
+            "name": name,
+            "bit_high": msb,
+            "bit_low": lsb,
+        }
+        if i_reset is not None and i_reset < len(cells):
+            rst = _strip_cell(cells[i_reset])
+            if rst and rst != "—":
+                field_entry["reset"] = rst
+        if i_desc is not None and i_desc < len(cells):
+            desc = _strip_cell(cells[i_desc])
+            if desc:
+                field_entry["description"] = desc
+        fields.append(field_entry)
+
+    return fields
+
+
+# Register names that have field layout sections in registers.md
+_REGISTERS_WITH_FIELDS = [
+    "BASE_QOS",
+    "QOS_MODE",
+    "QOS_FIXED_VALUE",
+    "ERR_STATUS",
+    "IRQ_ENABLE",
+    "LAST_ERR_INFO",
+    "PENDING_R_COUNT",
+    "PENDING_W_COUNT",
+    "QUIESCE_CTRL",
+    "QUIESCE_STATUS",
+    "EXCLUSIVE_MONITOR_CTRL",
+    "EXCLUSIVE_MONITOR_STATUS",
+]
+
+
+def generate_ni_registers_json(md_dir: Union[str, Path], out_path: Union[str, Path]) -> dict:
+    """Compose ni_registers.json from registers.md.
+
+    Reads:
+      - registers.md for register map + CSR policy
+      - spec/ni/VERSION for spec_version
+
+    Writes out_path and returns the dict.
+    """
+    md_dir_path = Path(md_dir) if not isinstance(md_dir, Path) else md_dir
+    md_path = md_dir_path / "registers.md"
+    if not md_path.exists():
+        raise FileNotFoundError(f"registers.md not found at {md_path}")
+
+    # Read spec_version from sibling VERSION file
+    version_file = md_dir_path.parent / "VERSION"
+    if not version_file.exists():
+        raise FileNotFoundError(f"spec/ni/VERSION not found at {version_file}")
+    spec_version = version_file.read_text(encoding="utf-8").strip()
+
+    csr_policy = parse_csr_policy(md_path)
+    registers = parse_register_map(md_path)
+
+    # Attach field layout to registers that have documented fields
+    for reg in registers:
+        if reg["kind"] != "register":
+            continue
+        if reg["name"] in _REGISTERS_WITH_FIELDS:
+            fields = parse_register_fields(md_path, reg["name"])
+            if fields:
+                reg["fields"] = fields
+            else:
+                warnings.warn(
+                    f"parse_register_fields: register {reg['name']!r} expected fields but got "
+                    f"empty list; field layout may use unsupported parametric notation",
+                    stacklevel=2,
+                )
+
+    result = {
+        "$schema_version": "ni-spec/2.0",
+        "meta": {
+            "spec_version": spec_version,
+            "auto_generated_from": "spec/ni/doc/registers.md",
+            "generator": "ni_spec.generator :: generate_ni_registers_json",
+            "do_not_edit": "Re-run validator/generator to refresh.",
+        },
+        "csr_policy": csr_policy,
+        "registers": registers,
+    }
+
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return result

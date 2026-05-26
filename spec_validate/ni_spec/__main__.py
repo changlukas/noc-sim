@@ -12,10 +12,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from .generator import write_generated_json, write_generated_signals_json
+from .generator import write_generated_json, write_generated_signals_json, generate_ni_registers_json
 from .loader import load_doc
-from .invariants import (check_schema, check_flit_arithmetic,
-                         check_signals_reset_domains, check_signals_pin_uniqueness)
+from .invariants import (Issue,
+                         check_schema, check_flit_arithmetic,
+                         check_signals_reset_domains, check_signals_pin_uniqueness,
+                         check_csr_offset_alignment, check_csr_offset_unique,
+                         check_field_bit_tiling, check_reset_in_data_width)
 from .report import print_report
 
 for _s in (sys.stdout, sys.stderr):
@@ -31,6 +34,9 @@ PACKET_SCHEMA = GENERATED_DIR / "ni_packet.schema.json"
 
 SIGNALS_JSON = GENERATED_DIR / "ni_signals.json"
 SIGNALS_SCHEMA = GENERATED_DIR / "ni_signals.schema.json"
+
+REGISTERS_JSON = GENERATED_DIR / "ni_registers.json"
+REGISTERS_SCHEMA = GENERATED_DIR / "ni_registers.schema.json"
 
 
 def main() -> int:
@@ -57,7 +63,14 @@ def main() -> int:
         print(f"[FATAL] signals generator: {e}", file=sys.stderr)
         return 2
 
-    # Step 3-4: validate each
+    # Step 3: generate registers JSON
+    try:
+        registers = generate_ni_registers_json(md_dir, REGISTERS_JSON)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"[FATAL] registers generator: {e}", file=sys.stderr)
+        return 2
+
+    # Step 4: validate each
     issues = []
 
     packet_schema = load_doc(PACKET_SCHEMA) if PACKET_SCHEMA.exists() else None
@@ -67,7 +80,6 @@ def main() -> int:
     signals_schema = load_doc(SIGNALS_SCHEMA) if SIGNALS_SCHEMA.exists() else None
     # Layer 1 for signals schema
     if signals_schema is not None:
-        from .invariants import Issue
         import jsonschema
         validator = jsonschema.Draft202012Validator(signals_schema)
         for e in sorted(validator.iter_errors(signals), key=lambda e: list(e.absolute_path)):
@@ -78,19 +90,38 @@ def main() -> int:
     issues += check_signals_reset_domains(signals)
     issues += check_signals_pin_uniqueness(signals)
 
-    has_l1_err = any(i.check in ("L1-SCHEMA", "L1-SIG-SCHEMA") and i.severity == "ERROR" for i in issues)
+    # Layer 1 for registers schema
+    regs_schema = load_doc(REGISTERS_SCHEMA) if REGISTERS_SCHEMA.exists() else None
+    if regs_schema is not None:
+        import jsonschema
+        for e in sorted(jsonschema.Draft202012Validator(regs_schema).iter_errors(registers),
+                        key=lambda e: list(e.absolute_path)):
+            loc = "/".join(str(p) for p in e.absolute_path) or "(root)"
+            issues.append(Issue("ERROR", "L1-REG-SCHEMA", f"{loc}: {e.message}"))
+
+    # Layer 2 for registers
+    issues += check_csr_offset_alignment(registers)
+    issues += check_csr_offset_unique(registers)
+    issues += check_field_bit_tiling(registers)
+    issues += check_reset_in_data_width(registers)
+
+    has_l1_err = any(i.check in ("L1-SCHEMA", "L1-SIG-SCHEMA", "L1-REG-SCHEMA") and i.severity == "ERROR" for i in issues)
     has_l1_skip = (signals_schema is None or
                    any(i.check == "L1-SCHEMA" and i.severity == "WARN" for i in issues))
+    has_l1_reg_skip = regs_schema is None
     has_l2_packet_err = any(i.check == "L2-FLIT" and i.severity == "ERROR" for i in issues)
     has_l2_sig_err = any(i.check.startswith("L2-SIG") and i.severity == "ERROR" for i in issues)
+    has_l2_reg_err = any(i.check.startswith("L2-REG") and i.severity == "ERROR" for i in issues)
 
     layers = {
-        "Generator (MD -> JSON)":        "OK (ni_packet.json + ni_signals.json)",
-        "Layer 1 (JSON Schema, both)":   "SKIPPED" if has_l1_skip else ("FAIL" if has_l1_err else "PASS"),
-        "Layer 2 (packet arithmetic)":   "FAIL" if has_l2_packet_err else "PASS",
-        "Layer 2 (signals reset)":       "FAIL" if has_l2_sig_err else "PASS",
+        "Generator (MD -> JSON)":            "OK (ni_packet.json + ni_signals.json + ni_registers.json)",
+        "Layer 1 (JSON Schema, packet+sig)": "SKIPPED" if has_l1_skip else ("FAIL" if has_l1_err else "PASS"),
+        "Layer 1 (registers)":               "SKIPPED" if has_l1_reg_skip else ("FAIL" if any(i.check == "L1-REG-SCHEMA" and i.severity == "ERROR" for i in issues) else "PASS"),
+        "Layer 2 (packet arithmetic)":       "FAIL" if has_l2_packet_err else "PASS",
+        "Layer 2 (signals reset)":           "FAIL" if has_l2_sig_err else "PASS",
+        "Layer 2 (registers)":               "FAIL" if has_l2_reg_err else "PASS",
     }
-    return print_report(issues, target_name="ni_packet.json + ni_signals.json",
+    return print_report(issues, target_name="ni_packet.json + ni_signals.json + ni_registers.json",
                         show_layers=layers)
 
 

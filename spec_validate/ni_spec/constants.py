@@ -116,18 +116,30 @@ def signals_signal_by_pin(signals_spec, pin_name: str) -> dict:
 # ---------- registers domain (Task 4 will implement) ----------
 
 def regs_offsets(regs_spec) -> dict:
-    """Return {register_name: offset_int}."""
-    raise NotImplementedError("Task 4")
+    """Return {register_name: offset_int} for kind=register entries."""
+    return {r["name"]: int(r["offset"], 16)
+            for r in regs_spec.get("registers", [])
+            if r.get("kind") == "register"}
 
 
 def regs_field_mask(regs_spec, reg_name: str, field_name: str) -> int:
-    """Return bit mask for a specific field within a register."""
-    raise NotImplementedError("Task 4")
+    """Return bit mask for a register field. Raises KeyError if not found."""
+    for r in regs_spec.get("registers", []):
+        if r.get("name") != reg_name:
+            continue
+        for f in r.get("fields", []):
+            if f.get("name") == field_name:
+                hi, lo = int(f["bit_high"]), int(f["bit_low"])
+                return ((1 << (hi - lo + 1)) - 1) << lo
+    raise KeyError(f"{reg_name}.{field_name}")
 
 
 def regs_access_mode(regs_spec, reg_name: str) -> str:
-    """Return access mode (RO/RW/RW1C/WO/WC) for a register."""
-    raise NotImplementedError("Task 4")
+    """Return access mode (RO/RW/RW1C/WO/WC) for a register. Raises KeyError if not found."""
+    for r in regs_spec.get("registers", []):
+        if r.get("name") == reg_name:
+            return r.get("access")
+    raise KeyError(reg_name)
 
 
 # ---------- function blocks domain (Task 5 will implement) ----------
