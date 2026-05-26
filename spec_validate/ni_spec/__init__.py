@@ -5,7 +5,7 @@ APIs. Spec-derived constants live in `ni_spec.constants`; runtime invariants
 in `ni_spec.invariants` double as the C-model packer's assertions.
 """
 
-from .loader import load_doc, load_spec_bundle, SpecBundle
+from .loader import load_doc, load_spec_bundle, load_spec_version, SpecBundle
 from .invariants import (
     Issue,
     check_schema,
@@ -26,6 +26,7 @@ from . import constants
 __all__ = [
     "load_doc",
     "load_spec_bundle",
+    "load_spec_version",
     "SpecBundle",
     "Issue",
     "check_schema",

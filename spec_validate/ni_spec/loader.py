@@ -63,7 +63,6 @@ def load_spec_version() -> str:
     Looks for the file relative to the spec_validate parent directory:
         noc-sim/spec/ni/VERSION  (one-line semver, no trailing newline content).
     """
-    from pathlib import Path
     spec_validate_root = Path(__file__).resolve().parent.parent
     version_file = spec_validate_root.parent / "spec" / "ni" / "VERSION"
     if not version_file.exists():
