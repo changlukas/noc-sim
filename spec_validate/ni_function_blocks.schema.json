@@ -9,10 +9,15 @@
     "meta": {
       "type": "object",
       "required": ["spec_version", "source_format"],
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "spec_version": {"type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$"},
-        "source_format": {"type": "string"}
+        "source_format": {"type": "string"},
+        "auto_generated_from": {"type": ["string", "null"]},
+        "authored_from": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
       }
     },
     "blocks": {
@@ -37,15 +42,16 @@
                 "summary": {"type": "string", "maxLength": 200},
                 "modes": {
                   "type": "array",
+                  "uniqueItems": true,
                   "items": {"type": "string", "pattern": "^[A-Z][A-Za-z0-9_]*$"}
                 },
                 "compile_time_params": {
                   "type": "object",
                   "additionalProperties": {"type": ["integer", "string"]}
                 },
-                "uses_packet_fields": {"type": "array", "items": {"type": "string"}},
-                "configured_by": {"type": "array", "items": {"type": "string"}},
-                "related_features": {"type": "array", "items": {"type": "string"}},
+                "uses_packet_fields": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+                "configured_by": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+                "related_features": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
                 "source_doc": {"type": "string"}
               }
             }

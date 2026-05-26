@@ -104,7 +104,7 @@
           },
           "uses_packet_fields": ["vc_id", "noc_qos", "last"],
           "configured_by": [],
-          "related_features": ["FEAT-NMU-QOS_GEN"],
+          "related_features": ["FEAT-NMU-QOS_GEN", "FEAT-NSU-VC_DEMUX"],
           "source_doc": "spec/ni/doc/theory_of_operation.md §VC Mapping"
         },
         {
@@ -216,7 +216,7 @@
           },
           "uses_packet_fields": ["AW", "W", "AR", "B", "R"],
           "configured_by": [],
-          "related_features": ["FEAT-NSU-META_BUFFER", "FEAT-NSU-EXCLUSIVE_MON"],
+          "related_features": ["FEAT-NSU-META_BUFFER", "FEAT-NSU-EXCLUSIVE_MON", "FEAT-NSU-R_BUFFER"],
           "source_doc": "spec/ni/doc/theory_of_operation.md §Driver"
         },
         {

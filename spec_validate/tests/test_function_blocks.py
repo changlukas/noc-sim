@@ -95,3 +95,17 @@ def test_constants_blocks_compile_time_params():
     # Don't hard-code keys; just ensure structure correct
     for k, v in params.items():
         assert isinstance(k, str)
+
+
+def test_constants_blocks_modes_of():
+    """blocks_modes_of returns (feature_id, mode) tuples for a given block."""
+    fb = loader.load_doc(FB_JSON)
+    nmu_modes = constants.blocks_modes_of(fb, "NMU")
+    assert isinstance(nmu_modes, list)
+    # Find ROB modes — they should appear in the list
+    rob_modes = [m for fid, m in nmu_modes if fid == "FEAT-NMU-ROB"]
+    assert set(rob_modes) >= {"NoRoB", "SimpleRoB", "NormalRoB"}, \
+        f"ROB modes incomplete: {rob_modes}"
+    # NSU should also work
+    nsu_modes = constants.blocks_modes_of(fb, "NSU")
+    assert isinstance(nsu_modes, list)
