@@ -549,16 +549,36 @@ _AXI_PORT_PARAMS = ["ENABLE_AXI_PARITY"]
 
 
 def _build_noc_signals(interface_name: str, ns: Dict[str, dict]) -> List[dict]:
-    """組 NoC link interface 的 signals list。"""
+    """組 NoC link interface 的 signals list。
+
+    pin_name 在 write_generated_signals_json 後處理時填入（透過 _derive_pin_name）。
+    width_param: "1" 是 literal width，不是 parameter name → 轉為 None。
+    """
     sigs = _NOC_INTERFACE_SIGNALS.get(interface_name, [])
     out = []
-    for name, width_param, direction in sigs:
-        entry = {"name": name, "width_param": width_param, "direction": direction}
-        # Resolve default: literal int 或 lookup param
+    for sig_name, raw_width_param, direction in sigs:
+        # Determine whether raw_width_param is a real parameter reference or a literal.
+        # Numeric strings (e.g. "1") are literal widths — width_param should be null.
         try:
-            entry["default"] = str(int(width_param))
+            literal_width = str(int(raw_width_param))
+            width_param_val = None  # literal — no parameter name to reference
         except ValueError:
-            p = ns.get(width_param)
+            literal_width = None
+            width_param_val = raw_width_param
+
+        entry = {
+            "width_param": width_param_val,
+            "direction": direction,
+        }
+        # _sig_name is a build-time helper consumed by _derive_pin_name for NoC signals;
+        # it mirrors the logical signal name (e.g. "req_valid_o") used to form noc_<name>.
+        entry["_sig_name"] = sig_name
+
+        # Resolve default: literal int if width_param was numeric; else lookup param table
+        if literal_width is not None:
+            entry["default"] = literal_width
+        else:
+            p = ns.get(raw_width_param)
             if p and "default" in p:
                 entry["default"] = p["default"]
         out.append(entry)
@@ -584,6 +604,13 @@ _FLOW_CTRL_MAP: Dict[str, str] = {
     "ready/valid":             "valid-ready",
     "per-VC credit return":    "credit",
     "per-VC credit":           "credit",
+}
+
+# Protocol normalization: MD prose → clean identifier (matches AXI4 style).
+# AXI protocol values ("AXI4", "AXI4-Lite") are already clean — no mapping needed.
+_PROTOCOL_MAP: Dict[str, str] = {
+    "NoC request flit link":  "NoC",
+    "NoC response flit link": "NoC",
 }
 
 # Description for each interface (prose previously split across name/peer fields).
@@ -727,7 +754,8 @@ def parse_top_level_interfaces(md_text: str) -> List[dict]:
                 if i_dir is not None and i_dir < len(clean):
                     entry["direction"] = clean[i_dir]
                 if i_proto is not None and i_proto < len(clean):
-                    entry["protocol"] = clean[i_proto]
+                    raw_proto = clean[i_proto]
+                    entry["protocol"] = _PROTOCOL_MAP.get(raw_proto, raw_proto)
                 if clock_val is not None:
                     entry["clock"] = clock_val
                 if reset_val is not None:
@@ -780,12 +808,12 @@ def generate_ni_signals_json(md_dir: Union[str, Path]) -> dict:
             iface["signals"] = _build_noc_signals(iface["name"], ns)
             param_names = _INTERFACE_PARAMS.get(iface["name"], [])
             if param_names:
-                iface["parameters"] = _select_params(ns, param_names)
+                iface["port_parameters"] = _select_params(ns, param_names)
         else:
-            # CSR / 其他: 簡單 parameters list
+            # CSR / 其他: 簡單 port_parameters list
             param_names = _INTERFACE_PARAMS.get(iface["name"], [])
             if param_names:
-                iface["parameters"] = _select_params(ns, param_names)
+                iface["port_parameters"] = _select_params(ns, param_names)
 
     return {
         "$schema_version": "ni-spec/2.0",
@@ -825,6 +853,7 @@ def write_generated_signals_json(md_dir: Union[str, Path], out_path: Union[str, 
             sig["reset_behavior"] = reset_map.get(pin_name) or _default_reset_for(sig, iface, pin_name)
             sig.setdefault("presence", None)
             sig.setdefault("width_expr", None)
+            sig.pop("_sig_name", None)  # build-time helper; not part of schema
 
     # Extract and inject meta.reset_signals
     reset_signals = extract_reset_signals(md_dir_path / "pin_level_reset.md")
@@ -920,9 +949,9 @@ def _derive_pin_name(iface: dict, ch: Optional[dict], sig: dict) -> str:
     """
     iface_name = iface.get("name", "")
 
-    # --- NoC interfaces: prepend noc_ to the signal name field ---
+    # --- NoC interfaces: prepend noc_ to the build-time signal name helper ---
     if iface_name in _NOC_INTERFACE_SIGNALS:
-        sig_name = sig.get("name", "")
+        sig_name = sig.get("_sig_name", "")
         return f"noc_{sig_name}"
 
     # --- CSR (AXI4-Lite) or AXI port ---

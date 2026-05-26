@@ -443,14 +443,13 @@
       "description": "NoC request flit link out to router local input",
       "block": "NMU",
       "direction": "out",
-      "protocol": "NoC request flit link",
+      "protocol": "NoC",
       "clock": "noc_clk_i",
       "reset": "noc_rst_ni",
       "flow_control": "credit",
       "signals": [
         {
-          "name": "req_valid_o",
-          "width_param": "1",
+          "width_param": null,
           "direction": "output",
           "default": "1",
           "pin_name": "noc_req_valid_o",
@@ -463,7 +462,6 @@
           "width_expr": null
         },
         {
-          "name": "req_flit_o",
           "width_param": "FLIT_WIDTH",
           "direction": "output",
           "default": "406",
@@ -477,7 +475,6 @@
           "width_expr": null
         },
         {
-          "name": "req_credit_i",
           "width_param": "NUM_VC",
           "direction": "input",
           "default": "1",
@@ -489,8 +486,7 @@
           "width_expr": null
         },
         {
-          "name": "req_credit_init_ready_o",
-          "width_param": "1",
+          "width_param": null,
           "direction": "output",
           "default": "1",
           "pin_name": "noc_req_credit_init_ready_o",
@@ -503,8 +499,7 @@
           "width_expr": null
         },
         {
-          "name": "req_credit_init_ready_i",
-          "width_param": "1",
+          "width_param": null,
           "direction": "input",
           "default": "1",
           "pin_name": "noc_req_credit_init_ready_i",
@@ -515,7 +510,7 @@
           "width_expr": null
         }
       ],
-      "parameters": [
+      "port_parameters": [
         {
           "name": "NUM_VC",
           "type": "int",
@@ -535,14 +530,13 @@
       "description": "NoC response flit link in from router local output",
       "block": "NMU",
       "direction": "in",
-      "protocol": "NoC response flit link",
+      "protocol": "NoC",
       "clock": "noc_clk_i",
       "reset": "noc_rst_ni",
       "flow_control": "credit",
       "signals": [
         {
-          "name": "rsp_valid_i",
-          "width_param": "1",
+          "width_param": null,
           "direction": "input",
           "default": "1",
           "pin_name": "noc_rsp_valid_i",
@@ -553,7 +547,6 @@
           "width_expr": null
         },
         {
-          "name": "rsp_flit_i",
           "width_param": "FLIT_WIDTH",
           "direction": "input",
           "default": "406",
@@ -565,7 +558,6 @@
           "width_expr": null
         },
         {
-          "name": "rsp_credit_o",
           "width_param": "NUM_VC",
           "direction": "output",
           "default": "1",
@@ -579,7 +571,7 @@
           "width_expr": null
         }
       ],
-      "parameters": [
+      "port_parameters": [
         {
           "name": "NUM_VC",
           "type": "int",
@@ -1010,14 +1002,13 @@
       "description": "NoC request flit link in from router local output",
       "block": "NSU",
       "direction": "in",
-      "protocol": "NoC request flit link",
+      "protocol": "NoC",
       "clock": "noc_clk_i",
       "reset": "noc_rst_ni",
       "flow_control": "credit",
       "signals": [
         {
-          "name": "req_valid_i",
-          "width_param": "1",
+          "width_param": null,
           "direction": "input",
           "default": "1",
           "pin_name": "noc_req_valid_i",
@@ -1028,7 +1019,6 @@
           "width_expr": null
         },
         {
-          "name": "req_flit_i",
           "width_param": "FLIT_WIDTH",
           "direction": "input",
           "default": "406",
@@ -1040,7 +1030,6 @@
           "width_expr": null
         },
         {
-          "name": "req_credit_o",
           "width_param": "NUM_VC",
           "direction": "output",
           "default": "1",
@@ -1054,7 +1043,7 @@
           "width_expr": null
         }
       ],
-      "parameters": [
+      "port_parameters": [
         {
           "name": "NUM_VC",
           "type": "int",
@@ -1521,14 +1510,13 @@
       "description": "NoC response flit link out to router local input",
       "block": "NSU",
       "direction": "out",
-      "protocol": "NoC response flit link",
+      "protocol": "NoC",
       "clock": "noc_clk_i",
       "reset": "noc_rst_ni",
       "flow_control": "credit",
       "signals": [
         {
-          "name": "rsp_valid_o",
-          "width_param": "1",
+          "width_param": null,
           "direction": "output",
           "default": "1",
           "pin_name": "noc_rsp_valid_o",
@@ -1541,7 +1529,6 @@
           "width_expr": null
         },
         {
-          "name": "rsp_flit_o",
           "width_param": "FLIT_WIDTH",
           "direction": "output",
           "default": "406",
@@ -1555,7 +1542,6 @@
           "width_expr": null
         },
         {
-          "name": "rsp_credit_i",
           "width_param": "NUM_VC",
           "direction": "input",
           "default": "1",
@@ -1567,8 +1553,7 @@
           "width_expr": null
         },
         {
-          "name": "rsp_credit_init_ready_o",
-          "width_param": "1",
+          "width_param": null,
           "direction": "output",
           "default": "1",
           "pin_name": "noc_rsp_credit_init_ready_o",
@@ -1581,8 +1566,7 @@
           "width_expr": null
         },
         {
-          "name": "rsp_credit_init_ready_i",
-          "width_param": "1",
+          "width_param": null,
           "direction": "input",
           "default": "1",
           "pin_name": "noc_rsp_credit_init_ready_i",
@@ -1593,7 +1577,7 @@
           "width_expr": null
         }
       ],
-      "parameters": [
+      "port_parameters": [
         {
           "name": "NUM_VC",
           "type": "int",

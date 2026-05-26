@@ -20,12 +20,11 @@
     },
     "signal": {
       "type": "object",
-      "description": "Signal entry. AXI channel signals: no 'name' field; identifier is pin_name. NoC signals: 'name' carries the logical name (e.g. req_valid_o) used to derive pin_name.",
+      "description": "Signal entry. Identifier is always pin_name. AXI channel signals use pin_name derived from channel+suffix. NoC signals use pin_name derived from noc_<logical_name>.",
       "required": ["width_param", "pin_name"],
       "additionalProperties": false,
       "properties": {
-        "name":        {"type": "string", "description": "NoC signals only — logical signal name used to derive pin_name via noc_ prefix"},
-        "width_param": {"type": "string"},
+        "width_param": {"type": ["string", "null"], "description": "Parameter name that controls this signal's width. Null for fixed 1-bit signals (no parameter reference)."},
         "direction":   {"enum": ["input", "output"]},
         "default":     {"type": "string"},
         "pin_name": {
@@ -126,10 +125,6 @@
             "items": {"$ref": "#/$defs/signal"}
           },
           "port_parameters": {
-            "type": "array",
-            "items": {"$ref": "#/$defs/param"}
-          },
-          "parameters": {
             "type": "array",
             "items": {"$ref": "#/$defs/param"}
           }
