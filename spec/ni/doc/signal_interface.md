@@ -68,7 +68,7 @@ The Wire table excludes the protocol clocks and resets (listed in §Protocol clo
 | `axi_awlock_i` | input | 1 | — | pos aclk | §AXI in AW row 8 | yes | yes | AXI4 Exclusive access indicator (`AxLOCK=Exclusive` in AXI4 spec). Routed to NSU Exclusive Monitor (see ToO §NSU Exclusive Monitor). |
 | `axi_awcache_i` | input | 4 | — | pos aclk | §AXI in AW row 9 | yes | yes | Cache attributes; recorded but not enforced by NMU |
 | `axi_awprot_i` | input | 3 | — | pos aclk | §AXI in AW row 10 | no | yes | Protection attributes; recorded but not enforced |
-| `axi_awqos_i` | input | 4 | — | pos aclk | §AXI in AW row 11 | yes | yes | QoS hint; consumed by QoSGen in Bypass mode |
+| `axi_awqos_i` | input | 4 | — | pos aclk | §AXI in AW row 11 | yes | yes | AXI4 QoS hint; packed into AW payload and forwarded to destination slave as-is |
 | `axi_awregion_i` | input | 4 | — | pos aclk | §AXI in AW row 12 | yes | yes | AXI4 region identifier; sampled and forwarded to flit header. Most masters tie 0. |
 | `axi_awuser_i` | input | USER_WIDTH | — | pos aclk | §AXI in AW row 13 | yes | yes | User signal; passed through to flit user payload |
 | `axi_awatop_i` | input | 6 | — | pos aclk | §AXI in AW row 14 | yes | yes (sample-only) | AXI5 atomic operation code; sampled and recorded by monitor only — BFM terminates ATOPs with `bresp=SLVERR` per ToO §ATOPs scope (out-of-scope for stimulus generation in this revision) |
@@ -142,7 +142,7 @@ The master port mirrors the slave port but with all directions reversed. Field s
 | `axi_awlock_o` | output | 1 | §AXI out AW row 8 | Forwarded from request flit AW payload `awlock` field |
 | `axi_awcache_o` | output | 4 | §AXI out AW row 9 |  |
 | `axi_awprot_o` | output | 3 | §AXI out AW row 10 |  |
-| `axi_awqos_o` | output | 4 | §AXI out AW row 11 | Forwarded from inbound flit qos field |
+| `axi_awqos_o` | output | 4 | §AXI out AW row 11 | Forwarded from inbound flit AW payload `awqos` field |
 | `axi_awregion_o` | output | 4 | §AXI out AW row 12 | Forwarded from request flit AW payload `awregion` field |
 | `axi_awuser_o` | output | USER_WIDTH | §AXI out AW row 13 |  |
 
@@ -154,7 +154,7 @@ For brevity the wire-level expansion follows the slave port exactly (same fields
 
 ### NoC Request link
 
-Single shared data link per direction. One flit slot per cycle. The `vc_id` field of the flit header (see `packet_format.md` §1.2 Group 2) identifies the owning VC. Per-cycle backpressure is governed by credits, not by a `ready` handshake — see §"NoC credit signals". NMU at injection side maps each flit onto a VC per `theory_of_operation.md` §"VC Mapping" (Hybrid R/W × QoS policy, fixed at design time).
+Single shared data link per direction. One flit slot per cycle. The `vc_id` field of the flit header (see `packet_format.md` §1.2 Group 2) identifies the owning VC. Per-cycle backpressure is governed by credits, not by a `ready` handshake — see §"NoC credit signals". NMU at injection side maps each flit onto a VC per `theory_of_operation.md` §"VC Mapping" (VC selection policy: currently coarse req-vs-rsp split; round-robin arbitration across populated VCs at egress).
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Optional | BFM supports | Notes |
 |--------|-----------|-------|--------|-------------|-------------|----------|--------------|-------|
@@ -320,20 +320,19 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `XY_ADDR_OFFSET_X` | int | 32 | 0 ≤ x ≤ ADDR_WIDTH-X_WIDTH | X coordinate bit offset in AXI address |
 | `XY_ADDR_OFFSET_Y` | int | 36 | 0 ≤ x ≤ ADDR_WIDTH-Y_WIDTH | Y coordinate bit offset |
 | `NUM_SAM_RULES` | int | 0 | 0 ≤ x ≤ 64 | SAM rules count when USE_ID_TABLE=1 |
-| `FLIT_WIDTH` | derived | 406 | derived = HEADER_WIDTH + PAYLOAD_WIDTH | Flit total width (header + payload). v0.4.0 default 406. v0.3.0 was 400. |
-| `HEADER_WIDTH` | derived | 54 | derived = Σ(all header field params) | Flit header width. v0.4.0 default 54. v0.3.0 was 48. Header grew net +6 bits in v0.4.0: added `route_par` (1 bit) + `flit_ecc` (10 bit). Recovered 3 bits from v0.3.0 MSB `rsvd` (which was always 0 in CB mode after `vc_id`) and 2 bits from the `port_id` slot (removed in A4.5 single-chimney-per-tile alignment). |
+| `FLIT_WIDTH` | derived | 402 | derived = HEADER_WIDTH + PAYLOAD_WIDTH | Flit total width (header + payload). post-QoS-removal default 402 (was 406 in v0.4.0 original; `NOC_QOS_WIDTH` 4→0 reduced header by 4). v0.3.0 was 400. |
+| `HEADER_WIDTH` | derived | 50 | derived = Σ(all header field params) | Flit header width. post-QoS-removal default 50 (was 54 in v0.4.0 original; `NOC_QOS_WIDTH` changed to 0). v0.3.0 was 48. |
 | `PAYLOAD_WIDTH` | derived | 352 | derived = max(per-channel payload widths) | Per-channel payload max (W/R = 352, AW/AR = 108, B = 64). v0.3.0 `wecc/recc` removed. Equivalent bits become `*_rsvd` future-extension. |
 | `FLIT_ECC_WIDTH` | int | 10 | satisfy `2^(x-1) ≥ FLIT_DATA_WIDTH + x + 1` SECDED bit-count bound (conservative form, +1 margin over canonical `≥ k+p`; bound is matrix-variant-agnostic — applies to Hsiao SECDED used here per ToO §ECC) | Whole-flit SECDED syndrome width. Default 10 covers FLIT_DATA_WIDTH up to 501 (`2^9=512 ≥ 501+10+1=512`). Integrator must bump to 11 when FLIT_DATA_WIDTH ≥ 502. |
 | `ROUTE_PAR_WIDTH` | int | 1 | fixed = 1 | Routing parity width. Always 1-bit even parity over `{dst_id, last}` (9 bits coverage at default). Aligned with AMD pg313 §Parity: NPP packet (DST ID + LAST) protected by 1-bit even parity. |
 | `X_WIDTH` | int | 4 | 2 ≤ x ≤ 8 | Mesh X coordinate width |
 | `Y_WIDTH` | int | 4 | 2 ≤ x ≤ 8 | Mesh Y coordinate width |
-| `BW_COUNTER_WIDTH` | int | 24 | 16 ≤ x ≤ 32 | QoS bandwidth counter width |
-| `URGENCY_WIDTH` | int | 3 | 2 ≤ x ≤ 4 | Regulator urgency level width |
+| `URGENCY_WIDTH` | int | 3 | 2 ≤ x ≤ 4 | Regulator urgency level width (retained for potential future use) |
 | `ERR_COUNTER_WIDTH` | int | 16 | 8 ≤ x ≤ 32 | Error counter width |
 | `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | array length = `NUM_SAM_RULES` | SAM rule table. **Compile-time parameter, not a port** — aligns with FlooNoC `floo_axi_chimney.sv` `Sam` parameter. All NIs share the same content. Each `sam_rule_t` carries `{match, mask, dst_id}`. Used when `USE_ID_TABLE=1` (`SourceRouting`/`IDRouting`). Runtime modification is **out of scope for v0.4.0** — no `SAM_RULE_*` CSR exists; to change the table, re-elaborate the design |
 | `MESH_COLS` | int | 4 | 1 ≤ x ≤ 2^X_WIDTH | Mesh column count; bounds `dst_id.x` for `NOC_FLIT_HDR_DST_ID_VALID` |
 | `MESH_ROWS` | int | 4 | 1 ≤ x ≤ 2^Y_WIDTH | Mesh row count; bounds `dst_id.y` |
-| `NUM_VC` | int | 1 | 1 ≤ x ≤ 8; when x > 1, both `R_ROB_TYPE` and `B_ROB_TYPE` MUST be != `NoRoB` (see `theory_of_operation.md` §RoB allocator §"NoRoB single-VC restriction") | Number of virtual channels per NoC link. Upper bound 8 matches `VC_ID_WIDTH = 3` in flit header (see `packet_format.md` §1.2 Group 2). Forward data link is shared (single 1-bit `valid` + 1× FLIT_WIDTH `flit`). Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`). `NUM_VC=1` (default) collapses to single-VC operation. `NUM_VC > 1` adds VC mapping at NMU per `theory_of_operation.md` §"VC Mapping" (Hybrid R/W × QoS policy at flit-construct time) and cycle-level VC arbitration at the network switch per `06_qos.md §5` (NPS scope, out of NI). Deadlock-free routing across VCs is the integrator's responsibility. |
+| `NUM_VC` | int | 1 | 1 ≤ x ≤ 8; when x > 1, both `R_ROB_TYPE` and `B_ROB_TYPE` MUST be != `NoRoB` (see `theory_of_operation.md` §RoB allocator §"NoRoB single-VC restriction") | Number of virtual channels per NoC link. Upper bound 8 matches `VC_ID_WIDTH = 3` in flit header (see `packet_format.md` §1.2 Group 2). Forward data link is shared (single 1-bit `valid` + 1× FLIT_WIDTH `flit`). Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`). `NUM_VC=1` (default) collapses to single-VC operation. `NUM_VC > 1` adds VC mapping at NMU per `theory_of_operation.md` §"VC Mapping" (design-time fixed VC selection) and cycle-level round-robin VC arbitration at NMU/NSU egress (see `packet_format.md` §VC Arbitration). Deadlock-free routing across VCs is the integrator's responsibility. |
 | `CDC_FIFO_DEPTH` | int | 16 | 4 ≤ x ≤ 64 (power-of-2 recommended) | Internal AXI ↔ NoC async-FIFO depth (gray-counter pointer + 2FF synchroniser). Sized to absorb `2 × max_round_trip_cycles × max(aclk_period, noc_clk_period) / min(aclk_period, noc_clk_period) + 2`; default 16 is conservative for ratio range [0.1, 10]. |
 | `MAX_OUTSTANDING` | int | 8 | 1 ≤ x ≤ MAX_TXNS | Test-author-configurable (BFM knob via `transaction_api.md`) or compile-time parameter (RTL); **not CSR-accessible** (no `MAX_OUTSTANDING` CSR exists in `registers.md`). Caps concurrent outstanding transactions below the `MAX_TXNS` hardware ceiling for stress-testing scenarios. Default 8 when set as compile-time parameter. |
 | `MAX_BURST_LEN` | int | 16 | 1 ≤ x ≤ 256 | BFM W-reassembly buffer-depth limit — a capacity bound, **not** an AXI4 legality check (`awlen` up to 255 is legal AXI4). A burst with `len + 1 > MAX_BURST_LEN` exceeds the configured buffer (raise the parameter). The BFM returns `BURST_LEN_EXCEEDS_MAX`. See `transaction_api.md`. |
@@ -349,7 +348,7 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 
 ## Optional features in / out of scope
 
-- **Supported**: AXI4 full (AW/W/AR/B/R with bursts up to AWLEN=255 / ARLEN=255; multiple outstanding via RoB), end-to-end SECDED ECC on W and R data, RoB modes (Normal / Simple / NoRoB) per-channel, QoS Generator with 4 modes, Performance Probes (Packet / Transaction), runtime CSR-driven configuration, dual-clock-domain operation with internal CDC.
+- **Supported**: AXI4 full (AW/W/AR/B/R with bursts up to AWLEN=255 / ARLEN=255; multiple outstanding via RoB), end-to-end SECDED ECC on W and R data, RoB modes (Normal / Simple / NoRoB) per-channel, Performance Probes (Packet / Transaction), runtime CSR-driven configuration, dual-clock-domain operation with internal CDC. VC egress arbitration is round-robin (no QoS-based arbitration in this version).
 - **AXI4 ATOPs / AXI5**: monitor-only — `axi_awatop_i` is sampled and recorded, ATOP transactions are terminated with `bresp=SLVERR` (per ToO §ATOPs scope). **Stimulus generation is out of scope**.
 - **Not supported**: Cache-coherent / CHI-derived features. Low-power AXI handshake (CACTIVE/CSYSREQ).
 

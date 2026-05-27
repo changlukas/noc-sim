@@ -40,14 +40,15 @@ def test_parse_register_map_count():
     regs = generator.parse_register_map(MD_DIR / "registers.md")
     normal = [r for r in regs if r["kind"] == "register"]
     reserved = [r for r in regs if r["kind"] == "reserved"]
-    # registers.md has 40 real registers + 1 reserved placeholder (0x110)
-    assert len(normal) == 40
+    # registers.md has 31 real registers (40 - 9 QoS Generator regs removed) + 1 reserved placeholder (0x110)
+    assert len(normal) == 31
     assert len(reserved) == 1
 
 
-def test_parse_register_fields_base_qos():
-    """BASE_QOS register must have at least BASE_QOS and URGENCY_STEP fields."""
-    fields = generator.parse_register_fields(MD_DIR / "registers.md", "BASE_QOS")
+def test_parse_register_fields_err_status():
+    """ERR_STATUS register must have ecc_uncorr_err, route_par_err, axi_parity_err fields."""
+    fields = generator.parse_register_fields(MD_DIR / "registers.md", "ERR_STATUS")
     field_names = [f["name"] for f in fields]
-    assert "BASE_QOS" in field_names
-    assert "URGENCY_STEP" in field_names
+    assert "ecc_uncorr_err" in field_names
+    assert "route_par_err" in field_names
+    assert "axi_parity_err" in field_names

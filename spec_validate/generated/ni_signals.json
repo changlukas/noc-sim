@@ -464,7 +464,7 @@
         {
           "width_param": "FLIT_WIDTH",
           "direction": "output",
-          "default": "406",
+          "default": "402",
           "pin_name": "noc_req_flit_o",
           "reset_behavior": {
             "kind": "async-active-low",
@@ -496,7 +496,7 @@
         {
           "name": "FLIT_WIDTH",
           "type": "derived",
-          "default": "406",
+          "default": "402",
           "constraint_text": "derived = HEADER_WIDTH + PAYLOAD_WIDTH"
         }
       ]
@@ -525,7 +525,7 @@
         {
           "width_param": "FLIT_WIDTH",
           "direction": "input",
-          "default": "406",
+          "default": "402",
           "pin_name": "noc_rsp_flit_i",
           "reset_behavior": {
             "kind": "external_driven"
@@ -557,7 +557,7 @@
         {
           "name": "FLIT_WIDTH",
           "type": "derived",
-          "default": "406",
+          "default": "402",
           "constraint_text": "derived = HEADER_WIDTH + PAYLOAD_WIDTH"
         }
       ]
@@ -997,7 +997,7 @@
         {
           "width_param": "FLIT_WIDTH",
           "direction": "input",
-          "default": "406",
+          "default": "402",
           "pin_name": "noc_req_flit_i",
           "reset_behavior": {
             "kind": "external_driven"
@@ -1029,7 +1029,7 @@
         {
           "name": "FLIT_WIDTH",
           "type": "derived",
-          "default": "406",
+          "default": "402",
           "constraint_text": "derived = HEADER_WIDTH + PAYLOAD_WIDTH"
         }
       ]
@@ -1507,7 +1507,7 @@
         {
           "width_param": "FLIT_WIDTH",
           "direction": "output",
-          "default": "406",
+          "default": "402",
           "pin_name": "noc_rsp_flit_o",
           "reset_behavior": {
             "kind": "async-active-low",
@@ -1539,7 +1539,7 @@
         {
           "name": "FLIT_WIDTH",
           "type": "derived",
-          "default": "406",
+          "default": "402",
           "constraint_text": "derived = HEADER_WIDTH + PAYLOAD_WIDTH"
         }
       ]

@@ -26,7 +26,7 @@
           },
           "uses_packet_fields": ["AW", "W", "AR", "B", "R"],
           "configured_by": [],
-          "related_features": ["FEAT-NMU-ROB", "FEAT-NMU-ADDR_TRANS", "FEAT-NMU-QOS_GEN"],
+          "related_features": ["FEAT-NMU-ROB", "FEAT-NMU-ADDR_TRANS", "FEAT-NMU-VC_ARB"],
           "source_doc": "spec/ni/doc/theory_of_operation.md §Driver"
         },
         {
@@ -47,22 +47,6 @@
           "configured_by": [],
           "related_features": ["FEAT-NMU-AXI_SLAVE_PORT"],
           "source_doc": "spec/ni/doc/theory_of_operation.md §AddrTrans"
-        },
-        {
-          "id": "FEAT-NMU-QOS_GEN",
-          "name": "QoS Generator",
-          "summary": "Assigns flit qos from AXI awqos/arqos (Bypass), fixed value (Fixed), bandwidth-cap (Limiter), or feedback-controlled urgency escalation (Regulator).",
-          "modes": ["Bypass", "Fixed", "Limiter", "Regulator"],
-          "compile_time_params": {},
-          "uses_packet_fields": ["noc_qos"],
-          "configured_by": [
-            "QOS_MODE", "QOS_FIXED_VALUE",
-            "BANDWIDTH_LIMIT", "SATURATION_THRESHOLD", "LOW_PRIORITY",
-            "BANDWIDTH_BUDGET", "BASE_QOS", "BASE_QOS.URGENCY_STEP",
-            "SOCKET_QOS_EN", "SOCKET_QOS"
-          ],
-          "related_features": ["FEAT-NMU-VC_MAPPING"],
-          "source_doc": "spec/ni/doc/theory_of_operation.md §QoS Generator"
         },
         {
           "id": "FEAT-NMU-ROB",
@@ -96,16 +80,27 @@
         },
         {
           "id": "FEAT-NMU-VC_MAPPING",
-          "name": "VC Mapping and Arbitration",
-          "summary": "Maps outbound flits to a VC by qos-tier partition and arbitrates NUM_VC VCs onto the shared noc_req_o link via fair round-robin wormhole arbiter.",
+          "name": "VC Mapping",
+          "summary": "Maps outbound flits to a VC at flit-construct time (design-time fixed policy; req-VC=0, rsp-VC=0 for NUM_VC=1). VC egress arbitration is in FEAT-NMU-VC_ARB.",
           "modes": [],
           "compile_time_params": {
             "NMU_BUFFER_DEPTH": 2
           },
-          "uses_packet_fields": ["vc_id", "noc_qos", "last"],
+          "uses_packet_fields": ["vc_id", "last"],
           "configured_by": [],
-          "related_features": ["FEAT-NMU-QOS_GEN", "FEAT-NSU-VC_DEMUX"],
+          "related_features": ["FEAT-NMU-VC_ARB", "FEAT-NSU-VC_DEMUX"],
           "source_doc": "spec/ni/doc/theory_of_operation.md §VC Mapping"
+        },
+        {
+          "id": "FEAT-NMU-VC_ARB",
+          "name": "VC Arbitration (NMU egress)",
+          "summary": "Round-robin arbitration across populated VCs at NMU REQ_OUT egress. Selects which VC's flit is emitted onto the NoC link each cycle, subject to per-VC credit availability.",
+          "modes": ["RoundRobin"],
+          "compile_time_params": {},
+          "uses_packet_fields": ["vc_id"],
+          "configured_by": [],
+          "related_features": ["FEAT-NMU-VC_MAPPING", "FEAT-NMU-AXI_SLAVE_PORT"],
+          "source_doc": "spec/ni/doc/packet_format.md §VC Arbitration"
         },
         {
           "id": "FEAT-NMU-CDC",
@@ -167,21 +162,18 @@
         {
           "id": "FEAT-NMU-CSR",
           "name": "CSR Interface",
-          "summary": "AXI4-Lite subordinate port for software access to QoS, performance probe, error monitoring, quiesce control, and transaction-count registers.",
+          "summary": "AXI4-Lite subordinate port for software access to performance probe, error monitoring, quiesce control, and transaction-count registers.",
           "modes": [],
           "compile_time_params": {},
           "uses_packet_fields": [],
           "configured_by": [
-            "QOS_MODE", "QOS_FIXED_VALUE",
-            "BANDWIDTH_LIMIT", "SATURATION_THRESHOLD", "LOW_PRIORITY",
-            "BANDWIDTH_BUDGET", "BASE_QOS", "SOCKET_QOS_EN", "SOCKET_QOS",
             "PKT_PROBE_EN", "PKT_PROBE_MODE", "PKT_WINDOW_SIZE",
             "TXN_PROBE_EN",
             "ERR_STATUS", "IRQ_ENABLE",
             "QUIESCE_CTRL", "QUIESCE_STATUS",
             "PENDING_R_COUNT", "PENDING_W_COUNT"
           ],
-          "related_features": ["FEAT-NMU-QOS_GEN", "FEAT-NMU-PERF_PROBE", "FEAT-NMU-ERROR_MON"],
+          "related_features": ["FEAT-NMU-PERF_PROBE", "FEAT-NMU-ERROR_MON"],
           "source_doc": "spec/ni/doc/theory_of_operation.md §Configuration store"
         },
         {
@@ -222,12 +214,12 @@
         {
           "id": "FEAT-NSU-META_BUFFER",
           "name": "MetaBuffer",
-          "summary": "Snapshots request flit metadata (rob_idx, src_id, qos, axi_id) on AW/AR flit reception; retrieved at response injection time to reconstruct the return path.",
+          "summary": "Snapshots request flit metadata (rob_idx, src_id, axi_id) on AW/AR flit reception; retrieved at response injection time to reconstruct the return path.",
           "modes": [],
           "compile_time_params": {
             "NSU_MAX_TXNS": 32
           },
-          "uses_packet_fields": ["rob_idx", "src_id", "noc_qos", "AW", "AR"],
+          "uses_packet_fields": ["rob_idx", "src_id", "AW", "AR"],
           "configured_by": [],
           "related_features": ["FEAT-NSU-AXI_MASTER_PORT"],
           "source_doc": "spec/ni/doc/theory_of_operation.md §MetaBuffer"
@@ -280,8 +272,19 @@
           "compile_time_params": {},
           "uses_packet_fields": ["vc_id"],
           "configured_by": [],
-          "related_features": ["FEAT-NMU-VC_MAPPING"],
+          "related_features": ["FEAT-NMU-VC_MAPPING", "FEAT-NSU-VC_ARB"],
           "source_doc": "spec/ni/doc/theory_of_operation.md §VC Mapping"
+        },
+        {
+          "id": "FEAT-NSU-VC_ARB",
+          "name": "VC Arbitration (NSU egress)",
+          "summary": "Round-robin arbitration across populated VCs at NSU RSP_OUT egress. Selects which VC's response flit is emitted onto the NoC return link, subject to per-VC credit availability.",
+          "modes": ["RoundRobin"],
+          "compile_time_params": {},
+          "uses_packet_fields": ["vc_id"],
+          "configured_by": [],
+          "related_features": ["FEAT-NSU-VC_DEMUX"],
+          "source_doc": "spec/ni/doc/packet_format.md §VC Arbitration"
         },
         {
           "id": "FEAT-NSU-CDC",

@@ -44,7 +44,7 @@ NoC 基本傳輸單元。所有欄位寬度透過 symbol 參數表達，預設�
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `NOC_QOS_WIDTH` | 4 | NoC-layer QoS priority placeholder (renamed from QOS_WIDTH 2026-05-25) |
+| `NOC_QOS_WIDTH` | 0 | NoC-layer QoS priority placeholder — currently 0 bits (no NoC QoS in flit header); reserved for future router arbitration extension |
 | `AXI_CH_WIDTH` | 3 | AXI channel type (5 channels: AW/W/AR/B/R) |
 | `LAST_WIDTH` | 1 | Packet end marker |
 | `ROB_REQ_WIDTH` | 1 | RoB request flag |
@@ -99,17 +99,17 @@ The legacy ECC parameters are retained as documentation aliases (no functional r
 | Parameter | Default | Formula |
 |-----------|---------|---------|
 | `WSTRB_WIDTH` | 32 | `NOC_DATA_WIDTH / 8` |
-| `HEADER_WIDTH` | 54 | Σ Group 1+2 fields (見 §2.1). Was 48 in v0.3.0 (per-granule ECC era), 56 in pre-(δ) v0.4.0 (with `port_id` field) |
-| `HEADER_DATA_WIDTH` | 44 | `HEADER_WIDTH - FLIT_ECC_WIDTH`; bits of header protected by `flit_ecc` |
+| `HEADER_WIDTH` | 50 | Σ Group 1+2 fields (見 §2.1). Was 54 in v0.4.0 original (with `NOC_QOS_WIDTH=4`); `NOC_QOS_WIDTH` changed to 0 → header shrank 4 bits. Was 48 in v0.3.0 (per-granule ECC era). |
+| `HEADER_DATA_WIDTH` | 40 | `HEADER_WIDTH - FLIT_ECC_WIDTH`; bits of header protected by `flit_ecc` |
 | `AW_PAYLOAD_WIDTH` | 108 | Σ AW fields (見 §3.1) |
 | `W_PAYLOAD_WIDTH` | 352 | Σ W fields (見 §3.2); `wecc` removed; `w_rsvd` expanded |
 | `AR_PAYLOAD_WIDTH` | 108 | Σ AR fields (見 §3.1) |
 | `B_PAYLOAD_WIDTH` | 64 | Σ B fields (見 §3.3); `ecc_fail` removed; `b_rsvd` expanded |
 | `R_PAYLOAD_WIDTH` | 352 | Σ R fields (見 §3.4); `recc` removed; `r_rsvd` expanded |
 | `PAYLOAD_WIDTH` | 352 | `max(AW, W, AR, B, R)_PAYLOAD_WIDTH` |
-| `FLIT_DATA_WIDTH` | 396 | `HEADER_DATA_WIDTH + PAYLOAD_WIDTH`; bits protected by `flit_ecc` |
-| `FLIT_WIDTH` | 406 | `HEADER_WIDTH + PAYLOAD_WIDTH`; was 400 in v0.3.0 |
-| `LINK_WIDTH` | 407 | `FLIT_WIDTH + 1` (valid + flit; forward data bundle. Reverse credit return + init-ready handshake counted separately, see §4.2) |
+| `FLIT_DATA_WIDTH` | 392 | `HEADER_DATA_WIDTH + PAYLOAD_WIDTH`; bits protected by `flit_ecc` |
+| `FLIT_WIDTH` | 402 | `HEADER_WIDTH + PAYLOAD_WIDTH`; was 406 in v0.4.0 original (pre-QoS-removal), 400 in v0.3.0 |
+| `LINK_WIDTH` | 403 | `FLIT_WIDTH + 1` (valid + flit; forward data bundle. Reverse credit return + init-ready handshake counted separately, see §4.2) |
 
 ### 1.3 Flit Structure
 
@@ -121,13 +121,13 @@ The legacy ECC parameters are retained as documentation aliases (no functional r
   |<──────────────────── Flit: FLIT_WIDTH ─────────────────────────────>|
 ```
 
-v0.4.0 預設配置：
+v0.4.0 預設配置（post-QoS-removal）：
 
-- Header = 54 bits
+- Header = 50 bits
 - Payload = 352 bits
-- Flit = 406 bits
+- Flit = 402 bits
 
-(v0.3.0 為 48/352/400。Header 從 48→54 因加 `route_par` (1b) + `flit_ecc` (10b) 並回收 3-bit MSB `rsvd` 槽位，淨 +6。pre-(δ) 中間版本曾為 56 bits 含 `port_id` (2b) 欄位；改 single-chimney-per-tile 模型後 `port_id` 移除，回到 54。)
+(v0.4.0 原始為 54/352/406，含 `noc_qos` 4b。`NOC_QOS_WIDTH` 改為 0 後 header 縮 4 bits 至 50b，flit 縮至 402b。v0.3.0 為 48/352/400。)
 
 所有 AXI channel 共用 `FLIT_WIDTH`。較短 payload 以 zero-padding 對齊至 `PAYLOAD_WIDTH`。Request 與 Response flit 寬度對稱。
 
@@ -137,7 +137,7 @@ Flit 內 wdata/rdata 採 little-endian byte ordering（byte address 0 = data[7:0
 
 ## 2. Header Format
 
-Header 預設 `HEADER_WIDTH = 54 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `route_par` + `flit_ecc` 欄位）。`vc_id` 欄位攜帶 VC 索引，搭配 credit-based flow control 使用（v0.4.0 起 Valid/Ready mode 已移除）。
+Header 預設 `HEADER_WIDTH = 50 bits`（原 v0.4.0 為 54 bits；`NOC_QOS_WIDTH` 改為 0 後縮 4 bits。v0.3.0 為 48 bits）。`vc_id` 欄位攜帶 VC 索引，搭配 credit-based flow control 使用（v0.4.0 起 Valid/Ready mode 已移除）。
 
 ### 2.1 Bit Allocation
 
@@ -145,26 +145,26 @@ Header 預設 `HEADER_WIDTH = 54 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `rou
 
 | Field | Width Symbol | Default Range | Stage | Description |
 |-------|--------------|---------------|-------|-------------|
-| noc_qos | `NOC_QOS_WIDTH` | [3:0] | arbitration | NoC-layer QoS priority placeholder (reserved for future router arbitration) |
-| axi_ch | `AXI_CH_WIDTH` | [6:4] | arbitration | AXI channel type (5 channels: AW/W/AR/B/R) |
-| src_id | `X_WIDTH + Y_WIDTH` | [14:7] | routing | Source node ID (X+Y coordinate) |
-| dst_id | `X_WIDTH + Y_WIDTH` | [22:15] | routing | Destination node ID (X+Y coordinate) |
-| vc_id | `VC_ID_WIDTH` | [25:23] | routing | Virtual Channel ID |
-| route_par | `ROUTE_PAR_WIDTH` | [26] | routing | Even parity over `{dst_id, last}` (9 bits at default); checked at every router hop. Aligned with AMD pg313 §Parity (NPP packet DST ID + LAST coverage) |
-| last | `LAST_WIDTH` | [27] | wormhole | Packet end marker (1 = last flit of packet) |
-| rob_req | `ROB_REQ_WIDTH` | [28] | wormhole | RoB request flag (NMU sets; 1 = RoB allocate) |
-| rob_idx | `ROB_IDX_WIDTH` | [33:29] | wormhole | RoB entry index (`rob_req=1` valid) |
-| rsvd_commtype | `RSVD_COMMTYPE_WIDTH` | [35:34] | reserved | Reserved (future communication type extension) |
-| multicast | `MULTICAST_WIDTH` | [43:36] | reserved | Reserved (future multicast destination encoding) |
-| flit_ecc | `FLIT_ECC_WIDTH` | [53:44] | ECC | Whole-flit SECDED syndrome (covers `header[43:0]` + `payload`) |
-| | **HEADER_WIDTH** = 54 | | | |
+| noc_qos | `NOC_QOS_WIDTH` | (none — width=0) | arbitration | NoC-layer QoS priority placeholder; currently `NOC_QOS_WIDTH=0` so this field occupies zero bits and does not appear in the flit. Reserved for future router arbitration extension. |
+| axi_ch | `AXI_CH_WIDTH` | [2:0] | arbitration | AXI channel type (5 channels: AW/W/AR/B/R) |
+| src_id | `X_WIDTH + Y_WIDTH` | [10:3] | routing | Source node ID (X+Y coordinate) |
+| dst_id | `X_WIDTH + Y_WIDTH` | [18:11] | routing | Destination node ID (X+Y coordinate) |
+| vc_id | `VC_ID_WIDTH` | [21:19] | routing | Virtual Channel ID |
+| route_par | `ROUTE_PAR_WIDTH` | [22] | routing | Even parity over `{dst_id, last}` (9 bits at default); checked at every router hop. Aligned with AMD pg313 §Parity (NPP packet DST ID + LAST coverage) |
+| last | `LAST_WIDTH` | [23] | wormhole | Packet end marker (1 = last flit of packet) |
+| rob_req | `ROB_REQ_WIDTH` | [24] | wormhole | RoB request flag (NMU sets; 1 = RoB allocate) |
+| rob_idx | `ROB_IDX_WIDTH` | [29:25] | wormhole | RoB entry index (`rob_req=1` valid) |
+| rsvd_commtype | `RSVD_COMMTYPE_WIDTH` | [31:30] | reserved | Reserved (future communication type extension) |
+| multicast | `MULTICAST_WIDTH` | [39:32] | reserved | Reserved (future multicast destination encoding) |
+| flit_ecc | `FLIT_ECC_WIDTH` | [49:40] | ECC | Whole-flit SECDED syndrome (covers `header[39:0]` + `payload`) |
+| | **HEADER_WIDTH** = 50 | | | |
 
 **‡ vc_id 欄位**：攜帶 `VC_ID_WIDTH` bits（最多 8 VC），與 credit-based flow control 搭配。Router 與 NI sink 用 `vc_id` 配對對應 VC FIFO。v0.4.0 起一律啟用（A4.7 wave 移除 valid/ready mode）。
 
 ### 2.0 Field Ordering Rationale
 
 按 pipeline access timing 分組：
-- **Stage 1 (arbitration)**: `qos`, `axi_ch` — 第一級流水線就要做仲裁判決，置於 LSB 端方便 partial decode
+- **Stage 1 (arbitration)**: `axi_ch` — 第一級流水線就要做仲裁判決，置於 LSB 端方便 partial decode（`noc_qos` 為 width=0 placeholder，不佔 bit）
 - **Stage 2 (routing)**: `src_id` / `dst_id` / `vc_id` / `route_par` — 路徑決策同時做 parity 檢查（route_par cover `{dst_id, last}` per AMD pg313 alignment）
 - **Stage 3 (wormhole control)**: `last` / `rob_req` / `rob_idx` — 路徑鎖控與 response 重排
 - **Reserved**: `rsvd_commtype` / `multicast` — future extensions，置於 MSB 端方便 future bump 不影響既有 bit position
@@ -172,16 +172,13 @@ Header 預設 `HEADER_WIDTH = 54 bits`（v0.3.0 為 48 bits。v0.4.0 新增 `rou
 
 ### 2.2 Field Definitions
 
-#### 2.2.1 NoC QoS (`NOC_QOS_WIDTH` = 4 bits)
+#### 2.2.1 NoC QoS (`NOC_QOS_WIDTH` = 0 bits — reserved placeholder)
 
-NoC 層級的優先級欄位，預留給未來 router arbitration 機制使用。當前版本本欄位僅作為 placeholder，NI 與 router 不對其進行特殊處理。
+`noc_qos` 欄位當前 `NOC_QOS_WIDTH = 0`，在 flit header 中不佔任何 bit。此欄位保留在 schema 中作為未來 NoC-layer router arbitration 機制的佔位符；待 NoC QoS 設計確定後，integrator 可將 `NOC_QOS_WIDTH` 調升並重新配置 header bit layout。
 
-| Value | Priority | Description |
-|-------|----------|-------------|
-| 0 | Lowest  | Best effort |
-| 15 | Highest | Real-time critical |
+**與 AXI QoS 的關係**：`noc_qos` 是 NoC 內部 router arbitration 的概念，與 AXI4 IHI 0022 規定的 `awqos` / `arqos` 是不同層級的概念。`awqos` / `arqos` 屬於 AXI payload（標準 AXI 信號，NMU/NSU 以普通欄位打包/解包），與 `noc_qos` 無關。
 
-**與 AXI QoS 的關係**：`noc_qos` 是 NoC 內部的 router arbitration 概念，與 AXI4 IHI 0022 規定的 `awqos` / `arqos` 是**不同層級**的概念。AXI QoS 屬於 AXI 合約的一部分，未來若 NMU 需要在 ingress 端轉換／NSU 在 egress 端還原 AXI QoS，將以獨立欄位（payload 內 `awqos` / `arqos`）處理，不與 `noc_qos` 共用同一 bit。本版本因 NoC QoS 機制尚未實作，兩者實際走的路徑相同。
+**VC Arbitration**：VC 選擇（egress 仲裁）由 round-robin VC arbitration 處理；詳見 §VC Arbitration。
 
 #### 2.2.2 AXI Channel Type (`AXI_CH_WIDTH` = 3 bits)
 
@@ -231,7 +228,7 @@ Source NI 分配 `rob_idx`，destination NI 依此 index 將 response 寫入對�
 
 支援最多 `2^VC_ID_WIDTH` 個 Virtual Channels（預設 8）。`vc_id` 攜帶 VC 索引，搭配 credit-based flow control。Router 與 NI sink 用 `vc_id` 配對對應 VC FIFO。
 
-VC 用途：請求/回應分離避免 deadlock、traffic class 隔離、QoS 分桶（per `06_qos.md` 與 NI §"VC Mapping" 政策）。
+VC 用途：請求/回應分離避免 deadlock、traffic class 隔離。VC selection 由 round-robin arbitration 處理（see §VC Arbitration）。
 
 #### 2.2.8 Routing Parity: route_par (`ROUTE_PAR_WIDTH` = 1 bit)
 
@@ -261,38 +258,27 @@ Whole-flit SECDED syndrome。範圍：覆蓋 `header[HEADER_WIDTH-FLIT_ECC_WIDTH
 - **Pass-through**: routers 不檢查 `flit_ecc`（router fabric 只檢 `route_par`）
 - **Check**: NSU/NMU 在 ingress 收到 flit 時重算對比。single-bit error 自動校正。double-bit error 觸發 fatal error report
 
-**SECDED Hamming bound 約束**: `2^(FLIT_ECC_WIDTH-1) ≥ FLIT_DATA_WIDTH + FLIT_ECC_WIDTH + 1`。Default 配置：`FLIT_DATA_WIDTH = 44 + 352 = 396`，需要 `FLIT_ECC_WIDTH ≥ 10`（`2^9 = 512 ≥ 407` ✓）。Integrator 若擴 HEADER 或 PAYLOAD 至 ≥ 502 bit，需把 `FLIT_ECC_WIDTH` 從 10 升到 11。
+**SECDED Hamming bound 約束**: `2^(FLIT_ECC_WIDTH-1) ≥ FLIT_DATA_WIDTH + FLIT_ECC_WIDTH + 1`。Default 配置：`FLIT_DATA_WIDTH = 40 + 352 = 392`，需要 `FLIT_ECC_WIDTH ≥ 10`（`2^9 = 512 ≥ 403` ✓）。Integrator 若擴 HEADER 或 PAYLOAD 至 ≥ 502 bit，需把 `FLIT_ECC_WIDTH` 從 10 升到 11。
 
 詳見 §3.6 ECC Design。
 
 ### 2.3 Bit Layout Diagrams (default values)
 
-#### Valid/Ready Mode (No-VC; `vc_id` 槽位 reserved)
+`noc_qos` 欄位 `NOC_QOS_WIDTH=0`，不在 bit layout 中出現。
 
 ```
-53              44 43                 36 35 34 33     29 28 27 26 25  23 22       15 14        7 6  4 3   0
-┌─────────────────┬─────────────────────┬─────┬─────────┬──┬──┬──┬─────┬──────────┬──────────┬─────┬─────┐
-│   flit_ecc      │     multicast       │rsvd_│ rob_idx │rb│ls│rp│vc_id│  dst_id  │  src_id  │ axi │ qos │
-│      10b        │       8b            │comm │   5b    │req│  │  │ 3b  │    8b    │    8b    │ch 3b│  4b │
-│ (SECDED over    │   (reserved)        │type │         │1b│1b│1b│(rsvd│          │          │     │     │
-│  header[43:0]+  │                     │ 2b  │         │  │  │  │ in  │          │          │     │     │
-│  payload)       │                     │     │         │  │  │  │ VR) │          │          │     │     │
-└─────────────────┴─────────────────────┴─────┴─────────┴──┴──┴──┴─────┴──────────┴──────────┴─────┴─────┘
+49              40 39                 32 31 30 29     25 24 23 22 21  19 18       11 10        3 2   0
+┌─────────────────┬─────────────────────┬─────┬─────────┬──┬──┬──┬─────┬──────────┬──────────┬─────┐
+│   flit_ecc      │     multicast       │rsvd_│ rob_idx │rb│ls│rp│vc_id│  dst_id  │  src_id  │ axi │
+│      10b        │       8b            │comm │   5b    │req│  │  │ 3b  │    8b    │    8b    │ch 3b│
+│ (SECDED over    │   (reserved)        │type │         │1b│1b│1b│     │          │          │     │
+│  header[39:0]+  │                     │ 2b  │         │  │  │  │     │          │          │     │
+│  payload)       │                     │     │         │  │  │  │     │          │          │     │
+└─────────────────┴─────────────────────┴─────┴─────────┴──┴──┴──┴─────┴──────────┴──────────┴─────┘
 ```
 （其中 `rb` = rob_req, `ls` = last, `rp` = route_par）
 
-#### Credit-Based Mode (With-VC; `vc_id` 攜帶 VC 索引)
-
-```
-53              44 43                 36 35 34 33     29 28 27 26 25  23 22       15 14        7 6  4 3   0
-┌─────────────────┬─────────────────────┬─────┬─────────┬──┬──┬──┬─────┬──────────┬──────────┬─────┬─────┐
-│   flit_ecc      │     multicast       │rsvd_│ rob_idx │rb│ls│rp│vc_id│  dst_id  │  src_id  │ axi │ qos │
-│      10b        │       8b            │comm │   5b    │req│  │  │ 3b  │    8b    │    8b    │ch 3b│  4b │
-│                 │                     │ 2b  │         │1b│1b│1b│ ✓✓ │          │          │     │     │
-└─────────────────┴─────────────────────┴─────┴─────────┴──┴──┴──┴─────┴──────────┴──────────┴─────┴─────┘
-```
-
-`vc_id` 槽位攜帶 VC 索引（v0.4.0 起一律啟用）。Wire-level forward bundle width = `LINK_WIDTH = HEADER_WIDTH + PAYLOAD_WIDTH + 1 = 407 bits`（valid + flit）。Reverse-direction credit return + init-ready handshake 另計，見 §4.2。
+`vc_id` 槽位攜帶 VC 索引（v0.4.0 起一律啟用）。Wire-level forward bundle width = `LINK_WIDTH = HEADER_WIDTH + PAYLOAD_WIDTH + 1 = 403 bits`（valid + flit）。Reverse-direction credit return + init-ready handshake 另計，見 §4.2。
 
 ---
 
@@ -399,7 +385,7 @@ W 與 R channel 採用相同欄位排列慣例：control fields → data → res
 | Property | Value (default) |
 |----------|-----------------|
 | Width | `FLIT_ECC_WIDTH = 10 bits` (parameter) |
-| Coverage | `header[HEADER_WIDTH-FLIT_ECC_WIDTH-1:0]` + `payload` = `FLIT_DATA_WIDTH = 396 bits` |
+| Coverage | `header[HEADER_WIDTH-FLIT_ECC_WIDTH-1:0]` + `payload` = `FLIT_DATA_WIDTH = 392 bits` |
 | Generated by | Source NI on flit egress |
 | Checked by | **僅 destination NI**（router fabric 不檢查 `flit_ecc`，per AMD §Data Integrity） |
 | Detection | 1-bit correct, 2-bit detect (SECDED) |
@@ -432,11 +418,11 @@ Generate                  Check              Check             Check          Ch
 
 | Channel | Network | Actual Payload | Padding | Flit Total |
 |---------|---------|---------------|---------|------------|
-| AW | REQ | 108 | 244 | 406 |
-| W | REQ | 297 (last+user+data+strb) | 55 (rsvd) | 406 |
-| AR | REQ | 108 | 244 | 406 |
-| B | RSP | 20 (id+resp+user+rsvd_mc_status) | 44 | 406 |
-| R | RSP | 275 (last+id+resp+user+data) | 77 | 406 |
+| AW | REQ | 108 | 244 | 402 |
+| W | REQ | 297 (last+user+data+strb) | 55 (rsvd) | 402 |
+| AR | REQ | 108 | 244 | 402 |
+| B | RSP | 20 (id+resp+user+rsvd_mc_status) | 44 | 402 |
+| R | RSP | 275 (last+id+resp+user+data) | 77 | 402 |
 
 **Effective utilization**（非 reserved 欄位佔 `PAYLOAD_WIDTH` 比例，預設值。ECC 已從 payload 移到 header，故 utilization 數字下修）：
 
@@ -450,12 +436,12 @@ Generate                  Check              Check             Check          Ch
 
 典型 burst write（awlen=15）組成 1×AW + 16×W + 1×B = 18 flits，W flit 佔 89%。
 
-v0.4.0 vs v0.3.0 比較：
+post-QoS-removal vs v0.4.0 original 比較：
 
-- Header 從 48 → 54 bits（+12.5% header overhead）
-- ECC 不再佔 payload（從 32-bit `wecc`/`recc` 移到 10-bit header `flit_ecc`）
-- W utilization 從 93.5% → 84.4%。註：v0.3.0 把 `wecc` 算進 effective bits（329/352），v0.4.0 因 ECC 已移出 payload，effective 只算 `last+user+data+strb`（297/352）。實際 data bandwidth 不變（W 維持 297 bit data）。
-- Burst total wire bytes：18×400 = 900 bytes → 18×406 ≈ 913 bytes，+1.4% wire overhead，換取更乾淨的 ECC 抽象與 future-extension 預留
+- Header 從 54 → 50 bits（`NOC_QOS_WIDTH` 4→0，-4 bits）
+- FLIT_WIDTH 從 406 → 402 bits；LINK_WIDTH 從 407 → 403 bits
+- Burst total wire bytes：18×406 ≈ 913 bytes → 18×402 ≈ 905 bytes（-0.9%），換取 header 更小、未來 QoS 設計彈性更大
+- VC arbitration 改為 round-robin；不再依賴 `noc_qos` 欄位做仲裁
 
 ---
 
@@ -474,13 +460,11 @@ Request link 與 Response link 結構對稱，差異僅在 flit data 欄位名�
 | flit | `[FLIT_WIDTH+1:2]` | `FLIT_WIDTH` | Flit data (req or rsp) |
 | | | **`LINK_WIDTH`** | |
 
-預設 `LINK_WIDTH = 407` bits（forward data bundle: valid + flit）。
+預設 `LINK_WIDTH = 403` bits（forward data bundle: valid + flit）。
 
-- v0.3.0 為 402 bits
-- Header 從 48→54 bit 淨增加 6 bit (加 route_par(1) + flit_ecc(10), 回收 v0.3.0 上方 3-bit `rsvd`、移除 pre-(δ) `port_id` 2-bit)
-- Flit 從 400→406 bit
-- 加 valid 1 bit 後 407 bit
-- A4.7 wave 移除 ready signal（credit-based only），forward bundle 從 408 → 407
+- v0.3.0 為 401 bits（Flit 400 + valid 1）
+- v0.4.0 original 為 407 bits（Flit 406 + valid 1）
+- post-QoS-removal：`NOC_QOS_WIDTH` 0→4 縮減 4 bits，Flit 406→402，LINK_WIDTH 407→403
 
 Reverse-direction credit return（per-VC, NUM_VC bits）與 init-ready handshake（1 bit）另計，見 §4.2。
 
@@ -493,15 +477,15 @@ NoC links 一律使用 credit-based flow control，per AMD pg313 §Credit-Based 
 | Wire | Width | Direction | Note |
 |------|-------|-----------|------|
 | valid | 1 | forward | flit-slot occupied this cycle |
-| flit | FLIT_WIDTH (406) | forward | flit data |
+| flit | FLIT_WIDTH (402) | forward | flit data |
 | credit_init_ready_o | 1 | forward | source 端 alive 訊號（credit channel ready） |
 | credit | NUM_VC | reverse | per-VC credit return（每 VC 1 bit；AMD verbatim："up to one credit per cycle, per virtual channel"） |
 | credit_init_ready_i | 1 | reverse | sink 端 alive 訊號 |
 
 Wire count (one uni-directional NoC link, NUM_VC=4 default):
-- forward: `LINK_WIDTH` (407) + `credit_init_ready_o` (1) = **408 wires**
+- forward: `LINK_WIDTH` (403) + `credit_init_ready_o` (1) = **404 wires**
 - reverse: `NUM_VC` (4) + `credit_init_ready_i` (1) = **5 wires**
-- **Total per link: 413 wires**
+- **Total per link: 409 wires**
 
 對比 v0.3.0 VR mode (NUM_VC=4): per-direction `NUM_VC × LINK_WIDTH` = 1,632 wires，credit-only 是約 ¼ wire 量。
 
@@ -565,14 +549,14 @@ VC identification 由 header `vc_id` 欄位攜帶。NMU 的 VC mapping 政策見
   - 多 IP 共享 tile 的場景由 NI 上游 AXI crossbar mux 到單一 NI；不同 IP 由 AXI ID 區分，不在 flit header 出現
   - 對齊 FlooNoC 與 AMD pg313 NMU/NSU 慣例
 
-- **QoS Arbitration** — `qos` (`QOS_WIDTH`)
-  - `2^QOS_WIDTH` 級優先級（預設 16：0=Best Effort, 15=Real-time Critical）
-  - 置於 header LSB 端，支援單級 pipeline partial decode
-
-- **Virtual Channel** — `vc_id` (`VC_ID_WIDTH`)
+- **VC Arbitration (round-robin)** — `vc_id` (`VC_ID_WIDTH`)
   - Header-level VC（max `2^VC_ID_WIDTH` VCs，預設 8），搭配 credit-based flow control
-  - NMU 依 Hybrid R/W × QoS 政策做 VC mapping (per ToO §"VC Mapping")
-  - 用途：Req/Rsp 分離避免 deadlock、traffic class 隔離、QoS 分桶
+  - Egress VC selection: round-robin across populated VCs（NMU REQ_OUT / NSU RSP_OUT），subject to per-VC credit availability
+  - 用途：Req/Rsp 分離避免 deadlock、traffic class 隔離
+
+- **NoC QoS placeholder** — `noc_qos` (`NOC_QOS_WIDTH` = 0)
+  - 當前 `NOC_QOS_WIDTH=0`，不佔任何 bit。Schema 保留此欄位作為未來 router arbitration 機制預留位置。
+  - AMBA `awqos` / `arqos` 是 AXI payload 標準欄位，NMU/NSU 以普通欄位打包/解包，與 `noc_qos` 無關。
 
 - **Out-of-Order Completion** — `rob_req` (`ROB_REQ_WIDTH`), `rob_idx` (`ROB_IDX_WIDTH`)
   - `2^ROB_IDX_WIDTH`-entry RoB per NI（預設 32），跨 axi_id 與 destination 共享
@@ -590,11 +574,21 @@ VC identification 由 header `vc_id` 欄位攜帶。NMU 的 VC mapping 政策見
 
 - **Dual Physical Network** — Req/Rsp link (`LINK_WIDTH` each)
   - 獨立 full-duplex link，消除 Req-Rsp circular dependency（protocol deadlock avoidance）
-  - 每方向每 cycle `NOC_DATA_WIDTH/8` bytes（預設 32），Req/Rsp 對稱且 flit 寬度統一（預設 406b）
+  - 每方向每 cycle `NOC_DATA_WIDTH/8` bytes（預設 32），Req/Rsp 對稱且 flit 寬度統一（預設 402b）
 
 - **Reserved for Future Extension** — `rsvd_commtype` (`RSVD_COMMTYPE_WIDTH`), `multicast` (`MULTICAST_WIDTH`), `rsvd_mc_status` (`RSVD_MC_STATUS_WIDTH`), W/R/B `*_rsvd`
   - Header 預留 10 bits（commtype 2 + multicast 8）、B payload 預留 2 bits（mc_status）供未來通訊類型 / multicast 擴展使用
   - W payload 預留 55 bits、R payload 預留 77 bits（從原 wecc/recc 位置回收）供未來 AXI feature extension（例如 ATOPs payload、AXI5 sideband）
+
+### §VC Arbitration
+
+VC selection at egress uses round-robin arbitration across populated VCs, subject to per-VC credit availability:
+
+- **NMU REQ_OUT egress**: round-robin selects which VC's flit is emitted onto the NoC request link each cycle. A VC is eligible only when it holds a queued flit AND has at least one credit on that VC. If the round-robin token lands on an ineligible VC, the arbiter advances to the next eligible VC (work-conserving).
+- **NSU RSP_OUT egress**: symmetric design — round-robin across populated NSU response VCs before injecting onto the NoC response link.
+- **No CSR configuration**: current arbitration policy is pure round-robin with no software knobs. Future `NOC_QOS_WIDTH > 0` designs may introduce weighted-round-robin or priority arbitration via `noc_qos`.
+
+See NMU function block `FEAT-NMU-VC_ARB` and NSU function block `FEAT-NSU-VC_ARB` for per-block design details.
 
 ---
 

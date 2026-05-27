@@ -97,6 +97,16 @@ def _col_idx(header: List[str], name: str) -> Optional[int]:
 # ---------- §2.1 header bit allocation ----------
 
 
+def _is_zero_width_range(s: str) -> bool:
+    """Return True if the Default Range cell signals a width=0 (reserved) field.
+
+    Convention: a cell containing "(none" (case-insensitive) or "width=0" marks
+    a 0-width reserved placeholder (e.g. "(none — width=0)").
+    """
+    sl = s.strip().lower()
+    return sl.startswith("(none") or "width=0" in sl
+
+
 def parse_header_fields(md_text: str) -> List[dict]:
     sec = _section_slice(md_text, r"^### 2\.1\s+.*Bit Allocation")
     if sec is None:
@@ -113,8 +123,26 @@ def parse_header_fields(md_text: str) -> List[dict]:
         if max(i_name, i_wp, i_rng) >= len(cells):
             continue
         name = cells[i_name]
-        rng = _parse_bit_range(cells[i_rng])
-        if not name or rng is None:
+        if not name:
+            continue
+        rng_cell = cells[i_rng]
+
+        # Handle width=0 reserved placeholder fields (e.g. noc_qos when NOC_QOS_WIDTH=0)
+        if _is_zero_width_range(rng_cell):
+            field: dict = {
+                "name": name,
+                "width_param": cells[i_wp],
+                "width": 0,
+                "lsb": None,
+                "msb": None,
+            }
+            if i_stage is not None and i_stage < len(cells):
+                field["stage"] = cells[i_stage]
+            result.append(field)
+            continue
+
+        rng = _parse_bit_range(rng_cell)
+        if rng is None:
             continue
         lsb, msb = rng
         field = {
@@ -631,7 +659,7 @@ def _build_params_namespace(md_dir: Union[str, Path],
     在聯集後，加入 AMBA-canonical 別名（packet_format / signal_interface 用舊名；
     generator 輸出用新名，保持 JSON 與 AMBA IHI 0022 對齊）：
       ADDR_WIDTH        → AXI_ADDR_WIDTH
-      NOC_QOS_WIDTH     → AXI_QOS_WIDTH    (QOS is AXI-layer, not NOC-layer)
+      AXI_QOS_WIDTH     = 4 (fixed per AMBA IHI 0022; NOT from NOC_QOS_WIDTH which is 0)
       NOC_DATA_WIDTH    → AXI_DATA_WIDTH   (for AXI W/R channel signals)
       WSTRB_WIDTH       → AXI_STRB_WIDTH
       USER_WIDTH        → AXI_AWUSER_WIDTH / AXI_WUSER_WIDTH / AXI_BUSER_WIDTH /
@@ -654,9 +682,12 @@ def _build_params_namespace(md_dir: Union[str, Path],
 
     # Inject AMBA-canonical aliases for names used in _AXI_CHANNEL_SIGNALS.
     # Source of truth for the default value is the old (pre-alias) entry.
+    # NOTE: AXI_QOS_WIDTH is NOT aliased from NOC_QOS_WIDTH.  NOC_QOS_WIDTH is the NoC-header
+    # field width (currently 0 — reserved placeholder).  AXI QoS signals (awqos/arqos) are
+    # fixed at 4 bits per AMBA IHI 0022, independent of the NoC-layer QoS width.
     _ALIASES: List[Tuple[str, str]] = [
         ("ADDR_WIDTH",    "AXI_ADDR_WIDTH"),
-        ("NOC_QOS_WIDTH", "AXI_QOS_WIDTH"),
+        # NOC_QOS_WIDTH removed — see note above
         ("NOC_DATA_WIDTH","AXI_DATA_WIDTH"),
         ("WSTRB_WIDTH",   "AXI_STRB_WIDTH"),
         ("USER_WIDTH",    "AXI_AWUSER_WIDTH"),
@@ -669,6 +700,15 @@ def _build_params_namespace(md_dir: Union[str, Path],
         if alias not in by_name and src_name in by_name:
             src = by_name[src_name]
             by_name[alias] = {k: src[k] for k in src if k != "name"} | {"name": alias}
+
+    # Inject AXI_QOS_WIDTH as a fixed AMBA constant (4 bits per IHI 0022).
+    # This is independent of NOC_QOS_WIDTH (the NoC-layer placeholder, currently 0).
+    if "AXI_QOS_WIDTH" not in by_name:
+        by_name["AXI_QOS_WIDTH"] = {
+            "name": "AXI_QOS_WIDTH",
+            "default": "4",
+            "source": "AMBA IHI 0022 fixed (independent of NOC_QOS_WIDTH)",
+        }
 
     return by_name
 
@@ -1227,9 +1267,6 @@ def parse_register_fields(md_path: Path, reg_name: str) -> list:
 
 # Register names that have field layout sections in registers.md
 _REGISTERS_WITH_FIELDS = [
-    "BASE_QOS",
-    "QOS_MODE",
-    "QOS_FIXED_VALUE",
     "ERR_STATUS",
     "IRQ_ENABLE",
     "LAST_ERR_INFO",

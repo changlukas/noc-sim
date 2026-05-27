@@ -7,7 +7,7 @@ NI exposes a software-visible CSR file via the dedicated AXI4-Lite slave port (`
 - **Misaligned access**: `csr_awaddr_i[1:0] != 0` or `csr_araddr_i[1:0] != 0` triggers `SLVERR`.
 - **Write-only (WO) registers**: in this spec, `WO` means the register accepts writes; reads return `csr_rdata_o = 0x0` with `csr_rresp_o = OKAY` (NOT DECERR). Used for self-clearing trigger registers where there is no persistent read-back state. The unmapped-offset DECERR rule applies only to offsets not listed in §Register map; mapped WO offsets are reachable on reads with the read-as-zero contract.
 
-CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-conflict-fix); see provenance comments inline.
+CSR memory map below is sourced from noc-sim/docs/design (post-QoS-removal); QoS Generator registers removed per spec change §8.2.
 
 ## Reserved-bit policy
 
@@ -20,16 +20,6 @@ CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-con
 
 | Offset | Register | Access | Reset | Description |
 |--------|----------|--------|-------|-------------|
-| **QoS Generator** |||||
-| 0x000 | `QOS_MODE` | RW | 0x0 (Bypass) | QoS 模式選擇 (0=Bypass, 1=Fixed, 2=Limiter, 3=Regulator). See §QOS_MODE. |
-| 0x004 | `QOS_FIXED_VALUE` | RW | 0x0 | Fixed mode qos 值. See §QOS_FIXED_VALUE. |
-| 0x008 | `BANDWIDTH_LIMIT` | RW | 0x0 | Limiter 頻寬限制 (1/256 bytes/cycle). |
-| 0x00C | `SATURATION_THRESHOLD` | RW | 0x0 | Limiter 飽和閾值 (bytes). |
-| 0x010 | `LOW_PRIORITY` | RW | 0x0 | Limiter 超標時 qos. |
-| 0x014 | `BANDWIDTH_BUDGET` | RW | 0x0 | Regulator 頻寬預算 (1/256 bytes/cycle). |
-| 0x018 | `BASE_QOS` | RW | 0x0 | Regulator 基礎 qos + URGENCY_STEP combined. See §BASE_QOS for field layout. <!-- source: 06_qos.md §4.1 + §4.5 (post-fix) --> |
-| 0x01C | `SOCKET_QOS_EN` | RW | 0x0 | Regulator Socket QoS 啟用. |
-| 0x020 | `SOCKET_QOS` | RW | 0x0 | Regulator Socket QoS 下限. |
 | **Packet Probe** |||||
 | 0x040 | `PKT_PROBE_EN` | RW | 0x0 | 啟用 Packet Probe. |
 | 0x044 | `PKT_PROBE_MODE` | RW | 0x0 (Combined) | 統計模式 (0=Combined, 1=Read, 2=Write). |
@@ -66,30 +56,6 @@ CSR memory map below is sourced from noc-sim/docs/design/06_qos.md §4 (post-con
 | 0x140 | `QUIESCE_STATUS` | RO | 0x0 | NMU quiesce drain-complete indicator. See §QUIESCE_STATUS. |
 | 0x144 | `EXCLUSIVE_MONITOR_CTRL` | WO | 0x0 | NSU Exclusive Monitor `clear_all` trigger (W1 self-clearing). See §EXCLUSIVE_MONITOR_CTRL. |
 | 0x148 | `EXCLUSIVE_MONITOR_STATUS` | RO | 0x0 | NSU Exclusive Monitor live `occupancy` count. See §EXCLUSIVE_MONITOR_STATUS. |
-
-## §BASE_QOS Register (0x018) Field Layout
-
-<!-- source: 06_qos.md §4.5 (post-fix) -->
-
-| Field | Bit | Width | Description | Reset |
-|-------|-----|-------|-------------|-------|
-| `BASE_QOS` | [3:0] | 4 | Regulator mode 基礎 QoS 值 (urgency_level=0 時使用，0~15). See ToO §QoSGen. | 0x0 |
-| `URGENCY_STEP` | [5:4] | 2 | Urgency 每次調整的步進值 (1~3；軟體寫 0 時硬體視同 1). See ToO §QoSGen Regulator mode. | 0x0 |
-| Reserved | [31:6] | 26 | — | 0x0 |
-
-## §QOS_MODE Register (0x000) Field Layout
-
-| Field | Bit | Width | Description | Reset |
-|-------|-----|-------|-------------|-------|
-| `QOS_MODE` | [1:0] | 2 | 0=Bypass, 1=Fixed, 2=Limiter, 3=Regulator | 0x0 |
-| Reserved | [31:2] | 30 | — | 0x0 |
-
-## §QOS_FIXED_VALUE Register (0x004) Field Layout
-
-| Field | Bit | Width | Description | Reset |
-|-------|-----|-------|-------------|-------|
-| `QOS_FIXED_VALUE` | [3:0] | 4 | Fixed mode 輸出 qos 值 (0~15) | 0x0 |
-| Reserved | [31:4] | 28 | — | 0x0 |
 
 ## §ERR_STATUS Register (0x100) Field Layout
 
@@ -199,8 +165,6 @@ All error counters and bin counters use **saturating arithmetic**: increment up 
 | Latency extremes (`TXN_MIN_LATENCY`, `TXN_MAX_LATENCY`) | Same — `TXN_PROBE_EN` 1→0→1 resets MIN to 0xFFFF and MAX to 0x0 |
 
 ## Cross-reference to behavior
-
-For QoS Generator behavior, see [Theory of Operation §QoSGen](./theory_of_operation.md#qos-generator).
 For ECC error counter triggering (ECC_UNCORR_ERR_CNT / ECC_CORR_ERR_CNT / ROUTE_PAR_ERR_CNT), see [Theory of Operation §ECC](./theory_of_operation.md#ecc).
 For AXI host-side parity check → `ERR_STATUS[2]` triggering, see protocol_rules.md `AXI4_MST_PARITY_CHECK` (NMU-side) and `AXI4_SLV_PARITY_CHECK` (NSU-side).
 For IRQ assertion behaviour, see protocol_rules.md `NI_IRQ_LEVEL`.

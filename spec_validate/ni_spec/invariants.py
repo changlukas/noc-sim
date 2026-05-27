@@ -32,7 +32,13 @@ def _tile_check(check, scope, fields, total, allow_gap=False) -> List[Issue]:
     issues: List[Issue] = []
     occupied = {}
     for f in fields:
-        name, lo, hi = f["name"], f["lsb"], f["msb"]
+        name = f["name"]
+        lo, hi = f["lsb"], f["msb"]
+        # Skip width=0 fields — they occupy no bits (lsb/msb are null)
+        if lo is None or hi is None:
+            if f.get("width", 1) != 0:
+                issues.append(_err(check, f"{scope}: '{name}' lsb/msb is None but width != 0"))
+            continue
         if hi < lo:
             issues.append(_err(check, f"{scope}: 欄位 '{name}' msb({hi}) < lsb({lo})"))
             continue
@@ -56,6 +62,14 @@ def _width_consistency(check, scope, fields) -> List[Issue]:
     issues: List[Issue] = []
     for f in fields:
         if "width" not in f:
+            continue
+        # Width=0 fields have lsb/msb=None — skip span check
+        if f["width"] == 0:
+            if f["lsb"] is not None or f["msb"] is not None:
+                issues.append(_err(check, f"{scope}: '{f['name']}' width=0 but lsb/msb is not None"))
+            continue
+        if f["lsb"] is None or f["msb"] is None:
+            issues.append(_err(check, f"{scope}: '{f['name']}' lsb or msb is None but width != 0"))
             continue
         span = f["msb"] - f["lsb"] + 1
         if span != f["width"]:

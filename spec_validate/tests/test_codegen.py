@@ -178,7 +178,7 @@ def test_use_constants_cpp_compiles_and_runs(tmp_path):
         [str(exe)], capture_output=True, text=True,
     )
     assert run_result.returncode == 0, run_result.stderr
-    assert "0x00000000F80902AA" in run_result.stdout, (
+    assert "0x000000000F80902A" in run_result.stdout, (
         f"Expected header value not found in output:\n{run_result.stdout}"
     )
 

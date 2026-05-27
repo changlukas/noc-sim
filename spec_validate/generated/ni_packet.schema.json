@@ -45,7 +45,7 @@
         "endianness": {"type": "string"},
         "field_widths": {
           "type": "object",
-          "additionalProperties": {"type": "integer", "minimum": 1}
+          "additionalProperties": {"type": "integer", "minimum": 0}
         },
         "header_fields": {
           "type": "array",
@@ -57,9 +57,9 @@
             "properties": {
               "name":            {"$ref": "#/$defs/identifier"},
               "width_param":     {"type": "string"},
-              "width":           {"type": "integer", "minimum": 1},
-              "lsb":             {"type": "integer", "minimum": 0},
-              "msb":             {"type": "integer", "minimum": 0},
+              "width":           {"type": "integer", "minimum": 0},
+              "lsb":             {"type": ["integer", "null"], "minimum": 0},
+              "msb":             {"type": ["integer", "null"], "minimum": 0},
               "stage":           {"type": "string"},
               "encoding":        {
                 "type": "object",

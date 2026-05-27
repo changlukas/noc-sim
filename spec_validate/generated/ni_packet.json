@@ -12,7 +12,7 @@
     "field_widths": {
       "X_WIDTH": 4,
       "Y_WIDTH": 4,
-      "NOC_QOS_WIDTH": 4,
+      "NOC_QOS_WIDTH": 0,
       "AXI_CH_WIDTH": 3,
       "LAST_WIDTH": 1,
       "ROB_REQ_WIDTH": 1,
@@ -41,97 +41,97 @@
       {
         "name": "noc_qos",
         "width_param": "NOC_QOS_WIDTH",
-        "width": 4,
-        "lsb": 0,
-        "msb": 3,
+        "width": 0,
+        "lsb": null,
+        "msb": null,
         "stage": "arbitration"
       },
       {
         "name": "axi_ch",
         "width_param": "AXI_CH_WIDTH",
         "width": 3,
-        "lsb": 4,
-        "msb": 6,
+        "lsb": 0,
+        "msb": 2,
         "stage": "arbitration"
       },
       {
         "name": "src_id",
         "width_param": "X_WIDTH + Y_WIDTH",
         "width": 8,
-        "lsb": 7,
-        "msb": 14,
+        "lsb": 3,
+        "msb": 10,
         "stage": "routing"
       },
       {
         "name": "dst_id",
         "width_param": "X_WIDTH + Y_WIDTH",
         "width": 8,
-        "lsb": 15,
-        "msb": 22,
+        "lsb": 11,
+        "msb": 18,
         "stage": "routing"
       },
       {
         "name": "vc_id",
         "width_param": "VC_ID_WIDTH",
         "width": 3,
-        "lsb": 23,
-        "msb": 25,
+        "lsb": 19,
+        "msb": 21,
         "stage": "routing"
       },
       {
         "name": "route_par",
         "width_param": "ROUTE_PAR_WIDTH",
         "width": 1,
-        "lsb": 26,
-        "msb": 26,
+        "lsb": 22,
+        "msb": 22,
         "stage": "routing"
       },
       {
         "name": "last",
         "width_param": "LAST_WIDTH",
         "width": 1,
-        "lsb": 27,
-        "msb": 27,
+        "lsb": 23,
+        "msb": 23,
         "stage": "wormhole"
       },
       {
         "name": "rob_req",
         "width_param": "ROB_REQ_WIDTH",
         "width": 1,
-        "lsb": 28,
-        "msb": 28,
+        "lsb": 24,
+        "msb": 24,
         "stage": "wormhole"
       },
       {
         "name": "rob_idx",
         "width_param": "ROB_IDX_WIDTH",
         "width": 5,
-        "lsb": 29,
-        "msb": 33,
+        "lsb": 25,
+        "msb": 29,
         "stage": "wormhole"
       },
       {
         "name": "rsvd_commtype",
         "width_param": "RSVD_COMMTYPE_WIDTH",
         "width": 2,
-        "lsb": 34,
-        "msb": 35,
+        "lsb": 30,
+        "msb": 31,
         "stage": "reserved"
       },
       {
         "name": "multicast",
         "width_param": "MULTICAST_WIDTH",
         "width": 8,
-        "lsb": 36,
-        "msb": 43,
+        "lsb": 32,
+        "msb": 39,
         "stage": "reserved"
       },
       {
         "name": "flit_ecc",
         "width_param": "FLIT_ECC_WIDTH",
         "width": 10,
-        "lsb": 44,
-        "msb": 53,
+        "lsb": 40,
+        "msb": 49,
         "stage": "ECC"
       }
     ],
@@ -440,12 +440,12 @@
     ],
     "derived": {
       "WSTRB_WIDTH": 32,
-      "HEADER_WIDTH": 54,
-      "HEADER_DATA_WIDTH": 44,
+      "HEADER_WIDTH": 50,
+      "HEADER_DATA_WIDTH": 40,
       "PAYLOAD_WIDTH": 352,
-      "FLIT_DATA_WIDTH": 396,
-      "FLIT_WIDTH": 406,
-      "LINK_WIDTH": 407
+      "FLIT_DATA_WIDTH": 392,
+      "FLIT_WIDTH": 402,
+      "LINK_WIDTH": 403
     },
     "route_par_coverage": [
       "dst_id",

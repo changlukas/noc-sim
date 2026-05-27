@@ -5,7 +5,7 @@ C-model 直接 import 這個模組即可取得所有 packet 寬度／bit 位置�
 """
 
 from __future__ import annotations
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 
 
 def _int_params(packet_spec) -> dict:
@@ -36,8 +36,12 @@ def link_width(packet_spec) -> int:
     return packet_spec["flit"]["derived"]["LINK_WIDTH"]
 
 
-def header_field_pos(packet_spec, name: str) -> Tuple[int, int]:
-    """回 (lsb, msb)。找不到 raise KeyError。"""
+def header_field_pos(packet_spec, name: str) -> Tuple[Optional[int], Optional[int]]:
+    """回 (lsb, msb)。找不到 raise KeyError。
+
+    For width=0 reserved placeholder fields, returns (None, None) to signal
+    the field is not bit-addressable in the current flit layout.
+    """
     for f in packet_spec["flit"]["header_fields"]:
         if f["name"] == name:
             return (f["lsb"], f["msb"])
@@ -54,7 +58,11 @@ def payload_field_pos(packet_spec, channel: str, name: str) -> Tuple[int, int]:
     raise KeyError(f"payload channel {channel!r} 不存在")
 
 
-def all_header_fields(packet_spec) -> Dict[str, Tuple[int, int]]:
+def all_header_fields(packet_spec) -> Dict[str, Tuple[Optional[int], Optional[int]]]:
+    """Return {name: (lsb, msb)} for all header fields.
+
+    Width=0 reserved placeholder fields have (None, None) as lsb/msb.
+    """
     return {f["name"]: (f["lsb"], f["msb"]) for f in packet_spec["flit"]["header_fields"]}
 
 
