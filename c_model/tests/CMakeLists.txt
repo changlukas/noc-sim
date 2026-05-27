@@ -9,3 +9,4 @@ function(add_cmodel_test name)
 endfunction()
 
 add_cmodel_test(test_pins_smoke)
+add_cmodel_test(test_flit)
