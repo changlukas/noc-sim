@@ -52,3 +52,11 @@ def test_parse_register_fields_err_status():
     assert "ecc_uncorr_err" in field_names
     assert "route_par_err" in field_names
     assert "axi_parity_err" in field_names
+
+
+def test_csr_policy_elaborated_as_constexpr():
+    """ni_regs.h must expose csr_policy fields as constexpr in ni::regs::csr_policy."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "include" / "ni_regs.h").read_text()
+    for key in ("SUB_WORD_WRITE", "UNMAPPED_READ", "MISALIGNED", "WO_READ"):
+        assert f"CSR_POLICY_{key}" in text, f"missing csr_policy elaboration: {key}"

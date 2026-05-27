@@ -25,6 +25,28 @@ def _to_identifier(name: str) -> str:
     return s.upper()
 
 
+def _emit_csr_policy(spec) -> list[str]:
+    """Emit csr_policy values as constexpr constants in ni::regs::csr_policy.
+
+    For each key (sub_word_write, unmapped_read, misaligned, wo_read) emit:
+      - constexpr const char* CSR_POLICY_<KEY>           = "<value>";
+      - constexpr int         CSR_POLICY_<KEY>_IS_<VAL>  = 1;
+    The integer sentinel lets c_model branch via `if constexpr (...)` without
+    string comparison.
+    """
+    policy = spec.get("csr_policy", {})
+    out: list[str] = []
+    out.append("// --- csr_policy ---")
+    out.append("namespace csr_policy {")
+    for key in ("sub_word_write", "unmapped_read", "misaligned", "wo_read"):
+        val = policy.get(key, "")
+        enum_val = val.upper().replace("-", "_")
+        out.append(f"constexpr const char* CSR_POLICY_{key.upper()} = \"{val}\";")
+        out.append(f"constexpr int         CSR_POLICY_{key.upper()}_IS_{enum_val} = 1;")
+    out.append("}  // namespace csr_policy")
+    return out
+
+
 def emit(registers_json: Path, spec_version: str) -> str:
     """Return C++ header body (no provenance banner -- caller prepends it)."""
     spec = load_doc(registers_json)
@@ -123,6 +145,10 @@ def emit(registers_json: Path, spec_version: str) -> str:
         any_assert = True
     if not any_assert:
         out.append("// (No per-register field width assertions applicable in this spec.)")
+    out.append("")
+
+    # csr_policy constants -- consumed by c_model RegisterFile to avoid hardcoding spec values.
+    out.extend(_emit_csr_policy(spec))
     out.append("")
 
     out.append("}  // namespace regs")
