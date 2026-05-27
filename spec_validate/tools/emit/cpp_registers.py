@@ -85,6 +85,46 @@ def emit(registers_json: Path, spec_version: str) -> str:
         out.append("// (No access mode enums in this spec.)")
     out.append("")
 
+    # --- static_assert: per-register field width sum <= data_width (design doc sec 6.4) ---
+    # Only registers with both fields and a parseable width_expr are checked.
+    out.append("// --- static_assert: per-register field width sum <= data_width (design doc sec 6.4) ---")
+    any_assert = False
+    for reg in spec.get("registers", []):
+        if reg.get("kind") != "register":
+            continue
+        fields = reg.get("fields", [])
+        if not fields:
+            continue
+        width_expr = reg.get("width_expr")
+        if width_expr is None:
+            continue
+        try:
+            data_width = int(width_expr)
+        except (ValueError, TypeError):
+            continue
+        # Sum field widths: high - low + 1 for each field.
+        field_sum = 0
+        sum_ok = True
+        for f in fields:
+            try:
+                hi = int(f["bit_high"])
+                lo = int(f["bit_low"])
+                field_sum += hi - lo + 1
+            except (KeyError, ValueError):
+                sum_ok = False
+                break
+        if not sum_ok:
+            continue
+        reg_ident = _to_identifier(reg["name"])
+        out.append(
+            f"static_assert({field_sum} <= {data_width},"
+            f" \"{reg['name']}: field width sum ({field_sum}) must be <= data_width ({data_width})\");"
+        )
+        any_assert = True
+    if not any_assert:
+        out.append("// (No per-register field width assertions applicable in this spec.)")
+    out.append("")
+
     out.append("}  // namespace regs")
     out.append("}  // namespace ni")
     return "\n".join(out) + "\n"

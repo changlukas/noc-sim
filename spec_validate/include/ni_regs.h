@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_registers.json
 // Source SHA: bf104cebb46f
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T02:53:50Z
+// Generated at: 2026-05-27T03:08:40Z
 // ----------------------------------------------------------------------------
 #pragma once
 #include <cstdint>
@@ -112,6 +112,17 @@ enum class QUIESCE_CTRLAccess { RW };
 enum class QUIESCE_STATUSAccess { RO };
 enum class EXCLUSIVE_MONITOR_CTRLAccess { WO };
 enum class EXCLUSIVE_MONITOR_STATUSAccess { RO };
+
+// --- static_assert: per-register field width sum <= data_width (design doc sec 6.4) ---
+static_assert(2 <= 32, "QOS_MODE: field width sum (2) must be <= data_width (32)");
+static_assert(4 <= 32, "QOS_FIXED_VALUE: field width sum (4) must be <= data_width (32)");
+static_assert(6 <= 32, "BASE_QOS: field width sum (6) must be <= data_width (32)");
+static_assert(3 <= 32, "ERR_STATUS: field width sum (3) must be <= data_width (32)");
+static_assert(24 <= 32, "LAST_ERR_INFO: field width sum (24) must be <= data_width (32)");
+static_assert(3 <= 32, "IRQ_ENABLE: field width sum (3) must be <= data_width (32)");
+static_assert(1 <= 32, "QUIESCE_CTRL: field width sum (1) must be <= data_width (32)");
+static_assert(1 <= 32, "QUIESCE_STATUS: field width sum (1) must be <= data_width (32)");
+static_assert(1 <= 32, "EXCLUSIVE_MONITOR_CTRL: field width sum (1) must be <= data_width (32)");
 
 }  // namespace regs
 }  // namespace ni

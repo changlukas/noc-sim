@@ -204,11 +204,25 @@ def test_gen_cpp_header_deprecation_wrapper():
 
 
 # ---------------------------------------------------------------------------
-# SV target placeholder test
+# C++ static_assert presence tests (design doc sec 6.4)
 # ---------------------------------------------------------------------------
 
-def test_sv_target_raises_not_implemented():
-    """--target sv should exit non-zero with a clear message (Task 8 not yet)."""
-    r = run_codegen("--target", "sv", "--domain", "packet",
-                    "--out", str(INCLUDE_DIR))
-    assert r.returncode != 0, "sv target should not succeed yet (Task 8)"
+def test_packet_cpp_has_flit_width_static_assert():
+    """ni_flit_constants.h must contain FLIT_WIDTH static_assert."""
+    text = (INCLUDE_DIR / "ni_flit_constants.h").read_text(encoding="ascii")
+    assert "static_assert" in text
+    assert "FLIT_WIDTH" in text
+    assert "HEADER_WIDTH + PAYLOAD_WIDTH" in text
+
+
+def test_packet_cpp_has_secded_static_assert():
+    """ni_flit_constants.h must contain SECDED bound static_assert."""
+    text = (INCLUDE_DIR / "ni_flit_constants.h").read_text(encoding="ascii")
+    assert "SECDED bound" in text
+
+
+def test_registers_cpp_has_field_width_static_assert():
+    """ni_regs.h must contain per-register field width sum static_assert."""
+    text = (INCLUDE_DIR / "ni_regs.h").read_text(encoding="ascii")
+    assert "static_assert" in text
+    assert "field width sum" in text

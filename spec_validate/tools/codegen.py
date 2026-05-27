@@ -6,13 +6,18 @@ Usage:
     py -3 tools/codegen.py --target cpp --domain signals --out include/
     py -3 tools/codegen.py --target cpp --domain registers --out include/
     py -3 tools/codegen.py --target cpp --domain blocks --out include/
+    py -3 tools/codegen.py --target sv --domain packet --out rtl_pkg/
+    py -3 tools/codegen.py --target sv --domain signals --out rtl_pkg/
+    py -3 tools/codegen.py --target sv --domain registers --out rtl_pkg/
+    py -3 tools/codegen.py --target sv --domain blocks --out rtl_pkg/
     py -3 tools/codegen.py --check        # regen + diff vs committed; exit 1 on drift
-
-SV target raises NotImplementedError (Task 8).
+    py -3 tools/codegen.py --lint-sv      # verilator lint smoke test (skips if not in PATH)
 """
 from __future__ import annotations
 import argparse
 import difflib
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -27,16 +32,32 @@ sys.path.insert(0, str(TOOLS_DIR.parent))
 from ni_spec.loader import load_spec_version
 from tools.emit import common
 from tools.emit import cpp_packet, cpp_signals, cpp_registers, cpp_blocks
+from tools.emit import sv_packet, sv_signals, sv_registers, sv_blocks
 
 
-# Maps (target, domain) -> (emitter_func, output_filename, source_json_name)
-# source_json_name is relative to SPEC_VALIDATE/ (for blocks) or
-# SPEC_VALIDATE/generated/ (for the other three).
+# Maps (target, domain) -> (emitter_func, output_filename, source_json_rel)
+# source_json_rel is relative to SPEC_VALIDATE/.
 DOMAIN_TO_EMITTER: dict[tuple[str, str], tuple] = {
     ("cpp", "packet"):    (cpp_packet.emit,    "ni_flit_constants.h", "generated/ni_packet.json"),
     ("cpp", "signals"):   (cpp_signals.emit,   "ni_signals.h",        "generated/ni_signals.json"),
     ("cpp", "registers"): (cpp_registers.emit, "ni_regs.h",           "generated/ni_registers.json"),
     ("cpp", "blocks"):    (cpp_blocks.emit,    "ni_blocks.h",         "ni_function_blocks.json"),
+    ("sv",  "packet"):    (sv_packet.emit,    "ni_flit_pkg.sv",       "generated/ni_packet.json"),
+    ("sv",  "signals"):   (sv_signals.emit,   "ni_signals_pkg.sv",    "generated/ni_signals.json"),
+    ("sv",  "registers"): (sv_registers.emit, "ni_regs_pkg.sv",       "generated/ni_registers.json"),
+    ("sv",  "blocks"):    (sv_blocks.emit,    "ni_blocks_pkg.sv",     "ni_function_blocks.json"),
+}
+
+# Default output directories per target.
+_DEFAULT_OUT: dict[str, str] = {
+    "cpp": "include",
+    "sv":  "rtl_pkg",
+}
+
+# Committed snapshot directories per target (for --check).
+_COMMITTED_DIR: dict[str, Path] = {
+    "cpp": SPEC_VALIDATE / "include",
+    "sv":  SPEC_VALIDATE / "rtl_pkg",
 }
 
 
@@ -47,9 +68,6 @@ def _resolve_source(src_rel: str) -> Path:
 
 def run_emit(target: str, domain: str, out_dir: Path) -> Path:
     """Run one emitter and write the output file.  Returns the written path."""
-    if target == "sv":
-        raise NotImplementedError("Task 8")
-
     key = (target, domain)
     if key not in DOMAIN_TO_EMITTER:
         raise ValueError(f"Unknown (target, domain): {key}")
@@ -73,14 +91,11 @@ def _strip_timestamp(lines: list[str]) -> list[str]:
 
 
 def cmd_emit(args: argparse.Namespace) -> int:
-    if args.target == "sv":
-        print("ERROR: --target sv not implemented yet (Task 8)", file=sys.stderr)
-        return 1
     if not args.domain:
         print("ERROR: --domain is required with --target", file=sys.stderr)
         return 2
 
-    out_dir = Path(args.out) if args.out else SPEC_VALIDATE / "include"
+    out_dir = Path(args.out) if args.out else SPEC_VALIDATE / _DEFAULT_OUT[args.target]
     try:
         written = run_emit(args.target, args.domain, out_dir)
         print(f"wrote {written}", file=sys.stderr)
@@ -88,41 +103,39 @@ def cmd_emit(args: argparse.Namespace) -> int:
     except FileNotFoundError as exc:
         print(f"ERROR: source JSON not found: {exc}", file=sys.stderr)
         return 1
-    except NotImplementedError as exc:
+    except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
 
 def cmd_check(_args: argparse.Namespace) -> int:
-    """Regen all cpp targets to a temp dir and diff vs committed include/.
+    """Regen all targets to a temp dir and diff vs committed directories.
 
     The timestamp line in the banner is excluded from comparison.
-    Exits 0 if all headers match, 1 if any drift is detected.
+    Exits 0 if all files match, 1 if any drift is detected.
     """
-    committed_dir = SPEC_VALIDATE / "include"
     all_ok = True
 
     with tempfile.TemporaryDirectory() as tmp:
-        fresh_dir = Path(tmp)
+        fresh_base = Path(tmp)
         for (target, domain), (_, out_name, src_rel) in DOMAIN_TO_EMITTER.items():
-            if target != "cpp":
-                continue  # SV check deferred to Task 8
-
             src_path = _resolve_source(src_rel)
             if not src_path.exists():
-                print(f"[skip] {domain}: source JSON not found ({src_rel})", file=sys.stderr)
+                print(f"[skip] {target}/{domain}: source JSON not found ({src_rel})", file=sys.stderr)
                 continue
 
+            fresh_dir = fresh_base / target
             try:
                 fresh_path = run_emit(target, domain, fresh_dir)
             except Exception as exc:
-                print(f"[error] {domain}: {exc}", file=sys.stderr)
+                print(f"[error] {target}/{domain}: {exc}", file=sys.stderr)
                 all_ok = False
                 continue
 
+            committed_dir = _COMMITTED_DIR[target]
             committed_path = committed_dir / fresh_path.name
             if not committed_path.exists():
-                print(f"[missing committed] {fresh_path.name}")
+                print(f"[missing committed] {target}/{out_name}")
                 all_ok = False
                 continue
 
@@ -144,9 +157,39 @@ def cmd_check(_args: argparse.Namespace) -> int:
     return 0 if all_ok else 1
 
 
+def cmd_lint_sv(_args: argparse.Namespace) -> int:
+    """Run verilator lint-only smoke test on rtl_pkg/*.sv.
+
+    Skips gracefully if verilator is not in PATH.
+    """
+    verilator = shutil.which("verilator")
+    if verilator is None:
+        print("[skip] verilator not in PATH -- SV lint smoke test skipped", file=sys.stderr)
+        return 0
+
+    sv_dir = SPEC_VALIDATE / "rtl_pkg"
+    sv_files = sorted(sv_dir.glob("*.sv"))
+    if not sv_files:
+        print("[skip] no .sv files found in rtl_pkg/ -- run --target sv first", file=sys.stderr)
+        return 0
+
+    cmd = [verilator, "--lint-only", "--Wall"] + [str(f) for f in sv_files]
+    print(f"[lint-sv] running: {' '.join(cmd)}", file=sys.stderr)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode == 0:
+        print("[lint-sv] PASS", file=sys.stderr)
+    else:
+        print(f"[lint-sv] FAIL (exit {result.returncode})", file=sys.stderr)
+    return result.returncode
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Unified codegen for NI spec (C++ headers; SV in Task 8)."
+        description="Unified codegen for NI spec (C++ headers and SV packages)."
     )
     parser.add_argument(
         "--target", choices=["cpp", "sv"], default="cpp",
@@ -158,16 +201,22 @@ def main() -> int:
     )
     parser.add_argument(
         "--out", default=None,
-        help="output directory (default: spec_validate/include/)",
+        help="output directory (default: spec_validate/include/ for cpp, spec_validate/rtl_pkg/ for sv)",
     )
     parser.add_argument(
         "--check", action="store_true",
         help="regen to scratch dir and diff vs committed; exit 1 on drift",
     )
+    parser.add_argument(
+        "--lint-sv", action="store_true",
+        help="run verilator --lint-only on rtl_pkg/*.sv; skips gracefully if verilator not in PATH",
+    )
     args = parser.parse_args()
 
     if args.check:
         return cmd_check(args)
+    if args.lint_sv:
+        return cmd_lint_sv(args)
     return cmd_emit(args)
 
 

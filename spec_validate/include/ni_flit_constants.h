@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_packet.json
 // Source SHA: 6067d8f1cc7e
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T02:53:50Z
+// Generated at: 2026-05-27T03:08:40Z
 // ----------------------------------------------------------------------------
 #pragma once
 #include <cstdint>
@@ -97,5 +97,9 @@ constexpr int AXI_RESP_WIDTH         = 2;
 constexpr int AXI_LAST_WIDTH         = 1;
 constexpr int RSVD_MC_STATUS_WIDTH   = 2;
 }  // namespace width
+
+// --- static_assert: arithmetic equality invariants (design doc sec 6.4) ---
+static_assert(FLIT_WIDTH == HEADER_WIDTH + PAYLOAD_WIDTH, "Flit width arithmetic inconsistent: HEADER_WIDTH + PAYLOAD_WIDTH must equal FLIT_WIDTH");
+static_assert((1 << header::FLIT_ECC_WIDTH) >= FLIT_DATA_WIDTH + header::FLIT_ECC_WIDTH + 1, "SECDED bound: 2^parity_bits must be >= data_bits + parity_bits + 1");
 
 }  // namespace ni

@@ -60,5 +60,31 @@ def emit(packet_json: Path, spec_version: str) -> str:
     out.append("}  // namespace width")
     out.append("")
 
+    # --- static_assert arithmetic invariants (design doc sec 6.4) ---
+    # Only equality invariants; no tiling/cross-ref/width_param eval.
+    out.append("// --- static_assert: arithmetic equality invariants (design doc sec 6.4) ---")
+
+    out.append(
+        "static_assert(FLIT_WIDTH == HEADER_WIDTH + PAYLOAD_WIDTH,"
+        " \"Flit width arithmetic inconsistent: HEADER_WIDTH + PAYLOAD_WIDTH must equal FLIT_WIDTH\");"
+    )
+
+    # SECDED bound: 2^parity_bits >= data_bits + parity_bits + 1
+    # flit_ecc covers FLIT_DATA_WIDTH data bits.
+    # We compute the literal check in Python and emit a compile-time boolean constant assertion.
+    flit_data = derived.get("FLIT_DATA_WIDTH")
+    flit_ecc_w = None
+    for f in spec["flit"]["header_fields"]:
+        if f["name"] == "flit_ecc":
+            flit_ecc_w = f["width"]
+            break
+    if flit_data is not None and flit_ecc_w is not None:
+        # Emit using header:: qualified name so the constant is in scope.
+        out.append(
+            "static_assert((1 << header::FLIT_ECC_WIDTH) >= FLIT_DATA_WIDTH + header::FLIT_ECC_WIDTH + 1,"
+            " \"SECDED bound: 2^parity_bits must be >= data_bits + parity_bits + 1\");"
+        )
+    out.append("")
+
     out.append("}  // namespace ni")
     return "\n".join(out) + "\n"
