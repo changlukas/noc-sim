@@ -23,14 +23,14 @@
                          │ ni_spec.constants (stable API; firewall)
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  tools/elaborate/cpp_*.py + tools/elaborate/sv_*.py  (4 + 4 emitters)        │
+│  tools/elaborate/cpp_*.py + tools/elaborate/sv_*.py  (4 + 4 elaborators)        │
 │  → each returns a string of C++ or SystemVerilog code              │
 └────────────────────────┬─────────────────────────────────────────┘
                          │ tools/elaborate/common.py (provenance banner)
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  tools/codegen.py  (dispatcher)                                     │
-│  → routes --target / --domain to right emitter                      │
+│  → routes --target / --domain to right elaborator                      │
 │  → adds provenance banner                                           │
 │  → writes file OR --check mode (diff vs committed; exit 0/1)        │
 └────────────────────────┬─────────────────────────────────────────┘
@@ -101,11 +101,11 @@ py -3 tools/codegen.py --lint-sv
 
 ### Dispatcher：`tools/codegen.py` (140 LOC)
 
-CLI 統一入口、不寫 emit 邏輯、只做 routing。讀 `--target` / `--domain` → 找對應 emitter → 呼叫 `emit()` → prepend banner → 寫檔 OR diff。`--check` / `--lint-sv` 兩個 sub-command 也在這裡。
+CLI 統一入口、不寫 elaborate 邏輯、只做 routing。讀 `--target` / `--domain` → 找對應 elaborator → 呼叫 `emit()` → prepend banner → 寫檔 OR diff。`--check` / `--lint-sv` 兩個 sub-command 也在這裡。
 
-### Per-domain emitters：`tools/elaborate/cpp_*.py` 與 `sv_*.py`（8 個檔）
+### Per-domain elaborators：`tools/elaborate/cpp_*.py` 與 `sv_*.py`（8 個檔）
 
-每個 emitter 做一件事：讀對應 source（透過 `ni_spec.constants` API，**不直接 parse JSON**）→ return code string。Emitter 自己不知道輸出 path、不寫檔。
+每個 elaborator 做一件事：讀對應 source（透過 `ni_spec.constants` API，**不直接 parse JSON**）→ return code string。Elaborator 自己不知道輸出 path、不寫檔。
 
 | 檔案 | 讀什麼 | 產出 |
 |---|---|---|
@@ -118,7 +118,7 @@ CLI 統一入口、不寫 emit 邏輯、只做 routing。讀 `--target` / `--dom
 | `sv_registers.py` (~60 LOC) | 同 cpp_registers | `package ni_regs_pkg` + `localparam int unsigned` offsets + masks |
 | `sv_blocks.py` (~70 LOC) | 同 cpp_blocks | `package ni_blocks_pkg` + `typedef enum logic [N-1:0]` for FunctionBlock + mode enums + `localparam int unsigned` params |
 
-**SV typing 注意**：integer constants 用 `localparam int unsigned`（不用 bare `parameter` — 會 silent truncate / signed-unsigned bug）。Enums 用 `typedef enum logic [N-1:0] { ... } foo_e;`（不用 bare parameter list — 等同 C++ `enum class` 的型別安全）。`N = $clog2(member_count)` 由 emitter 算出來填。
+**SV typing 注意**：integer constants 用 `localparam int unsigned`（不用 bare `parameter` — 會 silent truncate / signed-unsigned bug）。Enums 用 `typedef enum logic [N-1:0] { ... } foo_e;`（不用 bare parameter list — 等同 C++ `enum class` 的型別安全）。`N = $clog2(member_count)` 由 elaborator 算出來填。
 
 ### 共用 helper：`tools/elaborate/common.py` (46 LOC)
 
@@ -218,7 +218,7 @@ C++ 跟 SV 命名對應規則（per design doc §6.2）：
 
 ## `static_assert` — compile-time invariant 檢查
 
-C++ emitter 在 `cpp_packet.py` 跟 `cpp_registers.py` 嵌入算術 `static_assert`、把 §6.4 規定的 arithmetic equality invariants 鎖在編譯時：
+C++ elaborator 在 `cpp_packet.py` 跟 `cpp_registers.py` 嵌入算術 `static_assert`、把 §6.4 規定的 arithmetic equality invariants 鎖在編譯時：
 
 - **flit width 算術**：`HEADER_WIDTH + PAYLOAD_WIDTH == FLIT_WIDTH`
 - **per-channel 算術**：每 channel 的 payload + header 對得起來
@@ -288,11 +288,11 @@ g++ -std=c++17 -I include examples\use_constants.cpp -o use_constants.exe
 1. **Source**：新增 `spec/ni/doc/interrupts.md` + parse 函式 in `ni_spec/generator.py`
 2. **Schema**：新增 `generated/ni_interrupts.schema.json` + Layer 1 / Layer 2 validators in `ni_spec/invariants.py`
 3. **Constants API**：在 `ni_spec/constants.py` 加 `interrupts_*()` accessor 函式（stable API、firewall against schema changes）
-4. **Emitters**：加 `tools/elaborate/cpp_interrupts.py` + `tools/elaborate/sv_interrupts.py`、都消費 `ni_spec.constants.interrupts_*`
+4. **Elaborators**：加 `tools/elaborate/cpp_interrupts.py` + `tools/elaborate/sv_interrupts.py`、都消費 `ni_spec.constants.interrupts_*`
 5. **Dispatcher**：在 `tools/codegen.py` 的 domain map 加 `interrupts` entry
 6. **Tests**：加對應 tests in `tests/test_*.py`
 
-### 加新 emit target（例如 Python C model）
+### 加新 elaborate target（例如 Python C model）
 
 照同樣 pattern 在 `tools/elaborate/` 加 `py_*.py` 系列、`codegen.py` 加 `--target py`。
 
@@ -310,11 +310,11 @@ CI 不強制（per `2026-05-26-spec-as-code-unified-design.md` §4.3）— 但 r
 
 ## 修改 codegen 時
 
-`tools/codegen.py` 是 dispatcher、emit 邏輯在 `tools/elaborate/{cpp,sv}_*.py`。所有「怎麼從 JSON 撈值」邏輯在 `ni_spec.constants`（stable API）—— 要加新常數時：
+`tools/codegen.py` 是 dispatcher、elaborate 邏輯在 `tools/elaborate/{cpp,sv}_*.py`。所有「怎麼從 JSON 撈值」邏輯在 `ni_spec.constants`（stable API）—— 要加新常數時：
 
 1. 先擴 `ni_spec.constants.py`（加 accessor function）
-2. 再在 emitter 呼叫新 API
-3. **不要**在 emitter 內直接 parse JSON — 那會繞過 firewall、之後 schema 改了 emitter 也會壞
+2. 再在 elaborator 呼叫新 API
+3. **不要**在 elaborator 內直接 parse JSON — 那會繞過 firewall、之後 schema 改了 elaborator 也會壞
 
 ## 修改 generator 時
 
@@ -323,4 +323,4 @@ CI 不強制（per `2026-05-26-spec-as-code-unified-design.md` §4.3）— 但 r
 2. 在對應的 `generate_ni_*_json` 組裝結構裡接上
 3. 若新增區塊需要 schema 驗證，更新 `generated/*.schema.json`
 4. 若新增不變量檢查，加進 `ni_spec/invariants.py`
-5. 若新增 JSON 欄位要供 codegen 用，**先加 `ni_spec.constants` accessor**，再在 emitter 呼叫
+5. 若新增 JSON 欄位要供 codegen 用，**先加 `ni_spec.constants` accessor**，再在 elaborator 呼叫
