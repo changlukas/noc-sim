@@ -40,13 +40,16 @@ def emit(packet_json: Path, spec_version: str) -> str:
     out.append("  // --- header field bit positions (from flit.header_fields) ---")
     for f in spec["flit"]["header_fields"]:
         n = f["name"].upper()
+        enabled_val = "1'b1" if f.get("enabled", True) else "1'b0"
         if f.get("width", 1) == 0:
-            # width=0 reserved placeholder: emit WIDTH=0 only; no LSB/MSB (field not bit-addressable)
-            out.append(f"  localparam int unsigned {n}_WIDTH = 0;  // reserved placeholder (width=0 -- not in flit)")
+            # width=0 reserved placeholder: emit WIDTH=0 + ENABLED only; no LSB/MSB (field not bit-addressable)
+            out.append(f"  localparam int unsigned {n}_WIDTH   = 0;  // reserved placeholder (width=0 -- not in flit)")
+            out.append(f"  localparam bit          {n}_ENABLED = {enabled_val};")
         else:
-            out.append(f"  localparam int unsigned {n}_LSB   = {f['lsb']};")
-            out.append(f"  localparam int unsigned {n}_MSB   = {f['msb']};")
-            out.append(f"  localparam int unsigned {n}_WIDTH = {f['width']};")
+            out.append(f"  localparam int unsigned {n}_LSB     = {f['lsb']};")
+            out.append(f"  localparam int unsigned {n}_MSB     = {f['msb']};")
+            out.append(f"  localparam int unsigned {n}_WIDTH   = {f['width']};")
+            out.append(f"  localparam bit          {n}_ENABLED = {enabled_val};")
     out.append("")
 
     out.append("  // --- payload widths per channel (from flit.payload_channels) ---")

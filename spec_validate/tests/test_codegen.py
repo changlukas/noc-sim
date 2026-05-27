@@ -6,6 +6,7 @@ Tests cover:
 - --check mode detects drift when a header is modified.
 - examples/use_constants.cpp still compiles and runs after regen.
 - gen_cpp_header.py deprecation wrapper still works (prints warning to stderr).
+- per-field enabled flag: ENABLED constants present in C++ header.
 """
 from __future__ import annotations
 import shutil
@@ -226,3 +227,36 @@ def test_registers_cpp_has_field_width_static_assert():
     text = (INCLUDE_DIR / "ni_regs.h").read_text(encoding="ascii")
     assert "static_assert" in text
     assert "field width sum" in text
+
+
+# ---------------------------------------------------------------------------
+# per-field enabled flag tests (header_fields)
+# ---------------------------------------------------------------------------
+
+def test_packet_cpp_has_enabled_constants():
+    """ni_flit_constants.h must contain _ENABLED bool constants for every header field."""
+    r = run_codegen("--target", "cpp", "--domain", "packet",
+                    "--out", str(INCLUDE_DIR))
+    assert r.returncode == 0, r.stderr
+    text = (INCLUDE_DIR / "ni_flit_constants.h").read_text(encoding="ascii")
+    assert "constexpr bool" in text
+    assert "_ENABLED" in text
+
+
+def test_packet_cpp_padding_fields_have_enabled_false():
+    """Fields declared as padding must emit ENABLED = false in C++ header."""
+    text = (INCLUDE_DIR / "ni_flit_constants.h").read_text(encoding="ascii")
+    # These four are marked enabled=false per user direction
+    for field in ("AXI_CH", "ROUTE_PAR", "MULTICAST", "FLIT_ECC"):
+        assert f"constexpr bool {field}_ENABLED = false;" in text, (
+            f"Expected {field}_ENABLED = false; not found in ni_flit_constants.h"
+        )
+
+
+def test_packet_cpp_functional_fields_have_enabled_true():
+    """Functional fields must emit ENABLED = true in C++ header."""
+    text = (INCLUDE_DIR / "ni_flit_constants.h").read_text(encoding="ascii")
+    for field in ("SRC_ID", "DST_ID", "VC_ID", "LAST", "ROB_REQ", "ROB_IDX"):
+        assert f"constexpr bool {field}_ENABLED = true;" in text, (
+            f"Expected {field}_ENABLED = true; not found in ni_flit_constants.h"
+        )

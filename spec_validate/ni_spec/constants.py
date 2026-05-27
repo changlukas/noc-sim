@@ -71,6 +71,24 @@ def all_field_widths(packet_spec) -> Dict[str, int]:
     return dict(_resolved_field_widths(packet_spec))
 
 
+def header_field_enabled(packet_spec, field_name: str) -> bool:
+    """Return whether header field is functional (True) or padding (False).
+
+    A field is functional when its ``enabled`` property is True (the default).
+    Padding fields are currently stubbed to 0 and not driven by hardware.
+    """
+    for f in packet_spec["flit"]["header_fields"]:
+        if f["name"] == field_name:
+            return f.get("enabled", True)
+    raise KeyError(f"header field {field_name!r} not in spec")
+
+
+def header_fields_padding(packet_spec) -> list:
+    """Return list of field names marked enabled=false (padding/stubbed)."""
+    return [f["name"] for f in packet_spec["flit"]["header_fields"]
+            if not f.get("enabled", True)]
+
+
 def axi_channel_encoding(packet_spec) -> Dict[str, int]:
     """axi_ch 欄位的 {channel_name: value}。沒有 encoding 欄位則回 {}。"""
     for f in packet_spec["flit"]["header_fields"]:

@@ -116,6 +116,7 @@ def parse_header_fields(md_text: str) -> List[dict]:
     i_wp = _col_idx(header, "Width Symbol")
     i_rng = _col_idx(header, "Default Range")
     i_stage = _col_idx(header, "Stage")
+    i_enabled = _col_idx(header, "Enabled")
     if None in (i_name, i_wp, i_rng):
         raise ValueError(f"§2.1 缺欄位 (Field/Width Symbol/Default Range)；實際 header={header}")
     result = []
@@ -126,6 +127,14 @@ def parse_header_fields(md_text: str) -> List[dict]:
         if not name:
             continue
         rng_cell = cells[i_rng]
+
+        # Parse enabled column: "true" → True, "false" → False, missing → True (default)
+        enabled: bool = True
+        if i_enabled is not None and i_enabled < len(cells):
+            raw_enabled = cells[i_enabled].strip().lower()
+            if raw_enabled == "false":
+                enabled = False
+            # any other value (including empty string) defaults to True
 
         # Handle width=0 reserved placeholder fields (e.g. noc_qos when NOC_QOS_WIDTH=0)
         if _is_zero_width_range(rng_cell):
@@ -138,6 +147,7 @@ def parse_header_fields(md_text: str) -> List[dict]:
             }
             if i_stage is not None and i_stage < len(cells):
                 field["stage"] = cells[i_stage]
+            field["enabled"] = enabled
             result.append(field)
             continue
 
@@ -154,6 +164,7 @@ def parse_header_fields(md_text: str) -> List[dict]:
         }
         if i_stage is not None and i_stage < len(cells):
             field["stage"] = cells[i_stage]
+        field["enabled"] = enabled
         result.append(field)
     return result
 

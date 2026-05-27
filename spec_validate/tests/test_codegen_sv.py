@@ -93,6 +93,28 @@ class TestSvPacketEmit:
         assert "Generator version:" in text
         assert "Generated at:" in text
 
+    def test_enabled_localparams_present(self):
+        """ni_flit_pkg.sv must contain localparam bit _ENABLED constants."""
+        text = _sv_text("ni_flit_pkg.sv")
+        assert "localparam bit" in text
+        assert "_ENABLED" in text
+
+    def test_padding_fields_enabled_zero(self):
+        """Fields declared as padding must emit ENABLED = 1'b0 in SV package."""
+        text = _sv_text("ni_flit_pkg.sv")
+        for field in ("AXI_CH", "ROUTE_PAR", "MULTICAST", "FLIT_ECC"):
+            assert f"localparam bit          {field}_ENABLED = 1'b0;" in text, (
+                f"Expected {field}_ENABLED = 1'b0; not found in ni_flit_pkg.sv"
+            )
+
+    def test_functional_fields_enabled_one(self):
+        """Functional fields must emit ENABLED = 1'b1 in SV package."""
+        text = _sv_text("ni_flit_pkg.sv")
+        for field in ("SRC_ID", "DST_ID", "VC_ID", "LAST", "ROB_REQ", "ROB_IDX"):
+            assert f"localparam bit          {field}_ENABLED = 1'b1;" in text, (
+                f"Expected {field}_ENABLED = 1'b1; not found in ni_flit_pkg.sv"
+            )
+
 
 class TestSvSignalsEmit:
     def setup_method(self):

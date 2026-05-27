@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_signals.json
 // Source SHA: e95ef18bf3b9
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T03:44:05Z
+// Generated at: 2026-05-27T03:50:31Z
 // ----------------------------------------------------------------------------
 `ifndef NI_SIGNALS_PKG_SVH
 `define NI_SIGNALS_PKG_SVH

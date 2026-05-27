@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_registers.json
 // Source SHA: 5a58bef897f3
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T03:44:05Z
+// Generated at: 2026-05-27T03:50:30Z
 // ----------------------------------------------------------------------------
 #pragma once
 #include <cstdint>

@@ -44,7 +44,8 @@
         "width": 0,
         "lsb": null,
         "msb": null,
-        "stage": "arbitration"
+        "stage": "arbitration",
+        "enabled": true
       },
       {
         "name": "axi_ch",
@@ -52,7 +53,8 @@
         "width": 3,
         "lsb": 0,
         "msb": 2,
-        "stage": "arbitration"
+        "stage": "arbitration",
+        "enabled": false
       },
       {
         "name": "src_id",
@@ -60,7 +62,8 @@
         "width": 8,
         "lsb": 3,
         "msb": 10,
-        "stage": "routing"
+        "stage": "routing",
+        "enabled": true
       },
       {
         "name": "dst_id",
@@ -68,7 +71,8 @@
         "width": 8,
         "lsb": 11,
         "msb": 18,
-        "stage": "routing"
+        "stage": "routing",
+        "enabled": true
       },
       {
         "name": "vc_id",
@@ -76,7 +80,8 @@
         "width": 3,
         "lsb": 19,
         "msb": 21,
-        "stage": "routing"
+        "stage": "routing",
+        "enabled": true
       },
       {
         "name": "route_par",
@@ -84,7 +89,8 @@
         "width": 1,
         "lsb": 22,
         "msb": 22,
-        "stage": "routing"
+        "stage": "routing",
+        "enabled": false
       },
       {
         "name": "last",
@@ -92,7 +98,8 @@
         "width": 1,
         "lsb": 23,
         "msb": 23,
-        "stage": "wormhole"
+        "stage": "wormhole",
+        "enabled": true
       },
       {
         "name": "rob_req",
@@ -100,7 +107,8 @@
         "width": 1,
         "lsb": 24,
         "msb": 24,
-        "stage": "wormhole"
+        "stage": "wormhole",
+        "enabled": true
       },
       {
         "name": "rob_idx",
@@ -108,7 +116,8 @@
         "width": 5,
         "lsb": 25,
         "msb": 29,
-        "stage": "wormhole"
+        "stage": "wormhole",
+        "enabled": true
       },
       {
         "name": "rsvd_commtype",
@@ -116,7 +125,8 @@
         "width": 2,
         "lsb": 30,
         "msb": 31,
-        "stage": "reserved"
+        "stage": "reserved",
+        "enabled": true
       },
       {
         "name": "multicast",
@@ -124,7 +134,8 @@
         "width": 8,
         "lsb": 32,
         "msb": 39,
-        "stage": "reserved"
+        "stage": "reserved",
+        "enabled": false
       },
       {
         "name": "flit_ecc",
@@ -132,7 +143,8 @@
         "width": 10,
         "lsb": 40,
         "msb": 49,
-        "stage": "ECC"
+        "stage": "ECC",
+        "enabled": false
       }
     ],
     "payload_channels": [

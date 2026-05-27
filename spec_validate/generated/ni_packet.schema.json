@@ -61,6 +61,11 @@
               "lsb":             {"type": ["integer", "null"], "minimum": 0},
               "msb":             {"type": ["integer", "null"], "minimum": 0},
               "stage":           {"type": "string"},
+              "enabled":         {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether this field is functional (driven by hardware) or padding (stubbed to 0)"
+              },
               "encoding":        {
                 "type": "object",
                 "additionalProperties": {"type": "string"}

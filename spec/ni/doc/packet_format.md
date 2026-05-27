@@ -143,21 +143,21 @@ Header 預設 `HEADER_WIDTH = 50 bits`（原 v0.4.0 為 54 bits；`NOC_QOS_WIDTH
 
 按 pipeline stage 分組（LSB→MSB）：arbitration → routing → wormhole control → reserved future → ECC。
 
-| Field | Width Symbol | Default Range | Stage | Description |
-|-------|--------------|---------------|-------|-------------|
-| noc_qos | `NOC_QOS_WIDTH` | (none — width=0) | arbitration | NoC-layer QoS priority placeholder; currently `NOC_QOS_WIDTH=0` so this field occupies zero bits and does not appear in the flit. Reserved for future router arbitration extension. |
-| axi_ch | `AXI_CH_WIDTH` | [2:0] | arbitration | AXI channel type (5 channels: AW/W/AR/B/R) |
-| src_id | `X_WIDTH + Y_WIDTH` | [10:3] | routing | Source node ID (X+Y coordinate) |
-| dst_id | `X_WIDTH + Y_WIDTH` | [18:11] | routing | Destination node ID (X+Y coordinate) |
-| vc_id | `VC_ID_WIDTH` | [21:19] | routing | Virtual Channel ID |
-| route_par | `ROUTE_PAR_WIDTH` | [22] | routing | Even parity over `{dst_id, last}` (9 bits at default); checked at every router hop. Aligned with AMD pg313 §Parity (NPP packet DST ID + LAST coverage) |
-| last | `LAST_WIDTH` | [23] | wormhole | Packet end marker (1 = last flit of packet) |
-| rob_req | `ROB_REQ_WIDTH` | [24] | wormhole | RoB request flag (NMU sets; 1 = RoB allocate) |
-| rob_idx | `ROB_IDX_WIDTH` | [29:25] | wormhole | RoB entry index (`rob_req=1` valid) |
-| rsvd_commtype | `RSVD_COMMTYPE_WIDTH` | [31:30] | reserved | Reserved (future communication type extension) |
-| multicast | `MULTICAST_WIDTH` | [39:32] | reserved | Reserved (future multicast destination encoding) |
-| flit_ecc | `FLIT_ECC_WIDTH` | [49:40] | ECC | Whole-flit SECDED syndrome (covers `header[39:0]` + `payload`) |
-| | **HEADER_WIDTH** = 50 | | | |
+| Field | Width Symbol | Default Range | Stage | Enabled | Description |
+|-------|--------------|---------------|-------|---------|-------------|
+| noc_qos | `NOC_QOS_WIDTH` | (none — width=0) | arbitration | true | NoC-layer QoS priority placeholder; currently `NOC_QOS_WIDTH=0` so this field occupies zero bits and does not appear in the flit. Reserved for future router arbitration extension. |
+| axi_ch | `AXI_CH_WIDTH` | [2:0] | arbitration | false | AXI channel type (5 channels: AW/W/AR/B/R) |
+| src_id | `X_WIDTH + Y_WIDTH` | [10:3] | routing | true | Source node ID (X+Y coordinate) |
+| dst_id | `X_WIDTH + Y_WIDTH` | [18:11] | routing | true | Destination node ID (X+Y coordinate) |
+| vc_id | `VC_ID_WIDTH` | [21:19] | routing | true | Virtual Channel ID |
+| route_par | `ROUTE_PAR_WIDTH` | [22] | routing | false | Even parity over `{dst_id, last}` (9 bits at default); checked at every router hop. Aligned with AMD pg313 §Parity (NPP packet DST ID + LAST coverage) |
+| last | `LAST_WIDTH` | [23] | wormhole | true | Packet end marker (1 = last flit of packet) |
+| rob_req | `ROB_REQ_WIDTH` | [24] | wormhole | true | RoB request flag (NMU sets; 1 = RoB allocate) |
+| rob_idx | `ROB_IDX_WIDTH` | [29:25] | wormhole | true | RoB entry index (`rob_req=1` valid) |
+| rsvd_commtype | `RSVD_COMMTYPE_WIDTH` | [31:30] | reserved | true | Reserved (future communication type extension) |
+| multicast | `MULTICAST_WIDTH` | [39:32] | reserved | false | Reserved (future multicast destination encoding) |
+| flit_ecc | `FLIT_ECC_WIDTH` | [49:40] | ECC | false | Whole-flit SECDED syndrome (covers `header[39:0]` + `payload`) |
+| | **HEADER_WIDTH** = 50 | | | | |
 
 **‡ vc_id 欄位**：攜帶 `VC_ID_WIDTH` bits（最多 8 VC），與 credit-based flow control 搭配。Router 與 NI sink 用 `vc_id` 配對對應 VC FIFO。v0.4.0 起一律啟用（A4.7 wave 移除 valid/ready mode）。
 
