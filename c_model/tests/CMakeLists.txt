@@ -10,3 +10,7 @@ endfunction()
 
 add_cmodel_test(test_pins_smoke)
 add_cmodel_test(test_flit)
+add_cmodel_test(test_register_file)
+target_sources(test_register_file PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src/register_file.cpp
+)
