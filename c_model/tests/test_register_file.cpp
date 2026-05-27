@@ -18,16 +18,16 @@ TEST(RegisterFile, ResetValuesAreZeroForNow) {
   EXPECT_EQ(r.data,   0u);
 }
 
-TEST(RegisterFile, WriteMisalignedReturnsDecErr) {
+TEST(RegisterFile, WriteMisalignedReturnsSlvErr) {
   RegisterFile rf;
   auto r = rf.write32(ni::regs::PKT_PROBE_EN_OFFSET + 1, 0xDEADBEEF);
-  EXPECT_EQ(r.status, AbiResult::DecErr);
+  EXPECT_EQ(r.status, AbiResult::SlvErr);  // per csr_policy: misaligned=slverr
 }
 
-TEST(RegisterFile, SubWordWriteReturnsDecErr) {
+TEST(RegisterFile, SubWordWriteReturnsSlvErr) {
   RegisterFile rf;
   auto r = rf.write32(ni::regs::PKT_PROBE_EN_OFFSET, 0xDEADBEEF, /*wstrb=*/0b0001);
-  EXPECT_EQ(r.status, AbiResult::DecErr);
+  EXPECT_EQ(r.status, AbiResult::SlvErr);  // per csr_policy: sub_word_write=slverr
 }
 
 TEST(RegisterFile, WriteFollowedByRead) {

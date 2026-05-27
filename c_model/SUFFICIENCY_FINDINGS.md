@@ -34,7 +34,7 @@ Each finding: what gap exists, where surfaced, workaround used, fix-direction pr
 - Workaround: no policy enforcement for now
 - Fix-direction: cpp_registers.py emit `constexpr ni::regs::AccessMode <REG>_ACCESS;`
 
-## F-007 — codegen does not elaborate csr_policy as enum (only string in Task 5)
+## F-007 — RegisterFile ABI dispatch consumes csr_policy boolean sentinels
 - Surfaced: ABI dispatch in `RegisterFile::read32` / `write32`
-- Workaround: use Task 5's `CSR_POLICY_*` boolean constants (now plain `*` names after Task 5 fix)
-- Fix-direction: cpp_registers.py emit `enum class SubWordWritePolicy` etc.
+- Status: RESOLVED in Task 12 fix — uses `if constexpr (ni::regs::csr_policy::*_IS_*)` to dispatch on codegen-elaborated policy values
+- Future enhancement: codegen could emit `enum class SubWordWritePolicy { Decerr, Ignored }` for type-safe dispatch instead of boolean sentinels (currently `WO_READ_IS_ZERO` / `UNMAPPED_READ_IS_DECERR` etc. are int sentinels)

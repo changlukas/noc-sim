@@ -70,20 +70,49 @@ bool RegisterFile::is_rw1c_(uint32_t /*offset*/) const {
 }
 
 AbiResponse RegisterFile::read32(uint32_t offset) {
-  if (!is_mapped_(offset)) {
-    return {AbiResult::DecErr, 0};
-  }
+  // Check misalignment first: spec distinguishes misaligned vs unmapped,
+  // and mapped offsets are all word-aligned, so a misaligned offset can
+  // never be a mapped one — checking unmapped first would mis-classify
+  // misaligned accesses as unmapped (DecErr) instead of misaligned (SlvErr).
   if (offset % 4 != 0) {
-    return {AbiResult::DecErr, 0};
+    if constexpr (ni::regs::csr_policy::MISALIGNED_IS_SLVERR) {
+      return {AbiResult::SlvErr, 0};
+    } else {
+      return {AbiResult::DecErr, 0};  // misaligned = lower-aligned/decerr fallback
+    }
+  }
+  if (!is_mapped_(offset)) {
+    // policy: unmapped_read = decerr
+    if constexpr (ni::regs::csr_policy::UNMAPPED_READ_IS_DECERR) {
+      return {AbiResult::DecErr, 0};
+    } else {
+      return {AbiResult::Ok, 0};  // unmapped_read = zero (fallback)
+    }
   }
   return {AbiResult::Ok, storage_[offset]};
 }
 
 AbiResponse RegisterFile::write32(uint32_t offset, uint32_t value, uint8_t wstrb) {
-  if (!is_mapped_(offset)) return {AbiResult::DecErr, 0};
-  if (offset % 4 != 0)      return {AbiResult::DecErr, 0};
-  if (wstrb != 0b1111) {
+  // Same ordering as read32: misalignment is checked before mapping.
+  if (offset % 4 != 0) {
+    if constexpr (ni::regs::csr_policy::MISALIGNED_IS_SLVERR) {
+      return {AbiResult::SlvErr, 0};
+    }
     return {AbiResult::DecErr, 0};
+  }
+  if (!is_mapped_(offset)) {
+    if constexpr (ni::regs::csr_policy::UNMAPPED_READ_IS_DECERR) {
+      // write follows same policy as read for unmapped (no separate spec field)
+      return {AbiResult::DecErr, 0};
+    }
+    return {AbiResult::Ok, 0};
+  }
+  if (wstrb != 0b1111) {
+    if constexpr (ni::regs::csr_policy::SUB_WORD_WRITE_IS_SLVERR) {
+      return {AbiResult::SlvErr, 0};
+    }
+    // sub_word_write = ignored: silently drop, return Ok
+    return {AbiResult::Ok, 0};
   }
   storage_[offset] = value;
   last_irq_ = false;
