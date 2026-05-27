@@ -1,68 +1,86 @@
-# Spec → C++ Codegen 工具
+# Spec Codegen 工具 (tools/codegen.py)
 
 ## Path B 架構（single source of truth）
 
 ```
-spec/ni/doc/packet_format.md (你 ONLY edit this)
+spec/ni/doc/*.md  +  spec_validate/ni_function_blocks.json
        │
        │ ni_spec.generator      ← parse MD 產 JSON
        ▼
-spec_validate/generated/ni_packet.json (auto-gen，不准手改)
+spec_validate/generated/*.json (auto-gen，不准手改)
        │
-       ├──→ Layer 1 schema 驗 generator 沒產壞 JSON
-       ├──→ Layer 2 arithmetic 驗不變量
-       └──→ tools/gen_cpp_header.py → include/ni_flit_constants.h → C++
+       ├──→ Layer 1 schema + Layer 2 invariants 驗證
+       └──→ tools/codegen.py → include/*.h → C++ C model
 ```
 
-對應 SystemRDL / Protocol Buffers 的常見 pattern：人寫 source，工具產衍生品，下游消費衍生品。
+`tools/codegen.py` 是統一入口，支援 4 個 domain、C++ target（SV 在 Task 8）。
+`gen_cpp_header.py` 已 deprecated，保留為 wrapper。
 
 ## 目錄定位
 
 ```
-d:\03_CLAUDE\spec\
-├── .venv\                          ← Python venv（不在 git，新機器自己建）
-└── noc-sim\                        ← git repo
-    ├── spec\ni\doc\*.md            ← spec source MD
-    └── spec_validate\              ← validator + generator + codegen + samples
-        ├── ni_spec\                ← Python module
-        ├── generated\              ← auto-gen JSON + schema
-        ├── tools\gen_cpp_header.py
-        ├── examples\use_constants.cpp
-        └── include\ni_flit_constants.h
+noc-sim\
+├── spec\ni\doc\*.md                   ← spec source MD
+└── spec_validate\
+    ├── ni_spec\                       ← Python validator module
+    ├── generated\                     ← auto-gen JSON + schema
+    ├── ni_function_blocks.json        ← hand-written function blocks source
+    ├── tools\
+    │   ├── codegen.py                 ← unified entry (NEW)
+    │   ├── emit\                      ← per-domain C++ emitters (NEW)
+    │   │   ├── common.py              ← provenance banner helper
+    │   │   ├── cpp_packet.py
+    │   │   ├── cpp_signals.py
+    │   │   ├── cpp_registers.py
+    │   │   └── cpp_blocks.py
+    │   └── gen_cpp_header.py          ← deprecated wrapper
+    ├── examples\use_constants.cpp
+    └── include\                       ← codegen output (do not hand-edit)
+        ├── ni_flit_constants.h
+        ├── ni_signals.h
+        ├── ni_regs.h
+        └── ni_blocks.h
 ```
 
-## 一條龍指令（spec 改完一鍵驗證 + build）
+## 一條龍指令（spec 改完一鍵驗證 + codegen + build）
 
 ```powershell
-cd d:\03_CLAUDE\spec\noc-sim\spec_validate
-$env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
-& ..\..\.venv\Scripts\python.exe -m ni_spec ..\spec\ni\doc
-& ..\..\.venv\Scripts\python.exe tools\gen_cpp_header.py --out include\ni_flit_constants.h
+cd noc-sim\spec_validate
+py -3 -m ni_spec ..\spec\ni\doc
+py -3 tools\codegen.py --target cpp --domain packet    --out include
+py -3 tools\codegen.py --target cpp --domain signals   --out include
+py -3 tools\codegen.py --target cpp --domain registers --out include
+py -3 tools\codegen.py --target cpp --domain blocks    --out include
+py -3 tools\codegen.py --check
 g++ -std=c++17 -I include examples\use_constants.cpp -o use_constants.exe
 .\use_constants.exe
 ```
 
 ## 分解步驟
 
-所有指令假設 cwd 是 `d:\03_CLAUDE\spec\noc-sim\spec_validate\`。
+所有指令假設 cwd 是 `noc-sim\spec_validate\`。
 
 ### 1. 校驗 spec（generator → Layer 1 → Layer 2）
 
 ```powershell
-& ..\..\.venv\Scripts\python.exe -m ni_spec ..\spec\ni\doc
+py -3 -m ni_spec ..\spec\ni\doc
 ```
 
-- 讀 `..\spec\ni\doc\packet_format.md` + `..\spec\ni\doc\signal_interface.md`
-- 產 `generated\ni_packet.json` + `generated\ni_signals.json`
-- 跑 Layer 1 (JSON Schema) + Layer 2 (semantic/arithmetic) 驗證
-
-### 2. 跑 codegen 產 C++ header
+### 2. 跑 codegen 產 C++ headers
 
 ```powershell
-& ..\..\.venv\Scripts\python.exe tools\gen_cpp_header.py --out include\ni_flit_constants.h
+py -3 tools\codegen.py --target cpp --domain packet --out include
 ```
 
-`--spec-dir` 預設為 `spec_validate\generated\`。
+支援 `--domain {packet|signals|registers|blocks}`。`--out` 預設為 `spec_validate\include\`。
+
+#### CI 漂移檢查
+
+```powershell
+py -3 tools\codegen.py --check
+```
+
+重新 regen 到暫存目錄，與已提交的 `include\*.h` 比對（剔除 timestamp 行）。不一致 exit 1。
 
 ### 3. Build + run C++ sample
 
@@ -90,7 +108,11 @@ cl.exe /std:c++17 /EHsc /I include examples\use_constants.cpp /Fe:use_constants.
 
 ## 修改 codegen 時
 
-`gen_cpp_header.py` 只負責「讀 JSON、組字串、印出來」。所有「怎麼從 JSON 撈值」的邏輯都在 `ni_spec.constants` 裡——要加新常數時，先擴充 `ni_spec.constants`，再在 codegen 裡叫新 API。
+`tools/codegen.py` 是 dispatcher；實際 emit 邏輯在 `tools/emit/cpp_*.py`。
+所有「怎麼從 JSON 撈值」的邏輯在 `ni_spec.constants`（stable API）——
+要加新常數時，先擴充 `ni_spec.constants`，再在對應 emitter 呼叫新 API。
+
+`gen_cpp_header.py` 是已 deprecated 的 wrapper，最終可刪。
 
 ## 修改 generator 時
 
