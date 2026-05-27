@@ -1263,7 +1263,7 @@ _SECTION_PAT = re.compile(r"^##\s+(.+)$")
 # Rule row: ID is uppercase+underscores, severity is FAIL/WARN/RECOMMEND/MUST/MUST NOT.
 # Pattern: | ID | (anything) | (anything) | SEVERITY | ...
 _ROW_PAT = re.compile(
-    r"^\|\s*([A-Z][A-Z0-9_]+)\s*\|[^|]*\|[^|]*\|\s*(FAIL|WARN|RECOMMEND|MUST NOT|MUST)\s*\|"
+    r"^\|\s*([A-Z][A-Z0-9_]+)\s*\|[^|]*\|[^|]*\|\s*(MUST NOT|MUST|SHOULD NOT|SHOULD|MAY)\s*\|"
 )
 
 
