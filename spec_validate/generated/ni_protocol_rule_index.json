@@ -400,381 +400,360 @@
       "proto": "AXI4"
     },
     {
-      "id": "AXI4_MST_PARITY_CHECK",
-      "severity": "MUST",
-      "source_section": "AXI4 host-side rules",
-      "source_line": 167,
-      "proto": "AXI4"
-    },
-    {
-      "id": "AXI4_SLV_PARITY_CHECK",
-      "severity": "MUST",
-      "source_section": "AXI4 host-side rules",
-      "source_line": 168,
-      "proto": "AXI4"
-    },
-    {
-      "id": "AXI4_MST_PARITY_GEN_R",
-      "severity": "MUST",
-      "source_section": "AXI4 host-side rules",
-      "source_line": 169,
-      "proto": "AXI4"
-    },
-    {
       "id": "NOC_RESET_CREDIT_PRELOAD",
       "severity": "MUST",
       "source_section": "NoC flit-side rules",
-      "source_line": 179,
+      "source_line": 169,
       "proto": "NOC"
     },
     {
       "id": "NOC_SEND_REQUIRES_CREDIT",
       "severity": "MUST NOT",
       "source_section": "NoC flit-side rules",
-      "source_line": 180,
+      "source_line": 170,
       "proto": "NOC"
     },
     {
       "id": "NOC_CREDIT_DECREMENT_PER_FLIT",
       "severity": "MUST",
       "source_section": "NoC flit-side rules",
-      "source_line": 181,
+      "source_line": 171,
       "proto": "NOC"
     },
     {
       "id": "NOC_CREDIT_RETURN_PER_FREED_SLOT",
       "severity": "MUST",
       "source_section": "NoC flit-side rules",
-      "source_line": 182,
+      "source_line": 172,
       "proto": "NOC"
     },
     {
       "id": "NOC_CREDIT_RETURN_AT_SLOT_FREE",
       "severity": "MUST NOT",
       "source_section": "NoC flit-side rules",
-      "source_line": 183,
+      "source_line": 173,
       "proto": "NOC"
     },
     {
       "id": "NOC_PER_VC_ACCOUNTING",
       "severity": "MUST",
       "source_section": "NoC flit-side rules",
-      "source_line": 184,
+      "source_line": 174,
       "proto": "NOC"
     },
     {
       "id": "NOC_FINITE_CREDITS",
       "severity": "MUST",
       "source_section": "NoC flit-side rules",
-      "source_line": 185,
+      "source_line": 175,
       "proto": "NOC"
     },
     {
       "id": "AXI4LITE_SLV_AW_AWVALID_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 195,
+      "source_line": 185,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_AW_AWADDR_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 196,
+      "source_line": 186,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_AW_AWPROT_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 197,
+      "source_line": 187,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_AW_AWADDR_ALIGNED",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 198,
+      "source_line": 188,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_W_WVALID_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 199,
+      "source_line": 189,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_W_WDATA_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 200,
+      "source_line": 190,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_W_WSTRB_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 201,
+      "source_line": 191,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_B_BVALID_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 202,
+      "source_line": 192,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_B_BRESP_VALUES",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 203,
+      "source_line": 193,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_XCH_W_AFTER_AW",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 204,
+      "source_line": 194,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_XCH_B_AFTER_AW_AND_W",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 205,
+      "source_line": 195,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_AR_ARVALID_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 211,
+      "source_line": 201,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_AR_ARADDR_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 212,
+      "source_line": 202,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_AR_ARPROT_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 213,
+      "source_line": 203,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_AR_ARADDR_ALIGNED",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 214,
+      "source_line": 204,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_R_RVALID_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 215,
+      "source_line": 205,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_R_RDATA_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 216,
+      "source_line": 206,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_R_RRESP_STABLE",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 217,
+      "source_line": 207,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_R_RRESP_VALUES",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 218,
+      "source_line": 208,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_R_RLAST_NOT_REQUIRED",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 219,
+      "source_line": 209,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_XCH_R_AFTER_AR",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 220,
+      "source_line": 210,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_UNMAPPED_DECERR",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 226,
+      "source_line": 216,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_RO_WRITE_IGNORED",
       "severity": "SHOULD",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 227,
+      "source_line": 217,
       "proto": "CSR"
     },
     {
       "id": "AXI4LITE_SLV_RW1C_WRITE_BIT_LEVEL",
       "severity": "MUST",
       "source_section": "CSR access (AXI4-Lite) rules",
-      "source_line": 228,
+      "source_line": 218,
       "proto": "CSR"
     },
     {
       "id": "NI_CFG_QOS_MODE_TRANSITION",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 234,
+      "source_line": 224,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_QOS_FIXED_VALUE",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 235,
+      "source_line": 225,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_BANDWIDTH_LIMIT_BOUND",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 236,
+      "source_line": 226,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_BANDWIDTH_BUDGET_BOUND",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 237,
+      "source_line": 227,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_REGULATOR_FINAL_QOS",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 238,
+      "source_line": 228,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_PROBE_EN_TRANSITION",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 239,
+      "source_line": 229,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_PROBE_PKT_BYTE_COUNT",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 240,
+      "source_line": 230,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_PROBE_TXN_LATENCY",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 241,
+      "source_line": 231,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_ERR_STATUS_RW1C",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 242,
+      "source_line": 232,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_LAST_ERR_INFO_CAPTURE",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 243,
+      "source_line": 233,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_MODE_SWITCH",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 244,
+      "source_line": 234,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_RESPONSE_DELAY_AXI",
       "severity": "SHOULD",
       "source_section": "Configuration-knob rules",
-      "source_line": 245,
+      "source_line": 235,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_RESPONSE_DELAY_NOC",
       "severity": "SHOULD",
       "source_section": "Configuration-knob rules",
-      "source_line": 246,
+      "source_line": 236,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_INJECT_ECC_ERROR",
       "severity": "SHOULD",
       "source_section": "Configuration-knob rules",
-      "source_line": 247,
+      "source_line": 237,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_RESPONSE_FAULT",
       "severity": "SHOULD",
       "source_section": "Configuration-knob rules",
-      "source_line": 248,
+      "source_line": 238,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_PENDING_COUNT_ACCURACY",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 249,
+      "source_line": 239,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_QUIESCE_FLOW",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 250,
+      "source_line": 240,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_EXCLUSIVE_CLEAR_RACE",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 251,
+      "source_line": 241,
       "proto": "CONFIG"
     },
     {
       "id": "NI_CFG_EXCLUSIVE_OCCUPANCY_ACCURACY",
       "severity": "MUST",
       "source_section": "Configuration-knob rules",
-      "source_line": 252,
+      "source_line": 242,
       "proto": "CONFIG"
     },
     {
       "id": "NI_IRQ_LEVEL",
       "severity": "MUST",
       "source_section": "Interrupt assertion",
-      "source_line": 260,
+      "source_line": 250,
       "proto": "INTERRUPT"
     }
   ]
