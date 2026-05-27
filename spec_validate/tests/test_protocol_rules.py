@@ -33,7 +33,7 @@ def test_reset_rules_have_proto_RESET():
 def test_severity_values_in_enum():
     rules = generator.parse_protocol_rule_index(MD_DIR / "protocol_rules.md")
     for r in rules:
-        assert r["severity"] in ("FAIL", "WARN", "RECOMMEND")
+        assert r["severity"] in ("FAIL", "WARN", "RECOMMEND", "MUST", "MUST NOT")
 
 
 def test_validator_catches_duplicate_id():

@@ -25,7 +25,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"},
-          "severity": {"enum": ["FAIL", "WARN", "RECOMMEND"]},
+          "severity": {"enum": ["FAIL", "WARN", "RECOMMEND", "MUST", "MUST NOT"]},
           "source_section": {"type": "string"},
           "source_line": {"type": "integer", "minimum": 1},
           "proto": {"enum": ["RESET", "CDC", "AXI4", "NOC", "CSR", "CONFIG", "INTERRUPT"]}
