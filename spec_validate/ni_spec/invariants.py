@@ -352,6 +352,34 @@ def check_blocks_param_uniqueness(fb_spec) -> List[Issue]:
     return issues
 
 
+def check_mode_enum_name_unique(fb_spec) -> List[str]:
+    """L2: After block prefix, all mode enum names must be unique across blocks.
+
+    The C++/SV elaborators emit per-feature mode enums as
+    ``{block_name}_{feature_short}Mode``. Even with that prefix, two features
+    sharing the same block name + short id would collide -- this check catches
+    such regressions before codegen runs. Returns a list of human-readable
+    error strings (empty when no collisions).
+    """
+    errors: List[str] = []
+    seen: dict = {}  # name -> first occurrence (feature id)
+    for block in fb_spec.get("blocks", []):
+        block_name = block["name"]
+        for feat in block.get("features", []):
+            if not feat.get("modes"):
+                continue
+            short = feat["id"].split("-")[-1]
+            name = f"{block_name}_{short}Mode"
+            if name in seen:
+                errors.append(
+                    f"mode enum name collision: {name} appears in both "
+                    f"{seen[name]} and {feat['id']}"
+                )
+            else:
+                seen[name] = feat["id"]
+    return errors
+
+
 def check_blocks_related_features_symmetric(fb_spec) -> List[Issue]:
     """L2: if A.related_features contains B, then B.related_features should contain A.
     Issues WARN (not ERROR) since one-way pointers may be intentional."""

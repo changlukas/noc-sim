@@ -22,6 +22,7 @@ from .invariants import (Issue,
                          check_blocks_xref_packet, check_blocks_xref_registers,
                          check_blocks_param_uniqueness,
                          check_blocks_related_features_symmetric,
+                         check_mode_enum_name_unique,
                          check_protocol_rules_id_uniqueness)
 from .report import print_report
 
@@ -149,6 +150,8 @@ def main() -> int:
         issues += check_blocks_xref_registers(fb, registers)
         issues += check_blocks_param_uniqueness(fb)
         issues += check_blocks_related_features_symmetric(fb)
+        for msg in check_mode_enum_name_unique(fb):
+            issues.append(Issue("ERROR", "L2-FB-MODE-ENUM", msg))
 
     has_l1_err = any(i.check in ("L1-SCHEMA", "L1-SIG-SCHEMA", "L1-REG-SCHEMA") and i.severity == "ERROR" for i in issues)
     has_l1_skip = (signals_schema is None or

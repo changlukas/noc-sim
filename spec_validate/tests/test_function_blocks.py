@@ -109,3 +109,36 @@ def test_constants_blocks_modes_of():
     # NSU should also work
     nsu_modes = constants.blocks_modes_of(fb, "NSU")
     assert isinstance(nsu_modes, list)
+
+
+def test_mode_enum_names_unique_after_block_prefix():
+    """Mode enum names must be unique across all blocks once block prefix applied."""
+    from ni_spec.loader import load_doc
+    spec = load_doc(FB_JSON)
+
+    names = []
+    for block in spec["blocks"]:
+        block_name = block["name"]  # "NMU" or "NSU"
+        for feat in block["features"]:
+            if not feat.get("modes"):
+                continue
+            # Derive enum name from feature id, then apply block prefix
+            # FEAT-NMU-VC_ARB -> NMU_VC_ARBMode
+            short = feat["id"].split("-")[-1]
+            names.append(f"{block_name}_{short}Mode")
+
+    assert len(names) == len(set(names)), \
+        f"duplicate mode enum: {[n for n in names if names.count(n) > 1]}"
+
+
+def test_l2_mode_enum_unique_check_fires_on_collision():
+    """Synthetic test: artificial collision triggers the L2 error."""
+    from ni_spec.invariants import check_mode_enum_name_unique
+    synthetic = {
+        "blocks": [
+            {"name": "NMU", "features": [{"id": "FEAT-NMU-VC_ARB", "modes": ["RR"]}]},
+            {"name": "NMU", "features": [{"id": "FEAT-NMU-VC_ARB", "modes": ["RR"]}]},
+        ]
+    }
+    errors = check_mode_enum_name_unique(synthetic)
+    assert any("collision" in e for e in errors)

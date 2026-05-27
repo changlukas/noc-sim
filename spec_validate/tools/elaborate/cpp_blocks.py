@@ -63,10 +63,13 @@ def emit(blocks_json: Path, spec_version: str) -> str:
         for feat_id, modes in modes_by_feature.items():
             if not modes:
                 continue
-            # Derive enum class name: e.g. FEAT-NMU-ROB -> ROBMode
-            # Extract the last segment after the final dash
+            # Derive enum class name with block prefix:
+            # FEAT-NMU-ROB -> NMU_ROBMode, FEAT-NSU-VC_ARB -> NSU_VC_ARBMode.
+            # Block prefix is required because the same short ID (e.g. VC_ARB)
+            # can appear under both NMU and NSU, which would otherwise produce
+            # duplicate enum class definitions in the same namespace.
             short = feat_id.split("-")[-1] if "-" in feat_id else feat_id
-            enum_name = f"{_to_enum_member(short)}Mode"
+            enum_name = f"{block_name}_{_to_enum_member(short)}Mode"
             members = [_to_enum_member(m) for m in modes]
             out.append(f"enum class {enum_name} {{")
             for m in members:

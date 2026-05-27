@@ -79,18 +79,22 @@ def emit(blocks_json: Path, spec_version: str) -> str:
         for feat_id, modes in modes_by_feature.items():
             if not modes:
                 continue
-            # Derive enum type name: e.g. FEAT-NMU-ROB -> rob_mode_e
+            # Derive enum type name with block prefix:
+            # FEAT-NMU-ROB -> nmu_rob_mode_e, FEAT-NSU-VC_ARB -> nsu_vc_arb_mode_e.
+            # Block prefix prevents collision when the same short ID (e.g. VC_ARB)
+            # appears under both NMU and NSU, which would otherwise produce
+            # duplicate typedefs in the same package.
             short = feat_id.split("-")[-1] if "-" in feat_id else feat_id
-            enum_type = f"{short.lower()}_mode_e"
+            enum_type = f"{block_name.lower()}_{short.lower()}_mode_e"
+            member_prefix = f"{block_name.upper()}_{_to_enum_member(short)}_MODE"
             n_modes = len(modes)
             width = _clog2(n_modes)
             out.append(f"  typedef enum logic [{width - 1}:0] {{")
             for i, m in enumerate(modes):
                 member = _to_enum_member(m)
-                # Prefix with short block name + feature short to avoid conflicts
-                # e.g. ROB_MODE_NOROB = 2'd0
+                # e.g. NMU_VC_ARB_MODE_ROUNDROBIN = 1'd0
                 suffix = "," if i < n_modes - 1 else ""
-                out.append(f"    {_to_enum_member(short)}_MODE_{member} = {width}'d{i}{suffix}")
+                out.append(f"    {member_prefix}_{member} = {width}'d{i}{suffix}")
             out.append(f"  }} {enum_type};")
             mode_enums_emitted = True
     if not mode_enums_emitted:
