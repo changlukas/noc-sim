@@ -277,6 +277,38 @@ class TestCheckModeWithSv:
 # --lint-sv graceful skip
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Task 4: Pin-level SV interface per bundle
+# ---------------------------------------------------------------------------
+
+def test_sv_interface_per_bundle():
+    """ni_signals_pkg.sv must expose one SV interface per ni_signals.json bundle.
+
+    Interface ID convention: ``ni_<lowercase_source_name>_intf`` derived from
+    ``interfaces[].name`` (UPPERCASE_SNAKE) in ni_signals.json.
+    """
+    # Ensure the SV file is freshly regenerated before reading.
+    r = run_codegen("--target", "sv", "--domain", "signals", "--out", str(RTL_PKG_DIR))
+    assert r.returncode == 0, r.stderr
+
+    pkg = RTL_PKG_DIR / "ni_signals_pkg.sv"
+    text = pkg.read_text(encoding="ascii")
+    expected_ifaces = (
+        "ni_axi_slave_port_intf",
+        "ni_axi_master_port_intf",
+        "ni_noc_req_out_intf",
+        "ni_noc_req_in_intf",
+        "ni_noc_rsp_out_intf",
+        "ni_noc_rsp_in_intf",
+        "ni_csr_intf",
+    )
+    for iface in expected_ifaces:
+        assert f"interface {iface}" in text, f"missing SV interface: {iface}"
+        assert (
+            f"endinterface : {iface}" in text or "endinterface" in text
+        ), f"missing endinterface for {iface}"
+
+
 class TestLintSv:
     def test_lint_sv_graceful_skip_or_pass(self):
         """--lint-sv must exit 0 (either skip or lint pass; never crash)."""
