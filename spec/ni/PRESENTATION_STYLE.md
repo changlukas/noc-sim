@@ -1,6 +1,6 @@
 # NI Presentation Style Guide
 
-Style guide for `SLIDES.md`. 來源：A5 wave reference 圖 (`spec/ni/1.jpg`，FlooNoC "Managing the ordering requirement of AXI" 風格) + AMD pg313 章節節奏 + Arteris FlexNoC 文字密度。
+Style guide for `SLIDES.md`. 來源：A5 wave reference 圖 (`spec/ni/1.jpg`，NoC RoB slide 風格) + NoC IP datasheet 章節節奏 + IP datasheet 文字密度標準。
 
 ---
 
@@ -49,7 +49,7 @@ Style guide for `SLIDES.md`. 來源：A5 wave reference 圖 (`spec/ni/1.jpg`，F
 
 **反例**：
 - ❌ "Three routing modes trade area, flexibility, and latency"（是 takeaway 不是 WHY constraint）
-- ❌ "Design difference: AMD Versal NoC pairs ..."（是 comparison 不是 WHY）
+- ❌ "Design difference: reference NoC pairs ..."（是 comparison 不是 WHY）
 
 **不適用**：
 - Title slide / Closing slide — 不需要 callout。
@@ -100,18 +100,18 @@ Style guide for `SLIDES.md`. 來源：A5 wave reference 圖 (`spec/ni/1.jpg`，F
 
 ## 5. Source attribution — speaker notes，不放 body
 
-AMD pg313 verbatim、FlexNoC quote、FlooNoC reference、design difference 比較 — 統一放 **speaker notes**，不放 slide body。
+Verbatim quotes、design reference citations、design difference 比較 — 統一放 **speaker notes**，不放 slide body。
 
 **典型應用**：
-- ✅ Body 顯示「Two-layer ECC: routing parity + whole-flit SECDED」；speaker notes 補「per AMD pg313 §Data Integrity *Uncorrectable ECC errors result in a fatal interrupt*」。
-- ✅ Body 顯示「3 routing modes」；speaker notes 補「AMD Versal pairs Master-Specified ID + Re-mapping; we collapse to uniform 3-mode selector」。
+- ✅ Body 顯示「Two-layer ECC: routing parity + whole-flit SECDED」；speaker notes 補 spec §Data Integrity verbatim *Uncorrectable ECC errors result in a fatal interrupt*。
+- ✅ Body 顯示「3 routing modes」；speaker notes 補「reference design pairs Master-Specified ID + Re-mapping; we collapse to uniform 3-mode selector」。
 
 **例外（仍放 body）**：
 - ✅ Verbatim 本身就是 slide hook（S6 Arteris IP traffic class 表 — 表格內容引號是賣點）。
 - ✅ Closing slide 列 deliverables 引用統計（不算 attribution）。
 
 **反例**：
-- ❌ Body 同時放 3 條 AMD verbatim + 自己重寫的 3 layer 說明（S7 當前）→ 兩套重複內容打架。
+- ❌ Body 同時放 3 條 spec verbatim + 自己重寫的 3 layer 說明（S7 當前）→ 兩套重複內容打架。
 
 ---
 
@@ -136,7 +136,7 @@ AMD pg313 verbatim、FlexNoC quote、FlooNoC reference、design difference 比�
 - ✅ 視覺資產：1 圖 OR 1 表 OR 1 callout box（不疊加）。
 
 **反例**：
-- ❌ S4 NMU 當前：14 bullet items + 2 callout 區塊 + AMD verbatim ≈ 400 字 → 投影時字小到不可讀。
+- ❌ S4 NMU 當前：14 bullet items + 2 callout 區塊 + spec verbatim ≈ 400 字 → 投影時字小到不可讀。
 
 **不適用**：
 - 結尾 Closing slide — 統計 + roadmap 自然破表，但結構應該明確分區。
@@ -187,8 +187,8 @@ Speaker notes 因為是給簡報人口語使用，可放寬一檔（但仍要避
 
 - `SLIDES.md` — single source of truth for slide content。
 - `PRESENTATION_OUTLINE.md` — 舊版 plan（A5 wave 前），已 stale；A6 wave 預定刪除或重寫。
-- `spec/ni/1.jpg` — FlooNoC reference 圖 (RoB slide style)。
-- AMD pg313 NoC Programmer's Guide — chapter rhythm 參考來源。
+- `spec/ni/1.jpg` — reference 圖 (RoB slide style)。
+- NoC IP datasheet — chapter rhythm 參考來源。
 
 Plugin 端 `slide_style.md` 是更廣的 BFM-mode slide guide；本檔是本 spec local 適配版。
 
@@ -196,15 +196,15 @@ Plugin 端 `slide_style.md` 是更廣的 BFM-mode slide guide；本檔是本 spe
 
 ## 11. Industry vocabulary table
 
-Sourced from 2026-05-15 web research (AMD PG313 / ARM IHI 0022 / FlooNoC papers / Arteris docs / Dally canon / NoC academic surveys). Provenance summary in §11.3. 這張表是給 slide / spec doc 用字校準用的，**不是 lint rule** — 看情境判斷。
+Sourced from 2026-05-15 web research (ARM IHI 0022 / Arteris docs / Dally canon / NoC academic surveys). Provenance summary in §11.3. 這張表是給 slide / spec doc 用字校準用的，**不是 lint rule** — 看情境判斷。
 
 | Category | 我們現用 | 業界 alt(s) | 決策 |
 |---|---|---|---|
-| Component | NMU / NSU | NIU (Arteris) · chimney (FlooNoC) · Network Adapter (academic) | Keep — AMD PG313 對齊；first-use gloss。 |
+| Component | NMU / NSU | NIU (Arteris) · Network Adapter (academic) | Keep — first-use gloss。 |
 | Component | NPS | NoC router · switch | Keep — "NoC Packet Switch"。 |
-| Component | Single-chimney | (FlooNoC 限定) | 只在 FlooNoC context 內用；否則「one NMU+NSU per tile」。 |
+| Component | Single-NI per tile | (project-specific) | 用「one NMU+NSU per tile」。 |
 | Component | AXI master / slave | AXI manager / subordinate (ARM IHI 0022 H.b+, 2021-01) | Hold — signal 名永遠 master/slave；prose 是 deck-wide 決策、目前 deck 全部保留 master/slave 不切。 |
-| Flit | Wide flit | "Single-flit message on a wide physical channel" | 在 FlooNoC-cited 段落 OK；對外可加中性 gloss。 |
+| Flit | Wide flit | "Single-flit message on a wide physical channel" | 對外可加中性 gloss。 |
 | Flit | Flit / phit / beat | universal | Keep。"Beat" = AXI-only（一個 data phase）。 |
 | Routing | XY-routed | DOR (dimension-order routing) | "XY routing (DOR)" — first-use gloss DOR。 |
 | Routing | Source-routed / ID-table | industry-standard | Keep。 |
@@ -215,10 +215,10 @@ Sourced from 2026-05-15 web research (AMD PG313 / ARM IHI 0022 / FlooNoC papers 
 | QoS | Bandwidth-Limiter | Arteris: "Bandwidth Limiter" | Keep（去 hyphen 也 OK）。 |
 | QoS | **Urgency-Regulator** | Arteris: "Bandwidth Regulator" / "Rate Regulator" — "Urgency Regulator" 不在 Arteris 公開文件 | **Rename → "Bandwidth Regulator (urgency-mode)"** 或 "Rate Regulator"。 |
 | RoB | RoB | RROB (AMD) · reorder queue | Keep — first-use gloss "Reorder Buffer"。 |
-| RoB | MetaBuffer | (FlooNoC 限定) | Keep 加 FlooNoC attribution；或 "transaction context buffer"。 |
+| RoB | MetaBuffer | (project naming) | Keep；或 "transaction context buffer"。 |
 | Width | Upsize / Downsize | "Upsizer / Downsizer" (ARM/AMD 標準) | Keep。 |
 | ECC | SECDED | "SEC-DED" hyphenated · "Hsiao SEC-DED" | 首次提及用 "Hsiao SEC-DED (single-bit correct, double-bit detect)"。 |
-| ECC | Per-hop routing parity | "Address parity" (AMD PG313) | 用 "per-hop routing-header parity" — 跟 data parity 區隔。 |
+| ECC | Per-hop routing parity | "Address parity" (NoC datasheet) | 用 "per-hop routing-header parity" — 跟 data parity 區隔。 |
 | ECC | SLVERR / DECERR | universal AXI signals | Keep verbatim。 |
 | ECC | **"(B)-philosophy"** | (無業界對應) | **Drop label** — 改具體描述。見 §11.1。 |
 | Misc | Node ID / (X,Y) / destination ID | "Node ID" = canonical entity | "Node ID" 是 entity、"(X,Y)" 是 encoding、"destination ID field" 是 packet 欄位。 |
@@ -236,9 +236,9 @@ Drop the internal label。用以下其一：
 
 - **"Wormhole-locked"** 複合詞 — 無 canonical 業界用法。
 - **"Urgency Regulator"** — 內部 coinage、Arteris 公開文件查無此名。
-- **"MetaBuffer"** — FlooNoC 限定拼法。
+- **"MetaBuffer"** — project-specific naming; can be glossed as "transaction context buffer".
 - **AXI Master→Manager** 業界轉換尚未完成；signal 名仍 Master/Slave（waveform / 3rd-party IP）。
 
 ### 11.3 Sources
 
-AMD PG313 · AMD PG293 · ARM IHI 0022 H.b+ · ARM AMBA 5 CHI · FlooNoC arXiv 2305.08562 / 2409.17606 · FlooNoC GitHub README · Arteris End-to-End QoS · Arteris FlexNoC · Neurealm NoC overview · Wikipedia (flit / ECC memory / wormhole switching) · Synopsys AMBA Exclusive blog · arXiv 2402.15749 routing survey · Cadence support note on AXI exclusive monitors.
+ARM IHI 0022 H.b+ · ARM AMBA 5 CHI · Arteris End-to-End QoS · Arteris FlexNoC · Neurealm NoC overview · Wikipedia (flit / ECC memory / wormhole switching) · Synopsys AMBA Exclusive blog · arXiv 2402.15749 routing survey · Cadence support note on AXI exclusive monitors.

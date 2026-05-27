@@ -72,7 +72,7 @@ Two monitor instances, one per clock domain. Same activity in active and passive
 
 ### MetaBuffer (NSU sub-block)
 
-NSU-side store that snapshots the original request's header on AW/AR flit reception, retrievable when the corresponding response is generated. Naming convention follows FlooNoC (`floo_meta_buffer.sv`); previously called `ReqInfoStore` in earlier drafts.
+NSU-side store that snapshots the original request's header on AW/AR flit reception, retrievable when the corresponding response is generated. Previously called `ReqInfoStore` in earlier drafts.
 
 Holds at minimum:
 
@@ -85,11 +85,11 @@ Holds at minimum:
 
 Capacity: equal to NSU outstanding-transaction limit (`MAX_TXNS`-bounded). Implements one entry per outstanding NSU request; FREE entries reused after corresponding response injected.
 
-**Indexing**: MetaBuffer is indexed by master AXI ID (the `axi_id` field of the request payload). Implementation matches FlooNoC `floo_meta_buffer.sv` pattern — `id_queue` IP (PULP common_cells) with `ID_WIDTH = IN_ID_WIDTH`, `CAPACITY = MAX_TXNS`. Each unique `axi_id` has its own FIFO ordering chain within the queue. Same-ID transactions release in issue order naturally. Cross-ID transactions release in slave-side arrival order.
+**Indexing**: MetaBuffer is indexed by master AXI ID (the `axi_id` field of the request payload). `ID_WIDTH = IN_ID_WIDTH`, `CAPACITY = MAX_TXNS`. Each unique `axi_id` has its own FIFO ordering chain within the queue. Same-ID transactions release in issue order naturally. Cross-ID transactions release in slave-side arrival order.
 
 NSU drives the local AXI slave with the master's original `axi_id` (no internal ID translation). Slave returns B / R with that same `axi_id`. NSU uses it to look up MetaBuffer at response generation time.
 
-**System-level integrator constraint**: AXI IDs MUST be unique across all NMUs targeting any given NSU. The system either assigns disjoint `axi_id` ranges per NMU, or relies on NMU-side ID re-tagging before NoC injection. This guarantee permits indexing by `axi_id` alone without disambiguation by `src_id`. **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): index by axi_id following FlooNoC id_queue pattern; system-level non-overlapping axi_id is integrator's responsibility.**
+**System-level integrator constraint**: AXI IDs MUST be unique across all NMUs targeting any given NSU. The system either assigns disjoint `axi_id` ranges per NMU, or relies on NMU-side ID re-tagging before NoC injection. This guarantee permits indexing by `axi_id` alone without disambiguation by `src_id`. **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): index by axi_id; system-level non-overlapping axi_id is integrator's responsibility.**
 
 ### NSU Read response buffer (NSU sub-block)
 
@@ -175,7 +175,7 @@ For default parameters (`X_WIDTH=4`, `Y_WIDTH=4`, `XY_ADDR_OFFSET_X=32`, `XY_ADD
 
 If extracted `(dst_x, dst_y)` falls outside `[0, MESH_COLS) × [0, MESH_ROWS)`, NMU asserts a protocol violation per `protocol_rules.md` `NOC_FLIT_HDR_DST_ID_VALID`. The flit is not injected; the originating RoB entry remains pending and the AXI master transaction will hang silently. This is a protocol-violation case — software must detect and recover externally (no automatic AXI SLVERR synthesis in v0.4.0).
 
-**SourceRouting** + **IDRouting** (alternatives selectable via `ROUTE_ALGO`): use a SAM (System Address Map) rule table. The table is the compile-time parameter `Sam` (per `signal_interface.md` §Parameters), aligning with FlooNoC `floo_axi_chimney.sv` `Sam` parameter convention. All NIs in the system share the same `Sam` content.
+**SourceRouting** + **IDRouting** (alternatives selectable via `ROUTE_ALGO`): use a SAM (System Address Map) rule table. The table is the compile-time parameter `Sam` (per `signal_interface.md` §Parameters). All NIs in the system share the same `Sam` content.
 
 ```
 for each rule in Sam (NUM_SAM_RULES rules total):
@@ -209,9 +209,9 @@ Per source-doc 04_network_interface.md §FR-05. State machine: `FREE → ALLOCAT
 
 **RoB behavior when `rob_req = 0` in the flit header (i.e., master indicates it doesn't need RoB)**: NMU still allocates a tracker entry (to back-pressure on RoB-full), but releases responses immediately on receive without waiting for in-order release. Equivalent to "fast-path" / NoRoB-effective semantics for that transaction. **Designer-confirmed (A5 wave 2026-05-08): NMU allocates a tracker even when rob_req=0.**
 
-**Tie-breaking when AW and AR arrive in the same cycle (both contend for the lowest-index FREE entry)**: fair round-robin between AW and AR. Neither has fixed priority. The round-robin pointer state advances per granted packet — over time, AW and AR allocations alternate. Aligned with FlooNoC `floo_axi_chimney.sv` request arbiter (`rr_arb_tree` instantiated with `ExtPrio=0, LockIn=1, FairArb=1`). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): fair round-robin, no W/R bias.**
+**Tie-breaking when AW and AR arrive in the same cycle (both contend for the lowest-index FREE entry)**: fair round-robin between AW and AR. Neither has fixed priority. The round-robin pointer state advances per granted packet — over time, AW and AR allocations alternate. Wormhole arbiter (`rr_arb_tree` with `ExtPrio=0, LockIn=1, FairArb=1`). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): fair round-robin, no W/R bias.**
 
-**RoB variants** (FlooNoC-aligned naming; chosen *per response channel* via two independent build-time parameters `B_ROB_TYPE` and `R_ROB_TYPE`, each in `{NoRoB, SimpleRoB, NormalRoB}`):
+**RoB variants** (chosen *per response channel* via two independent build-time parameters `B_ROB_TYPE` and `R_ROB_TYPE`, each in `{NoRoB, SimpleRoB, NormalRoB}`):
 
 - **NoRoB** (default for both B and R): never allocate. Used when the local master is single-issue or guaranteed to receive responses in-order from the NoC fabric. Smallest area footprint; relies on the network to preserve order.
 - **SimpleRoB**: allocate one entry per outstanding request, release strictly in issue order. Naive but small. Single shared release-pointer; no per-AXI-ID tracking.
@@ -244,13 +244,13 @@ Rationale for adaptive bypass: same-destination same-ID is the common case (CPU 
 
 - **Reset value**: `prev_dest_q[i]` resets to 0 on `arst_ni` for all `i`. The reset value can coincide with a legitimate destination ID `(0, 0)`, but this is harmless because the empty-queue first-push guard above ignores `prev_dest_q` for the first push on each `axi_id`. No sentinel bit is required.
 
-Aligned with FlooNoC `floo_rob.sv` `prev_dest_q` / `prev_dest_d` semantics (lines 395-468). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): unconditional write on push, race-free read-before-write, never explicitly cleared, reset value 0.**
+**Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): unconditional write on push, race-free read-before-write, never explicitly cleared, reset value 0.**
 
 #### RoB area-reduction techniques
 
 R-RoB sizing dominates total RoB area. At maximum-config `R_ROB_TYPE=NormalRoB, MAX_TXNS=32, NOC_DATA_WIDTH=256, MAX_BURST_LEN=256` the worst-case R-RoB storage is `32 × 256 × 256 = 2 Mbits`. At default `MAX_BURST_LEN=16` the same NormalRoB drops to `32 × 16 × 256 = 128 Kbits` — the typical-deployment number. B-RoB is much smaller (metadata-only when `ONLY_METADATA_B=true`).
 
-For deployments where R-RoB area is still too large, the following techniques (FlooNoC-derived) trade performance for area:
+For deployments where R-RoB area is still too large, the following techniques trade performance for area:
 
 - **Reduce `MAX_TXNS`**: from 32 to 16 → 50% area reduction. Trade-off: `MAX_TXNS_PER_ID` upper bound also drops, lowering achievable per-ID outstanding throughput.
 - **Cap `MAX_BURST_LEN`**: bound the parameter range upper bound at 64 instead of 256 → 4× reduction in worst-case payload accumulator. Trade-off: long bursts (`awlen ≥ 64`) require master-side splitting. The NI core does not chop bursts internally (chop is a deferred Width Bridge function, NI-WIDTH-08).
@@ -262,7 +262,7 @@ For deployments where R-RoB area is still too large, the following techniques (F
 
 Width conversion is performed by an external **Width Bridge**, bolted on at the AXI ↔ NI boundary (between the local AXI master/slave and the NI's AXI port). The NI core (NMU/NSU) does **not** convert width internally. The NI's own AXI port operates at `NOC_DATA_WIDTH` (default 256-bit). The Width Bridge adapts the local master/slave width `AXI_DATA_WIDTH` (range `{32, 64, 128, 256, 512}`) to `NOC_DATA_WIDTH`.
 
-> **Divergence from AMD PG313 (structural).** AMD places the upsize and downsize blocks inside the NMU and NSU (AMD §AXI Conversion Overview: "There are upsize and downsize blocks in both request and response directions"). This design factors them into a separate bolt-on Width Bridge. The two are functionally equivalent — the same AxSize, chop, transfer-mode, and interrupt contract applies. Only the structural location differs. **Basic version**: neither the NI RTL nor the BFM models the Width Bridge — the NI port is fixed at `NOC_DATA_WIDTH`. If a Width Bridge is integrated later, the RTL and BFM counterparts MUST model it at the same revision to preserve wire-equivalence.
+> **Structural note**: upsize and downsize blocks are placed in a separate bolt-on Width Bridge, not inside the NMU/NSU core. The two are functionally equivalent — the same AxSize, chop, transfer-mode, and interrupt contract applies. Only the structural location differs. **Basic version**: neither the NI RTL nor the BFM models the Width Bridge — the NI port is fixed at `NOC_DATA_WIDTH`. If a Width Bridge is integrated later, the RTL and BFM counterparts MUST model it at the same revision to preserve wire-equivalence.
 
 The Width Bridge handles both directions:
 
@@ -278,18 +278,18 @@ The conversion mechanics — full / narrow transfer (§Full / narrow transfer me
 
 #### Full / narrow transfer mechanism
 
-> **Scope — external Width Bridge (bolt-on). Out of basic-version NI-core scope.** The behaviour below belongs to the Width Bridge, not the NMU/NSU core. Read "NI" / "NMU" / "NSU" in this section as the co-located master-side / slave-side Width Bridge instance. AMD-aligned chop / AxSize rewrite (NI-WIDTH-06/07/08/11) is pending in the Width Bridge spec. See §Data Width Conversion.
+> **Scope — external Width Bridge (bolt-on). Out of basic-version NI-core scope.** The behaviour below belongs to the Width Bridge, not the NMU/NSU core. Read "NI" / "NMU" / "NSU" in this section as the co-located master-side / slave-side Width Bridge instance. Chop / AxSize rewrite (NI-WIDTH-06/07/08/11) is pending in the Width Bridge spec. See §Data Width Conversion.
 
 AXI4 supports `awsize` / `arsize` smaller than `AXI_DATA_WIDTH` ("narrow transfer", e.g., a 32-bit beat on a 256-bit bus). The Width Bridge honours this:
 
 - **Narrow transfer (AxSIZE < log2(AXI_DATA_WIDTH/8))**: only the addressed lanes carry data. Unaddressed lanes use `wstrb=0` on writes; on reads, the slave is expected to only return data on the addressed lanes (other lanes' read data is don't-care).
 - **Full transfer (AxSIZE == log2(AXI_DATA_WIDTH/8))**: all lanes are valid; `wstrb` is all-ones for non-final beats (last beat may be partial if address is unaligned).
-- **AxLEN handling (NI core)**: the NI core does not chop. At the fixed `NOC_DATA_WIDTH` port one AXI beat maps to one flit, so `awlen` passes through unchanged — `awlen=255` (max AXI4 burst) traverses as one wormhole-locked W-burst. AMD-aligned chop is a deferred Width Bridge function (NI-WIDTH-08), not rejected.
+- **AxLEN handling (NI core)**: the NI core does not chop. At the fixed `NOC_DATA_WIDTH` port one AXI beat maps to one flit, so `awlen` passes through unchanged — `awlen=255` (max AXI4 burst) traverses as one wormhole-locked W-burst. Chop is a deferred Width Bridge function (NI-WIDTH-08), not rejected.
 - **AxBURST handling**: `INCR` (most common) and `WRAP` (cache-line refill) are supported; `FIXED` is supported but with the AXI4 restriction that NI cannot resize FIXED bursts (see §`AXI4_SLV_NSU_AW_BURST_FIXED_REPLAY` in protocol_rules.md). For Exclusive bursts, AXI4 mandates single-beat (`awlen=0`).
 
 #### Over-fetch and WSTRB regeneration
 
-> **Scope — external Width Bridge (bolt-on). Out of basic-version NI-core scope.** The behaviour below belongs to the Width Bridge, not the NMU/NSU core. Read "NI" / "NMU" / "NSU" in this section as the co-located master-side / slave-side Width Bridge instance. The over-fetch + WSTRB-regen scheme described here is the current (pre-AMD-alignment) approach; the AMD-aligned chop / AxSize rewrite (NI-WIDTH-08) is pending in the Width Bridge spec. See §Data Width Conversion.
+> **Scope — external Width Bridge (bolt-on). Out of basic-version NI-core scope.** The behaviour below belongs to the Width Bridge, not the NMU/NSU core. Read "NI" / "NMU" / "NSU" in this section as the co-located master-side / slave-side Width Bridge instance. The over-fetch + WSTRB-regen scheme described here is the current approach; chop / AxSize rewrite (NI-WIDTH-08) is pending in the Width Bridge spec. See §Data Width Conversion.
 
 A consequence of upsize at NMU: when narrow AXI W beats are accumulated into a wide W flit, *the lanes not driven by the master are still part of the flit*. We call this **over-fetch** at the NoC layer. The NSU receives the full wide flit but must respect the original master's intent (only commit the addressed lanes to the slave).
 
@@ -301,7 +301,7 @@ Why this works without needing per-lane data clearing: AXI4 `wstrb` is the canon
 
 Over-fetch read direction is **not** an issue: NSU reads the entire wide flit's worth from the slave (slave returns full lanes), and NMU discards unaddressed lanes when repacking back to the narrow master.
 
-Deferred to the Width Bridge spec — the NI core does neither. These are AMD-aligned Width Bridge functions, pending (see §Data Width Conversion and NI-WIDTH-08). The over-fetch + WSTRB-regen description above is the current pre-AMD-alignment approach.
+Deferred to the Width Bridge spec — the NI core does neither. These are pending Width Bridge functions (see §Data Width Conversion and NI-WIDTH-08). The over-fetch + WSTRB-regen description above is the current approach.
 
 - **Bus chopping** (chop long bursts at the chop-size address boundary) — a Width Bridge function. The NI core does not chop.
 - **AxSIZE rewrite** (rewrite master AxSize to the NoC AxSize) — a Width Bridge function. The NI core does not rewrite AxSize.
@@ -316,7 +316,7 @@ NMU performs three distinct VC functions, separately scoped:
 
 **1. VC Mapping (traffic → vc_id)**: at flit-construct time, NMU assigns each outbound flit to a VC within its target physical channel using QoS-tier mapping. Mapping is a pure function of the flit's `qos` field. Policy is fixed at design time, no runtime alternative. Per `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS`. The "R/W" in the rule name reflects that request flits and response flits each see their own physical-channel VC pool — but within a given physical channel, only `qos` selects which VC.
 
-**2. Wormhole arbiter (per-cycle injection ordering)**: when multiple VCs on the same physical channel have flits queued, an internal arbiter picks one VC per cycle to drive onto the shared link, respecting the wormhole-lock (per `NOC_FLIT_VC_HARDLOCK`). Implemented as fair round-robin via `rr_arb_tree` with `LockIn=1, FairArb=1, ExtPrio=0`, matching FlooNoC `floo_wormhole_arbiter.sv`. Round-robin pointer state: resets to 0 on `noc_rst_ni`. The pointer advances by 1 on the cycle the packet's `last=1` flit is granted (per-packet, not per-flit). The pointer is held fixed during the lock interval (between the first granted flit of a packet and the `last=1` flit). Local to NMU; the same arbiter pattern is reused at the NMU AW/W/AR request output (per §RoB allocator §"Tie-breaking when AW and AR arrive in the same cycle"). Distinct from the cycle-level VC arbitration that runs in the network switch (NPS, per AMD pg313 §Virtual Channel Arbitration — out of NI scope). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): rr_arb_tree fair, ExtPrio=0, LockIn=1, FairArb=1; pointer reset = 0; advance per granted packet.**
+**2. Wormhole arbiter (per-cycle injection ordering)**: when multiple VCs on the same physical channel have flits queued, an internal arbiter picks one VC per cycle to drive onto the shared link, respecting the wormhole-lock (per `NOC_FLIT_VC_HARDLOCK`). Implemented as fair round-robin via `rr_arb_tree` with `LockIn=1, FairArb=1, ExtPrio=0`. Round-robin pointer state: resets to 0 on `noc_rst_ni`. The pointer advances by 1 on the cycle the packet's `last=1` flit is granted (per-packet, not per-flit). The pointer is held fixed during the lock interval (between the first granted flit of a packet and the `last=1` flit). Local to NMU; the same arbiter pattern is reused at the NMU AW/W/AR request output (per §RoB allocator §"Tie-breaking when AW and AR arrive in the same cycle"). Distinct from the cycle-level VC arbitration that runs in the network switch (NPS — out of NI scope). **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): rr_arb_tree fair, ExtPrio=0, LockIn=1, FairArb=1; pointer reset = 0; advance per granted packet.**
 
 **3. Per-VC demux (inbound)**: the inbound `noc_*_flit_i` carries the source's `vc_id`. NMU demuxes the inbound flit to one of `NUM_VC` per-VC reception FIFOs based on the header field. NSU symmetric.
 
@@ -372,7 +372,7 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 
 **Layer 1 — `route_par` (per-hop routing parity)**:
 
-- 1-bit even parity computed over routing-critical header fields `{dst_id, last}` (9 bits at default). Aligned with AMD pg313 §Parity verbatim: "The NPP packet (DST ID + LAST) field is also protected by 1-bit even parity. DST-ID parity is generated by the NMU/NSU and checked by the NPS."
+- 1-bit even parity computed over routing-critical header fields `{dst_id, last}` (9 bits at default). "The NPP packet (DST ID + LAST) field is also protected by 1-bit even parity. DST-ID parity is generated by the NMU/NSU and checked by the NPS."
 - Generated at NMU/NSU injection. Checked at every router output port and at every NI sink.
 - Purpose: catch single-bit corruption on routing fields *before* a flit is misrouted, and on `last` *before* wormhole arbiter is misled. A failed `route_par` triggers an immediate error report at the router (or sink) where the check fails.
 - Computed as `^{dst_id, last}` (XOR-reduction). `route_par` is set so that the total parity over `{dst_id, last, route_par}` is 0 (even).
@@ -398,7 +398,7 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 - The NI increments `ECC_UNCORR_ERR_CNT` (saturating, cleared via `ERR_STATUS[0]` RW1C), sets `ERR_STATUS[0] ecc_uncorr_err`, captures `LAST_ERR_INFO` if no prior un-cleared error is sticky, and asserts `irq_o` if `IRQ_ENABLE[0]` is set. Formalised in `protocol_rules.md` `NOC_FLIT_HDR_FLIT_ECC_CHECK`.
 - The downstream consumer (AXI master for R, AXI slave for W) sees data which is provably corrupted by the time it lands; the application-layer integrity (HBM/DDR ECC at endpoint, software CRC, etc.) is the recovery mechanism. The NoC fabric's job is detect-and-record, not synthesise-AXI-error.
 
-**Why this design rather than fabric-driven SLVERR?** Aligns with AMD pg313 §Data Integrity stance: NoC switches do not check ECC mid-flight, and uncorrectable detection at endpoints raises a fatal interrupt rather than altering the AXI rresp channel. Forwarding the corrupted flit also preserves "end-to-end ECC" semantics in the strict sense — the destination endpoint (HBM/DDR) sees the actual bits the fabric delivered, allowing endpoint-layer ECC to make its own determination. Substituting SLVERR or dropping would prevent endpoint ECC from running on the data path it was designed for.
+**Why this design rather than fabric-driven SLVERR?** NoC switches do not check ECC mid-flight; uncorrectable detection at endpoints raises a fatal interrupt rather than altering the AXI rresp channel. Forwarding the corrupted flit also preserves "end-to-end ECC" semantics in the strict sense — the destination endpoint (HBM/DDR) sees the actual bits the fabric delivered, allowing endpoint-layer ECC to make its own determination. Substituting SLVERR or dropping would prevent endpoint ECC from running on the data path it was designed for.
 
 **Routing-fault errors (`route_par` mismatch)**:
 
@@ -406,7 +406,7 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 - The drop event increments `ROUTE_PAR_ERR_CNT`, sets `ERR_STATUS[1] route_par_err`, captures `LAST_ERR_INFO` if no prior un-cleared error is sticky, and asserts `irq_o` if `IRQ_ENABLE[1]` is set.
 - The dropped flit's originating AXI transaction will hang silently at the master — there is no AXI-rresp synthesis path on routing faults in v0.4.0. Software detects via the IRQ + counter, and handles recovery externally.
 
-**Why two layers, not one whole-flit SECDED applied per-hop?** Per-hop SECDED would require every router to decode + re-encode 406 bits, adding ~1 cycle per hop and ~10× the gate count of `route_par` parity. The two-layer scheme matches AMD pg313 NPS guidance: routing-critical fields get cheap per-hop check, full payload integrity is end-to-end.
+**Why two layers, not one whole-flit SECDED applied per-hop?** Per-hop SECDED would require every router to decode + re-encode 406 bits, adding ~1 cycle per hop and ~10× the gate count of `route_par` parity. The two-layer scheme: routing-critical fields get cheap per-hop check, full payload integrity is end-to-end.
 
 **Out of scope** (not v0.4.0):
 
@@ -414,15 +414,15 @@ Two-layer protection scheme aligned with the v0.4.0 flit format restructure (see
 - Per-router whole-flit SECDED (redundant with end-to-end `flit_ecc`).
 - ECC over reserved fields' future allocations — when a new field claims `rsvd` bits, `flit_ecc` automatically covers the new field with no spec change.
 
-#### AXI parity handling (per AMD pg313 §Parity alignment)
+#### AXI parity handling
 
-Independent of NoC-fabric `flit_ecc` / `route_par`, the AXI host boundaries carry per-byte parity per AMD pg313 §Parity standard configuration ("1 bit per byte for Data" and "1 bit per byte for AxAddress"). Active when `ENABLE_AXI_PARITY = true` (default). All log-only at AXI boundary — no SLVERR injection (per (B)-philosophy).
+Independent of NoC-fabric `flit_ecc` / `route_par`, the AXI host boundaries carry per-byte parity ("1 bit per byte for Data" and "1 bit per byte for AxAddress"). Active when `ENABLE_AXI_PARITY = true` (default). All log-only at AXI boundary — no SLVERR injection (per (B)-philosophy).
 
 **NMU master-side parity flow (request path)**:
 
-1. AXI master drives `axi_awaddr_par_i[ADDR_WIDTH/8-1:0]`, `axi_araddr_par_i[ADDR_WIDTH/8-1:0]`, `axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0]` per AMD §Parity convention.
+1. AXI master drives `axi_awaddr_par_i[ADDR_WIDTH/8-1:0]`, `axi_araddr_par_i[ADDR_WIDTH/8-1:0]`, `axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0]`.
 2. NMU verifies parity at AW/AR/W handshake. Mismatch → log `ERR_STATUS[2]` + `AXI_PARITY_ERR_CNT` + `LAST_ERR_INFO`. Transaction proceeds.
-3. NMU forwards address into AddrTrans (which may rewrite upper bits via address-map / SAM lookup). When NMU modifies an address byte, the corresponding parity byte is regenerated (per AMD §Parity: "When an AXI field is modified by NMU/NSU logic, parity is regenerated"). Bytes the NMU does not modify carry source parity through.
+3. NMU forwards address into AddrTrans (which may rewrite upper bits via address-map / SAM lookup). When NMU modifies an address byte, the corresponding parity byte is regenerated ("When an AXI field is modified by NMU/NSU logic, parity is regenerated"). Bytes the NMU does not modify carry source parity through.
 4. Once data enters the NoC fabric, `flit_ecc` (whole-flit SECDED) takes over. AXI parity does not propagate inside the NoC.
 
 **NMU master-side parity flow (response path) — A4.6 addition**:
@@ -431,12 +431,12 @@ Independent of NoC-fabric `flit_ecc` / `route_par`, the AXI host boundaries carr
 2. **After the `flit_ecc` check stage**, NMU regenerates per-byte parity over the corrected `axi_rdata_o` bytes and drives `axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0]` back to the AXI master.
 3. AXI master verifies `axi_rdata_par_o` per byte at its R handshake.
 
-This regeneration point is the verbatim AMD pg313 §Parity prescription: "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." Formalised in `protocol_rules.md` `AXI4_MST_PARITY_GEN_R`.
+"Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." Formalised in `protocol_rules.md` `AXI4_MST_PARITY_GEN_R`.
 
 **NSU slave-side parity flow**:
 
 1. NSU receives request flits, runs `flit_ecc` check, unpacks AXI fields.
-2. NSU **generates** per-byte parity for `axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o` after ECC check stage, before driving the local AXI slave (per AMD §Parity: "Address parity for read/write requests and data parity for write requests is generated by the NSU after the ECC check").
+2. NSU **generates** per-byte parity for `axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o` after ECC check stage, before driving the local AXI slave ("Address parity for read/write requests and data parity for write requests is generated by the NSU after the ECC check").
 3. Local AXI slave drives `axi_rdata_par_i` back to NSU on R reception.
 4. NSU verifies `axi_rdata_par_i`. Mismatch → log path same as NMU. R beat forwarded to NoC with `rresp = OKAY`.
 
@@ -468,7 +468,7 @@ This regeneration point is the verbatim AMD pg313 §Parity prescription: "Data p
 
 ### QoS does not preempt wormhole
 
-QoS-aware arbitration (per `06_qos.md §5` extension to FlooNoC's RR baseline) operates on **packet (HEAD-flit) granularity only**. Once a packet's first flit is granted at any arbitration point, the wormhole-lock per `protocol_rules.md` `NOC_MST_WORMHOLE_LOCK` holds the path until the packet's `last=1` flit is consumed. A higher-QoS packet arriving mid-burst CANNOT preempt the locked low-QoS packet — it must wait for the lock to release. This applies at both the NMU output arbiter (W burst vs AR vs new AW) and at every router output port. Test plan TP32 (deadlock-prevention) covers wormhole + QoS interaction.
+QoS-aware arbitration (per `06_qos.md §5`) operates on **packet (HEAD-flit) granularity only**. Once a packet's first flit is granted at any arbitration point, the wormhole-lock per `protocol_rules.md` `NOC_MST_WORMHOLE_LOCK` holds the path until the packet's `last=1` flit is consumed. A higher-QoS packet arriving mid-burst CANNOT preempt the locked low-QoS packet — it must wait for the lock to release. This applies at both the NMU output arbiter (W burst vs AR vs new AW) and at every router output port. Test plan TP32 (deadlock-prevention) covers wormhole + QoS interaction.
 
 ## RTL internal architecture
 
@@ -481,7 +481,7 @@ The RTL implementation follows the same external functional decomposition as the
 ```mermaid
 flowchart TB
     subgraph WBRIDGE[Width Bridge — bolt-on, external to NI]
-        WB[AXI width up/downsize<br>AXI_DATA_WIDTH ↔ NOC_DATA_WIDTH<br>chop/AxSize per AMD: pending]
+        WB[AXI width up/downsize<br>AXI_DATA_WIDTH ↔ NOC_DATA_WIDTH<br>chop/AxSize: pending]
     end
     subgraph NMU_RTL[NMU RTL]
         ATX[AddrTrans<br>combinational lookup]
@@ -518,13 +518,13 @@ Sub-modules:
 - **Width Bridge (bolt-on, external to NI)**: AXI-to-AXI width up/downsize between the local master/slave width `AXI_DATA_WIDTH` and `NOC_DATA_WIDTH`. Not part of the NMU/NSU RTL. Degenerates to pass-through when `AXI_DATA_WIDTH == NOC_DATA_WIDTH`. See §Data Width Conversion (Upsize / Downsize).
 - **FlitPack / FlitUnpack**: combinational logic + 1 pipeline register; `CUT_AX` / `CUT_RSP` parameters add spill register.
 - **RoB Storage (NMU)**: flop-based array of `MAX_TXNS` entries, each carrying state, axi_id, rob_idx, response data accumulator. Per-AXI-ID linked-list tracking with `prev_dest` adaptive bypass (NormalRoB variant).
-- **MetaBuffer (NSU)**: per-outstanding-NSU-request snapshot of request-flit metadata (rob_idx, src_id, qos, axi_id). FlooNoC `floo_meta_buffer.sv` aligned.
+- **MetaBuffer (NSU)**: per-outstanding-NSU-request snapshot of request-flit metadata (rob_idx, src_id, qos, axi_id).
 - **R Response Buffer (NSU)**: `NSU_R_BUFFER_DEPTH`-entry elastic buffer that decouples local AXI slave R timing from NoC injection back-pressure.
 - **Exclusive Monitor (NSU)**: `EXCLUSIVE_MONITOR_DEPTH`-entry table tracking pending Exclusive read reservations per AXI4 §A7.
-- **VC Mapping / Demux**: per-NMU/NSU VC mapping block. NMU assigns `vc_id` to each outbound flit per Hybrid R/W × QoS policy (fixed at design time per `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS`). Cycle-level VC arbitration is a NPS (switch) function, not NI, per AMD pg313 §Virtual Channel Arbitration.
+- **VC Mapping / Demux**: per-NMU/NSU VC mapping block. NMU assigns `vc_id` to each outbound flit per Hybrid R/W × QoS policy (fixed at design time per `protocol_rules.md` `NOC_VC_MAPPING_HYBRID_RW_QOS`). Cycle-level VC arbitration is a NPS (switch) function, not NI.
 - **Async FIFOs**: gray-counter pointer + 2FF synchronizer; depth synthesis-time parameter.
 - **InjectionBuffer (NMU)**: small per-VC FIFO (`NMU_BUFFER_DEPTH` from `NocConfig`, default 2 in BFM). RTL uses the same default (2 entries) per BFM-RTL behavioral equivalence; **Designer-confirmed (A5 wave 2026-05-08): RTL default 2 entries (BFM-RTL behavioral equivalence).**
-- **FlitECC Gen / Check**: whole-flit SECDED Hsiao over flit (header + payload) plus 1-bit `route_par` parity over `{dst_id, last}` (per AMD pg313 §Parity). Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits). See §ECC.
+- **FlitECC Gen / Check**: whole-flit SECDED Hsiao over flit (header + payload) plus 1-bit `route_par` parity over `{dst_id, last}`. Width parameterised by `FLIT_ECC_WIDTH` (default 10 bits). See §ECC.
 
 ### RTL pipeline / timing
 
@@ -537,10 +537,10 @@ Fixed timing (no runtime configurability beyond `CUT_AX` / `CUT_RSP` synthesis p
 
 **`CUT_AX` / `CUT_RSP` spill register placement**:
 
-- `CUT_AX=1`: spill register inserted at AXI ingress, between the master's AW / AR handshake and the AddrTrans / QoSGen / FlitPack chain. 1 `aclk_i` cycle of latency added on AW / AR observable at `axi_*_i`. Aligned with FlooNoC `floo_axi_chimney.sv` `CutAx` placement.
+- `CUT_AX=1`: spill register inserted at AXI ingress, between the master's AW / AR handshake and the AddrTrans / QoSGen / FlitPack chain. 1 `aclk_i` cycle of latency added on AW / AR observable at `axi_*_i`.
 - `CUT_RSP=1`: spill register inserted at AXI egress, between FlitUnpack (and RoB release) and the master's B / R handshake. 1 `aclk_i` cycle of latency added on B / R observable at `axi_*_i`. Symmetric to `CUT_AX`.
 
-**Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): `CUT_AX` spills at AXI ingress (pre-AddrTrans); `CUT_RSP` spills at AXI egress (post-FlitUnpack). FlooNoC-aligned placement.**
+**Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): `CUT_AX` spills at AXI ingress (pre-AddrTrans); `CUT_RSP` spills at AXI egress (post-FlitUnpack).**
 
 ### RTL reset behavior
 
@@ -565,7 +565,7 @@ Cross-domain partial reset → CDC FIFO is in inconsistent state; integrator mus
 | `apply_axi_*` / `expect_axi_*` / `expect_noc_*` | **Test-only.** RTL is the DUT (in some scenarios) or the AXI responder (in others); it has no method API. |
 | `get_observed_*` lists | **Test-only.** RTL has no observation buffers; observation happens via the BFM (in passive mode) or external scoreboards. |
 | CSR-mapped QoS / Probe / Error registers | **Identical between BFM and RTL.** Software accesses the same CSR memory map (per `registers.md`). The BFM models the same CSR file; RTL implements it as actual flop-based registers. |
-| ECC generation / validation | **Identical at the wire level.** Same two-layer scheme: whole-flit SECDED Hsiao on `flit_ecc` field (parameterised `FLIT_ECC_WIDTH`, default 10 bits) checked end-to-end at the destination NI. 1-bit `route_par` even-parity over `{dst_id, last}` checked per-hop at every router (per AMD pg313 §Parity). |
+| ECC generation / validation | **Identical at the wire level.** Same two-layer scheme: whole-flit SECDED Hsiao on `flit_ecc` field (parameterised `FLIT_ECC_WIDTH`, default 10 bits) checked end-to-end at the destination NI. 1-bit `route_par` even-parity over `{dst_id, last}` checked per-hop at every router. |
 | RoB ordering | **Identical at the wire level.** Same per-AXI-ID order release; same back-pressure on `awready` / `arready` when full. |
 
 ### RTL implementation notes
@@ -581,7 +581,7 @@ When NMU has a W burst in flight on `noc_req_o`, may it inject an AR flit betwee
 
 **Decision**: No. AR injection is blocked while a W burst is in progress on the same `noc_req_o` link. The NMU's injection arbiter wormhole-locks to the W-packet slot from the first W flit until the burst's final beat (`wlast=1`, reflected in flit header `last=1`) is accepted by the router; only after the lock releases can the next packet (AW, W, or AR) be granted.
 
-**Rationale**: matches the FlooNoC RTL reference (`hw/floo_axi_chimney.sv` instantiates `floo_wormhole_arbiter` over the AW/W and AR slots; the wormhole arbiter uses `rr_arb_tree` with `LockIn=1` and releases only on `last & ready`). The benefit is W-burst contiguity at the NMU output — W beats arrive at NSU in tight succession with no interleaved foreign flits to filter, simplifying NSU's W-reassembly buffer logic. The cost is potential head-of-line blocking on AR when a slow remote slave back-pressures the W burst; this is acceptable for the target workloads (CPU-driven and DMA-style bulk transfers both tolerate it). Formalised in `protocol_rules.md` `NOC_MST_WORMHOLE_LOCK`.
+**Rationale**: wormhole arbiter (`rr_arb_tree` with `LockIn=1`) releases only on `last & ready`. The benefit is W-burst contiguity at the NMU output — W beats arrive at NSU in tight succession with no interleaved foreign flits to filter, simplifying NSU's W-reassembly buffer logic. The cost is potential head-of-line blocking on AR when a slow remote slave back-pressures the W burst; this is acceptable for the target workloads (CPU-driven and DMA-style bulk transfers both tolerate it). Formalised in `protocol_rules.md` `NOC_MST_WORMHOLE_LOCK`.
 
 ## ATOPs scope
 

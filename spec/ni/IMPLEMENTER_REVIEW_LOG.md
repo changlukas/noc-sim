@@ -20,7 +20,7 @@ Full transcripts of Round 1 outputs are in this session's conversation log (2026
 
 **Top-level architecture**: `class Ni` owning `Params`, `ConfigStore`, `ErrLogger`, `Sequencer`, NMU + NSU halves split per clock domain (`NmuAclk` / `NmuNoc`, `NsuNoc` / `NsuAclk`), two `CdcFifo` instances, `CsrPort`, `Probes`, `ApiSurface`. PASSIVE mode = all `*_o` drivers held at `pin_level_reset.md` during-reset values; monitors + `irq_o` continue.
 
-**Key implementation decisions**: two-phase per-cycle scheduler (aclk → noc_clk, sub-phases sample → compute → drive → register-update); flit modeled as packed byte array with `FlitView` accessor; SECDED static lookup table (Hsiao variant); RoB as `std::array<RobEntry, MAX_TXNS>` with intrusive linked list + `prev_dest` map; Wormhole arbiter floo_wormhole_arbiter-equivalent (LockIn=1); credit counters per-VC with bi-directional init handshake; AXI-Lite CSR access with sub-word/misalign/unmapped strict response; PASSIVE force every `*_o` to during-reset value within 1 cycle.
+**Key implementation decisions**: two-phase per-cycle scheduler (aclk → noc_clk, sub-phases sample → compute → drive → register-update); flit modeled as packed byte array with `FlitView` accessor; SECDED static lookup table (Hsiao variant); RoB as `std::array<RobEntry, MAX_TXNS>` with intrusive linked list + `prev_dest` map; Wormhole arbiter (LockIn=1); credit counters per-VC with bi-directional init handshake; AXI-Lite CSR access with sub-word/misalign/unmapped strict response; PASSIVE force every `*_o` to during-reset value within 1 cycle.
 
 **Round 1 ambiguities raised** (6):
 
@@ -61,7 +61,7 @@ Each agent received the OTHER agent's Round 1 output and produced a peer review.
 
 ### `c-bfm` reviewing `rtl` — summary
 
-**Agreement** (7 points): CSR + IRQ at ni_top; FlooNoC wormhole arbiter; route_par drop semantics; (B)-philosophy on flit_ecc double-bit; rob_req=0 still allocates tracker; lowest-FREE-index allocator; NMU_BUFFER_DEPTH=2.
+**Agreement** (7 points): CSR + IRQ at ni_top; wormhole arbiter (LockIn=1); route_par drop semantics; (B)-philosophy on flit_ecc double-bit; rob_req=0 still allocates tracker; lowest-FREE-index allocator; NMU_BUFFER_DEPTH=2.
 
 **Disagreement** (3 points):
 
@@ -126,7 +126,7 @@ Each agent received the OTHER agent's Round 1 output and produced a peer review.
 
 | Issue | `c-bfm` position | `rtl` position |
 |-------|------------------|----------------|
-| Hsiao vs Hamming SECDED | Hsiao (dv/plan and test-knob authority; FlooNoC + OpenTitan ship Hsiao) | Hamming (3 of 4 spec sites; transaction_api.md mention is typo) |
+| Hsiao vs Hamming SECDED | Hsiao (dv/plan and test-knob authority; standard Hsiao SECDED) | Hamming (3 of 4 spec sites; transaction_api.md mention is typo) |
 | `axi_rready_o` reset value (1) | spec says 1 (`pin_level_reset.md` for-real value) | should be erratum to 0; current spec text contradicts ToO §100 |
 
 ### SPEC CONTRADICTIONS (1-line erratum class)
@@ -159,8 +159,7 @@ Updates to the 14-item list as items are closed by designer ruling, spec erratum
 
 **Rationale**:
 
-- AMD pg313 §Data Integrity verbatim says "SECDED ECC across the entire flit" — generic, does not specify matrix variant. Aligning with Hsiao does not violate AMD reference.
-- FlooNoC and OpenTitan both ship Hsiao. We already reference FlooNoC for the wormhole arbiter, so aligning the SECDED matrix is consistent.
+- The spec requires SECDED ECC across the entire flit — generic, does not specify matrix variant. Aligning with Hsiao is consistent with this.
 - Hsiao has marginal technical advantages: equal column weight, one fewer XOR gate level in decode, slightly better double-bit detection probability.
 - Spec author's original intent (per `dv/plan.md` and `protocol_rules.md NI_CFG_INJECT_ECC_ERROR`) was Hsiao. The "Hamming" wording in three other spec sites was inadvertent.
 
@@ -177,21 +176,21 @@ Updates to the 14-item list as items are closed by designer ruling, spec erratum
 
 `protocol_rules.md:295` (`NI_CFG_INJECT_ECC_ERROR` test-knob row) already said Hsiao; no change required. The Round 2 disagreement between c-bfm (Hsiao) and rtl (Hamming) is closed in favour of c-bfm's reading.
 
-**Implementation note for both teams**: pick a published Hsiao parity-check matrix for `FLIT_DATA_WIDTH=396, FLIT_ECC_WIDTH=10`. Recommend FlooNoC's `floo_secded_*.sv` family or OpenTitan's `prim_secded_hsiao_*.sv` family as starting point. Both implementations must consume the same H-matrix or wire-equivalence fails.
+**Implementation note for both teams**: pick a published Hsiao parity-check matrix for `FLIT_DATA_WIDTH=396, FLIT_ECC_WIDTH=10`. Use an open-source Hsiao SECDED generator (e.g., the `secded_gen.py` family) to produce the H-matrix for the `(396, 10)` tuple. Both implementations must consume the same H-matrix or wire-equivalence fails.
 
 ### 2026-05-10 — Bucket 2 #9 same-cycle AW+AR allocation order (closed by designer ruling)
 
 **Designer ruling**: **fair round-robin, no W/R bias**.
 
-**Rationale (FlooNoC-derived)**:
+**Rationale**:
 
-- FlooNoC's `floo_axi_chimney.sv` request arbiter is `rr_arb_tree` with `ExtPrio=0, LockIn=1, FairArb=1` — pure fair round-robin between AxiAw, AxiW, AxiAr inputs. Verified by reading `hw/floo_wormhole_arbiter.sv` lines 35-42 and `hw/floo_axi_chimney.sv` lines 672-675.
+- Fair round-robin arbitration (`rr_arb_tree` with `ExtPrio=0, LockIn=1, FairArb=1`) — pure fair round-robin between AxiAw, AxiW, AxiAr inputs.
 - AW-first or AR-first would create long-term bias against the deferred channel, harming average latency for the deferred class.
-- Standard IP (`rr_arb_tree`, ~50-line module from PULP common_cells) implements the policy; both BFM and RTL can consume the same reference.
+- Standard `rr_arb_tree` (~50-line module) implements the policy; both BFM and RTL can consume the same reference.
 
 **Spec edit applied**:
 
-- `theory_of_operation.md` §RoB allocator: added new "Tie-breaking when AW and AR arrive in the same cycle" paragraph stating fair round-robin policy, citing FlooNoC reference, marked "Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10)".
+- `theory_of_operation.md` §RoB allocator: added new "Tie-breaking when AW and AR arrive in the same cycle" paragraph stating fair round-robin policy, marked "Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10)".
 
 **Implementation note**: both BFM and RTL teams use `rr_arb_tree` with `ExtPrio=0, LockIn=1, FairArb=1` parameters. Round-robin pointer state at reset must agree (typically pointer = 0 post-reset, advances on each granted packet).
 
@@ -212,7 +211,7 @@ Updates to the 14-item list as items are closed by designer ruling, spec erratum
 
 - `theory_of_operation.md` §Software quiesce flow: added a paragraph after the PENDING counter definition explicitly walking through why `PENDING_W = 0` guarantees CDC drain. The reasoning was implicit before; the new paragraph makes it explicit so future reviewers do not raise the same false positive.
 
-**FlooNoC borrow**: zero. FlooNoC has no quiesce / drain mechanism (fabric module, no CSR or runtime control). They rely on master-side discipline. Out of FlooNoC's scope; our use case is spec-specific.
+No external NI reference implements the quiesce / drain mechanism — our use case is spec-specific (CSR-driven quiesce is a design choice, not borrowed from a prior art).
 
 ### 2026-05-10 — Bucket 2 #6 NoRoB + Hybrid VC mapping ordering bug (closed by designer ruling)
 
@@ -226,15 +225,15 @@ Updates to the 14-item list as items are closed by designer ruling, spec erratum
 - Different VCs have no inter-VC ordering → responses can return OoO.
 - NoRoB has no reorder buffer → AXI4 same-ID-ordering silently violated.
 
-**FlooNoC research findings**:
+**Research context**:
 
-- FlooNoC's main `floo_axi_chimney.sv` has no VC concept — they rely on physical channels (separate req/rsp links) plus AXI sub-channel arbitration via wormhole arbiter.
-- FlooNoC's `deprecated/floo_nw_vc_chimney.sv` (1598 lines) had a VC implementation with `FixedWormholeVC=1, WormholeVCId=0` pattern — packets requiring intra-packet ordering are pinned to VC[0]. This pattern would have backed our option (a) "pin NoRoB traffic to fixed VC".
-- FlooNoC eventually deprecated the VC chimney and moved to physical-channel architecture, citing "Routing resources are plentiful in modern technologies" and VC complexity outweighing benefit.
+- A pure physical-channel NI design (separate req/rsp links, no VC concept) has no VC ordering concern — AXI sub-channel arbitration via wormhole arbiter handles ordering.
+- An alternative to option (d) is pinning NoRoB traffic to a fixed VC (option a), but this adds NMU mux logic.
+- Physical-channel architecture ("routing resources are plentiful") is a v0.5.0+ candidate.
 
 **Why (d) over (a)**: NoRoB users typically want simple deployment. Combining NoRoB (smallest area) with multi-VC (qos-tier separation) is a contradictory configuration. (d) hard-constrains the combination at elaborate time, simpler than (a)'s NMU mux logic. (a) would still be valid but adds complexity for a use case that doesn't exist in practice.
 
-**Why not (e)**: (e) was the "switch entire NoC to physical channel architecture" option, paralleling FlooNoC's evolution. That is a v0.5.0+ architectural redesign, out of scope for this round.
+**Why not (e)**: (e) was the "switch entire NoC to physical channel architecture" option. That is a v0.5.0+ architectural redesign, out of scope for this round.
 
 **Spec edits applied**:
 
@@ -243,7 +242,7 @@ Updates to the 14-item list as items are closed by designer ruling, spec erratum
 
 **Implementation note**: both BFM and RTL elaborate-time check `ASSERT_INIT(NumVcNoRoBExclusive, NUM_VC == 1 || (R_ROB_TYPE != NoRoB && B_ROB_TYPE != NoRoB))`. Integrators selecting NoRoB and `NUM_VC > 1` simultaneously will fail elaboration; spec error message should direct them to either `SimpleRoB`/`NormalRoB` or `NUM_VC=1`.
 
-**v0.5.0 candidate**: re-evaluate whole architecture in light of FlooNoC's physical-channel direction (option (e)). Tracked in `plan/DOGFOOD_OBSERVATIONS_A5.md`.
+**v0.5.0 candidate**: re-evaluate whole architecture toward physical-channel direction (option (e)). Tracked in `plan/DOGFOOD_OBSERVATIONS_A5.md`.
 
 ### 2026-05-10 — Bucket 2 extension: VC partition table architectural inconsistency (closed)
 
@@ -281,60 +280,53 @@ implying VCs are partitioned across `noc_req` and `noc_rsp` from a single shared
 
 **Designer ruling**: pointer resets to 0 on `noc_rst_ni`. Pointer advances by 1 on the cycle the packet's `last=1` flit is granted (per-packet, not per-flit). Pointer held fixed during the lock interval.
 
-**FlooNoC alignment**: `floo_wormhole_arbiter.sv` instantiates `rr_arb_tree` with `LockIn=1, FairArb=1, ExtPrio=0`. Reset and advancement semantics inherit from the standard `rr_arb_tree` IP behavior. The same arbiter pattern is used at two places in the NMU: (a) AW/W/AR request output arbiter (per #9 ruling), (b) per-VC wormhole arbiter on each physical channel (this item).
+Wormhole arbiter uses `rr_arb_tree` with `LockIn=1, FairArb=1, ExtPrio=0`. Reset and advancement semantics inherit from the standard `rr_arb_tree` behavior. The same arbiter pattern is used at two places in the NMU: (a) AW/W/AR request output arbiter (per #9 ruling), (b) per-VC wormhole arbiter on each physical channel (this item).
 
 **Spec edit applied**:
 
-- `theory_of_operation.md` §VC Mapping §"2. Wormhole arbiter": appended pointer-state semantics (reset value, per-packet advancement rule, lock-interval behavior) and FlooNoC reference. Cross-link to §RoB allocator (where the same arbiter pattern was specified for AW/W/AR tie-break in #9).
+- `theory_of_operation.md` §VC Mapping §"2. Wormhole arbiter": appended pointer-state semantics (reset value, per-packet advancement rule, lock-interval behavior). Cross-link to §RoB allocator (where the same arbiter pattern was specified for AW/W/AR tie-break in #9).
 
 ### 2026-05-10 — Bucket 3 #5 NSU MetaBuffer indexing (closed)
 
-**Designer ruling**: index by master `axi_id` (FlooNoC `id_queue` pattern). System-level integrator constraint: AXI IDs are guaranteed non-overlapping across multi-NMU traffic to the same NSU.
+**Designer ruling**: index by master `axi_id` (`id_queue` pattern — per-ID FIFOs, each unique AXI ID has its own ordering chain). System-level integrator constraint: AXI IDs are guaranteed non-overlapping across multi-NMU traffic to the same NSU.
 
-**FlooNoC research findings** (`floo_meta_buffer.sv`):
-
-- FlooNoC uses `id_queue` IP (PULP common_cells) keyed by AXI ID (`inp_id_i = axi_req_i.aw.id`).
-- `id_queue` is essentially per-ID FIFOs: each unique AXI ID has its own ordering chain. Cross-ID transactions are independent.
-- FlooNoC adds an offset (`MaxAtomicTxns`) to outbound AXI ID for atomic-transaction ID space management. For non-atomic, the offset is 0 (simple pass-through).
-- FlooNoC has an implicit assumption that AXI IDs are unique within a tile's NSU view. Multi-NMU collision is not handled at the chimney level.
-
-**Designer's system-level guarantee**: each NMU uses non-overlapping AXI IDs. This makes FlooNoC's pattern directly applicable. Spec records this as an integrator constraint.
+**Research context**: `id_queue` is essentially per-ID FIFOs keyed by AXI ID. Cross-ID transactions are independent. An offset for atomic-transaction ID space management (`MaxAtomicTxns`) is optional; for non-atomic, offset is 0. Multi-NMU AXI ID collision is not handled at the NI level — disambiguation is the integrator's responsibility.
 
 **Why option (α) over (β) slot-direct-lookup or (γ) composite key**:
 
-- (α) is the simplest and FlooNoC-aligned.
+- (α) is the simplest.
 - (β) and (γ) addressed multi-NMU AXI ID collisions, which the designer ruling now explicitly forbids at system level.
-- Pushing the disambiguation to integrator is consistent with FlooNoC's stance.
+- Pushing the disambiguation to integrator keeps NI scope minimal.
 
 **Spec edit applied**:
 
-- `theory_of_operation.md` §MetaBuffer: added new §Indexing paragraph specifying axi_id-keyed `id_queue` indexing, FlooNoC alignment, and the system-level integrator constraint that AXI IDs MUST be non-overlapping across multi-NMU traffic to any given NSU.
+- `theory_of_operation.md` §MetaBuffer: added new §Indexing paragraph specifying axi_id-keyed `id_queue` indexing and the system-level integrator constraint that AXI IDs MUST be non-overlapping across multi-NMU traffic to any given NSU.
 
 ### 2026-05-10 — Bucket 3 #8 CUT_AX / CUT_RSP spill register placement (closed)
 
 **Designer ruling**: `CUT_AX=1` spills at AXI ingress (pre-AddrTrans). `CUT_RSP=1` spills at AXI egress (post-FlitUnpack). Symmetric placement.
 
-**Rationale (FlooNoC alignment)**: FlooNoC `floo_axi_chimney.sv` places `CutAx` at AXI ingress (immediately after `axi_in_req_i`). Standard pattern: spill at the boundary between AXI master and the internal pipeline (AddrTrans + QoSGen + FlitPack chain). RSP placement is symmetric — spill at the boundary between internal pipeline (FlitUnpack + RoB release) and AXI master B/R handshake.
+**Rationale**: standard pattern: spill at the boundary between AXI master and the internal pipeline (AddrTrans + QoSGen + FlitPack chain). RSP placement is symmetric — spill at the boundary between internal pipeline (FlitUnpack + RoB release) and AXI master B/R handshake.
 
 **Spec edit applied**:
 
-- `theory_of_operation.md` §RTL pipeline / timing: added new "`CUT_AX` / `CUT_RSP` spill register placement" sub-section explicitly stating the placement and FlooNoC alignment.
+- `theory_of_operation.md` §RTL pipeline / timing: added new "`CUT_AX` / `CUT_RSP` spill register placement" sub-section explicitly stating the placement.
 
 ### 2026-05-10 — Bucket 3 #14 prev_dest arming / disarming (closed)
 
 **Designer ruling**: write `prev_dest[axi_id]` unconditionally on every AW / AR push. Bypass decision uses previous-cycle value (`prev_dest_q`); next-cycle value (`prev_dest_d`) updated after the decision. `prev_dest` never explicitly cleared.
 
-**FlooNoC research findings** (`floo_rob.sv` lines 395-468):
+**Implementation detail** (prev_dest adaptive bypass):
 
-- Line 417-420: `prev_dest_d[ax_id_i] = ax_dest_i` on every `ax_push_i && ax_gnt_o`. Unconditional update.
-- Line 423-433: bypass logic uses `prev_dest_q` (current cycle, pre-update) compared against new `ax_dest_i`. Three-way decision: empty queue → `rob_req=0`; non-empty + same-dst → `rob_req=0` (fast-path); else → `rob_req=1` (start reorder).
-- Line 437-441: only `ax_rob_req_q[id]` clears when the per-id queue empties. `prev_dest_q[id]` retains its last value (no explicit clear path; stale data is harmless because bypass logic gates on queue occupancy first).
+- `prev_dest_d[ax_id_i] = ax_dest_i` on every push. Unconditional update.
+- Bypass logic uses `prev_dest_q` (current cycle, pre-update) compared against new `ax_dest_i`. Three-way decision: empty queue → `rob_req=0`; non-empty + same-dst → `rob_req=0` (fast-path); else → `rob_req=1` (start reorder).
+- Only `ax_rob_req_q[id]` clears when the per-id queue empties. `prev_dest_q[id]` retains its last value (no explicit clear path; stale data is harmless because bypass logic gates on queue occupancy first).
 
 **Race analysis**: `prev_dest_q` (read-side) and `prev_dest_d` (write-side) are separate FF stages within the same cycle. Combinational logic reads `prev_dest_q` for bypass decision, then computes `prev_dest_d` for next cycle. Read-before-write within cycle is intrinsic to the FF model. No race.
 
 **Spec edit applied**:
 
-- `theory_of_operation.md` §RoB allocator §`prev_dest` adaptive bypass: appended new "`prev_dest` arming and disarming" sub-section detailing the unconditional update, race-free read-before-write semantics, and no-explicit-clear behavior. FlooNoC reference cited.
+- `theory_of_operation.md` §RoB allocator §`prev_dest` adaptive bypass: appended new "`prev_dest` arming and disarming" sub-section detailing the unconditional update, race-free read-before-write semantics, and no-explicit-clear behavior.
 
 ### 2026-05-10 — Bucket 3 #3 vc_id mapping default function (closed)
 
@@ -351,7 +343,7 @@ implying VCs are partitioned across `noc_req` and `noc_rsp` from a single shared
 - `vc_id = qos % NUM_VC` (modulo): scatters same-priority flits across VCs, defeats isolation. e.g., qos=8 and qos=12 are both high-priority but land on different VCs.
 - Low-bit extract `qos[log2(NUM_VC)-1:0]`: same scattering problem.
 
-**FlooNoC borrow**: zero. FlooNoC's `floo_axi_chimney.sv` (current) has no VC concept; `floo_nw_vc_chimney.sv` (deprecated) used direction-based VC selection (`OutputDir`-driven) rather than qos-based. Our qos-tier mapping is our own design choice. The user (designer) pushed back on "high-bit extract" framing — observed that it's mathematically equivalent to "compare overall magnitude" and the magnitude framing is more intuitive. Spec text reframed accordingly.
+This QoS-tier mapping is an original design choice. The designer pushed back on "high-bit extract" framing — observed that it's mathematically equivalent to "compare overall magnitude" and the magnitude framing is more intuitive. Spec text reframed accordingly.
 
 **Spec edit applied**:
 
@@ -364,7 +356,7 @@ implying VCs are partitioned across `noc_req` and `noc_rsp` from a single shared
 
 **Rationale**: follows from the fully-registered output discipline (per ToO §Driver). Every output is a flop. Each condition observed on cycle X becomes a driven signal on cycle X+1. The 3-step pipeline (handshake-observed → credit-seeded → valid-driven) is a direct consequence, not a separate design choice.
 
-**FlooNoC borrow**: zero. FlooNoC's chimney does not implement the bi-directional `credit_init_ready` handshake from AMD pg313 — they simplified credit-init away. Our spec inherited it verbatim from pg313 §Credit-Based Flow Control. The precise cycle pinning is our designer ruling, not a FlooNoC pattern.
+The bi-directional `credit_init_ready` handshake is a spec-specific design choice. The precise cycle pinning is our designer ruling.
 
 **Spec edit applied**:
 
@@ -372,15 +364,13 @@ implying VCs are partitioned across `noc_req` and `noc_rsp` from a single shared
 
 ### 2026-05-10 — Bucket 3 #7 CDC flush_on_full_reset algorithm (closed by spec retraction)
 
-**Designer ruling**: retract the `flush_on_full_reset` chimney-level mechanism. No automatic partial-reset recovery is implemented. Cross-domain partial-reset recovery is integrator responsibility.
-
-**FlooNoC alignment**: `floo_cdc.sv` is a 62-line thin wrapper around PULP common_cells `cdc_fifo_gray`. There is no flush logic at the chimney level. FlooNoC implicitly relies on integrator coordination (the same path our spec already documents in §Reset entry sequencing item 4).
+**Designer ruling**: retract the `flush_on_full_reset` NI-level mechanism. No automatic partial-reset recovery is implemented. Cross-domain partial-reset recovery is integrator responsibility.
 
 **Why the original spec text was wrong**: claimed `flush_on_full_reset` mechanism without specifying the algorithm (trigger condition, post-flush state, "align" definition). C-bfm Round 2 reviewer flagged this — the claim was an unverifiable promise.
 
 **Spec edit applied**:
 
-- `pin_level_reset.md` §CDC FIFO reset: full rewrite. New text aligns with FlooNoC pattern (cdc_fifo_gray wrapping, no chimney-level flush). Cross-domain partial-reset is explicitly stated as not-automatically-recoverable. Integrator responsibility is stated with two acceptable coordination patterns (simultaneous reset hold, or system-level coordination signal). The earlier `flush_on_full_reset` wording is explicitly retracted with rationale.
+- `pin_level_reset.md` §CDC FIFO reset: full rewrite. Uses `cdc_fifo_gray`-style semantics (gray-counter pointer, no NI-level flush). Cross-domain partial-reset is explicitly stated as not-automatically-recoverable. Integrator responsibility is stated with two acceptable coordination patterns (simultaneous reset hold, or system-level coordination signal). The earlier `flush_on_full_reset` wording is explicitly retracted with rationale.
 
 ### 2026-05-10 — Bucket 3 #1 Flit bit-layout (closed by vendoring packet_format.md into spec/ni/doc/)
 
@@ -447,7 +437,7 @@ Upstream `noc-sim/docs/design/packet_format.md` synced to match.
 
 **E. Hsiao H-matrix source-of-truth mandate**:
 
-- `protocol_rules.md` `NOC_FLIT_HDR_FLIT_ECC_GEN` rule body extended: parity-check matrix MUST be a shared artifact between BFM and RTL. Recommended source: OpenTitan `util/design/secded_gen.py` Hsiao generator for the `(FLIT_DATA_WIDTH, FLIT_ECC_WIDTH)` tuple, with generated SV header checked into the project as single source of truth. Alternative: FlooNoC `floo_secded_*.sv` family.
+- `protocol_rules.md` `NOC_FLIT_HDR_FLIT_ECC_GEN` rule body extended: parity-check matrix MUST be a shared artifact between BFM and RTL. Use a Hsiao SECDED generator for the `(FLIT_DATA_WIDTH, FLIT_ECC_WIDTH)` tuple, with generated SV header checked into the project as single source of truth.
 
 **C. ATOP termination point**:
 

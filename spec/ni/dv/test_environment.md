@@ -32,7 +32,7 @@
 - 一支 Python 產生器產出輸入 pattern 檔（哪些檔由它產，見 §1.2 generation 欄）。
 - 輸入：pattern type（§1.4）、mesh 大小、注入率、交易數、burst 分布。
 - 輸出：每個 endpoint 一個 traffic-job + memory init。
-- OSS：FlooNoC `util/gen_jobs.py`（需 fork 改，見 `verification_terminology.md`）。
+- Pattern generator (custom Python script; see `verification_terminology.md` for tooling context)。
 
 ### 1.2 I/O file contract
 
@@ -51,7 +51,7 @@
 
 memory_state 驗寫資料落地，response_log 驗讀回 rdata、resp code、per-ID 順序，兩者互補。
 
-### 1.3 Traffic-job format (FlooNoC `gen_jobs.py` / `tb_tasks.svh`)
+### 1.3 Traffic-job format
 
 每個 mesh endpoint 一個 `.txt`，每筆 transaction 十行。範例：4x4 mesh、64KB/node，tile(1,1) 寫 2KB 到 tile(2,2)（node 編號換算 address = `(x*NUM_Y + y) * 64KB`）。
 
@@ -72,11 +72,11 @@ memory_state 驗寫資料落地，response_log 驗讀回 rdata、resp code、per
 
 ### 1.4 Spatial traffic pattern
 
-`uniform · transpose · bit_complement · bit_reverse · bit_rotation · shuffle · tornado · neighbor · hotspot`（加 FlooNoC `matmul` / `hbm`）。出自 Dally & Towles、BookSim、gem5 Garnet。
+`uniform · transpose · bit_complement · bit_reverse · bit_rotation · shuffle · tornado · neighbor · hotspot · matmul · hbm`（出自 Dally & Towles 及業界常見 NoC 評測 patterns）。
 
 ### 1.5 Testbench configurations (4, shared across stages)
 
-DUT 方塊在 P1 是 C model，P2/P3 是 RTL。每種 TB 下方列出 block 對應的 OSS 與 golden 方法。每個有 AXI 介面的 TB（A、B、D）都用 SV `bind` 在 AXI 互連上掛一個 AXI protocol checker（YosysHQ SVA-AXI4-FVIP 的 `amba_axi4_protocol_checker`，一個 instance bind 一組完整 AXI 介面 AW/W/B/AR/R）。
+DUT 方塊在 P1 是 C model，P2/P3 是 RTL。每種 TB 下方列出 block 對應的 OSS 與 golden 方法。每個有 AXI 介面的 TB（A、B、D）都用 SV `bind` 在 AXI 互連上掛一個 AXI protocol checker（`amba_axi4_protocol_checker`，一個 instance bind 一組完整 AXI 介面 AW/W/B/AR/R）。
 
 下圖為 **simulation** 視角：VIP 與 DUT 都是實體 block，checker 設 `VERIFY_AGENT_TYPE = MONITOR`，被動 assert 互連兩端（master 端與 slave 端）的協定、不 assume 任何一側。圖中虛線接到互連兩端，表示 tap 在這條 bus 上，而非綁在某一個 block。
 
@@ -99,9 +99,9 @@ flowchart LR
 
 | block | OSS |
 |---|---|
-| AXI master | pulp `axi_rand_master` / `axi_file_master`, cocotbext `AxiMaster` |
-| AXI protocol checker | YosysHQ SVA-AXI4-FVIP |
-| flit monitor | FlooNoC tb / custom |
+| AXI master | custom AXI master driver / `axi_file_master` |
+| AXI protocol checker | SVA-AXI4-FVIP `amba_axi4_protocol_checker` |
+| flit monitor | custom flit monitor |
 | expected flit log | none (spec / C-model) |
 
 **TB-B: NSU 單獨**
@@ -119,10 +119,10 @@ flowchart LR
 
 | block | OSS |
 |---|---|
-| flit driver | FlooNoC tb / custom |
-| AXI slave | pulp `axi_rand_slave`, cocotbext `AxiSlave` |
-| memory / DDR | functional: pulp `axi_sim_mem` / cocotbext `AxiRam`; DDR timing: DRAMSim3 / Ramulator |
-| AXI protocol checker | YosysHQ SVA-AXI4-FVIP |
+| flit driver | custom flit driver |
+| AXI slave | custom AXI random slave driver |
+| memory / DDR | functional: AXI RAM behavioral model; DDR timing: cycle-accurate DDR timing model |
+| AXI protocol checker | SVA-AXI4-FVIP `amba_axi4_protocol_checker` |
 
 **TB-C: Router 單獨**
 
@@ -136,8 +136,8 @@ flowchart LR
 
 | block | OSS |
 |---|---|
-| flit driver / monitor | FlooNoC `tb_floo_router` / custom |
-| traffic pattern | BookSim / gem5 Garnet (pattern inspiration, not a bit-accurate golden) |
+| flit driver / monitor | custom flit driver / monitor |
+| traffic pattern | XY routing oracle + standard NoC traffic patterns (pattern inspiration, not a bit-accurate golden) |
 
 **TB-D: Mixed（full chain，loopback）**
 
@@ -157,15 +157,15 @@ flowchart LR
 ```
 
 - 全鏈 end-to-end：AXI master 經 NMU、Router、NSU、AXI slave 到 memory。
-- golden 為 AXI-in 與 AXI-out 比對（FlooNoC `axi_reorder_compare` 法，允許跨 ID reorder、同 ID 保序），不依賴 flit golden 或 C model golden。
+- golden 為 AXI-in 與 AXI-out 比對（允許跨 ID reorder、同 ID 保序），不依賴 flit golden 或 C model golden。
 - 另比對 memory_state byte-exact 與 response_log。
 
 | block | OSS |
 |---|---|
-| AXI master | pulp `axi_rand_master`, cocotbext `AxiMaster` |
-| AXI slave + memory/DDR | pulp `axi_rand_slave` + `axi_sim_mem`, cocotbext `AxiRam`, DRAMSim3 for DDR |
-| AXI-in==AXI-out comparator | FlooNoC `axi_reorder_compare` (style reference) |
-| AXI protocol checker | YosysHQ SVA-AXI4-FVIP |
+| AXI master | custom AXI random master driver |
+| AXI slave + memory/DDR | custom AXI random slave + AXI RAM behavioral model; cycle-accurate DDR model for DDR |
+| AXI-in==AXI-out comparator | custom scoreboard (cross-ID reorder tolerated, same-ID order enforced) |
+| AXI protocol checker | SVA-AXI4-FVIP `amba_axi4_protocol_checker` |
 
 ---
 
@@ -175,7 +175,7 @@ flowchart LR
 
 **Current status**：C model readiness gate（見 §6.1）。通過後 P2/P3 才可用它當 reference。
 
-**Environment**：Windows，純 C++ / GoogleTest，免模擬器。若要一份 stimulus 同時驅 C 與 RTL，可改 cocotb（cocotbext-axi）。
+**Environment**：Windows，純 C++ / GoogleTest，免模擬器。若要一份 stimulus 同時驅 C 與 RTL，可改 cocotb（cocotb extension library for AXI）。
 
 **Testbench**：套用 §1.5 的 4 種 TB，DUT 方塊 = C model（C NMU / C NSU / C Router / C full）。
 
@@ -237,15 +237,15 @@ flowchart LR
 
 C model + RTL co-sim：C model 先完成功能與效能校準，再作為 RTL co-sim 的 reference。Scope = NI + Router（整個 NoC）。
 
-**SV stack（預設）**：`plan.md` 已採 SV/UVM 結構（每條 FAIL rule 一條 SVA、covergroups、FPV），VCS 原生支援 SV/UVM/SVA/DPI-C，可重用 OSS 多為 SV。改用 cocotb 需重建 testplan、checker 與 coverage。例外：若需一份 stimulus 同時驅 C model 與 RTL，且 C model 不適合整合進 SV simulator，可改走 cocotb（cocotbext-axi）。
+**SV stack（預設）**：`plan.md` 已採 SV/UVM 結構（每條 FAIL rule 一條 SVA、covergroups、FPV），VCS 原生支援 SV/UVM/SVA/DPI-C，可重用 OSS 多為 SV。改用 cocotb 需重建 testplan、checker 與 coverage。例外：若需一份 stimulus 同時驅 C model 與 RTL，且 C model 不適合整合進 SV simulator，可改走 cocotb（cocotb extension library for AXI）。
 
-對齊先例：BookSim2 與 gem5 Garnet（C++ NoC perf model），加 Spike 與 Ibex cosim（reference-model lockstep）。詳見 `verification_terminology.md`。
+C++ NoC perf model cosim 先例：見 `verification_terminology.md`。
 
 ---
 
 ## 6. Verification closure
 
-採 OpenTitan V1/V2/V3 stage gate，非只看 coverage 數字：
+採 V1/V2/V3 stage gate，非只看 coverage 數字：
 
 | Stage | Convergence definition |
 |---|---|
@@ -274,14 +274,14 @@ C model sign-off：上述全部通過。
 |---|---|---|---|
 | C-model self-correctness | ABV pass on C-trace + frozen vectors + XY/latency oracle + RoB/ECC FPV + loopback | existing ABV/FPV + formula oracle + TB-D | pre-V1, reconfirm V2/V3 |
 | C↔RTL equivalence | data/resp/memory byte-exact + ABV pass on both traces + AXI-in==AXI-out 0 mismatch | co-sim + ABV + TB-D | V2→V3 |
-| AXI compliance | AXI protocol checker (SVA) 0 violation + rule→SVA→TP traceability | YosysHQ SVA-AXI4-FVIP / pulp axi_test | V1→V3 |
-| AXI ordering / RoB | FPV proof per-ID order==issue order + `cg_rob_state_machine` 100% | existing FPV, FlooNoC axi_reorder_compare | V2/V3 |
+| AXI compliance | AXI protocol checker (SVA) 0 violation + rule→SVA→TP traceability | SVA-AXI4-FVIP | V1→V3 |
+| AXI ordering / RoB | FPV proof per-ID order==issue order + `cg_rob_state_machine` 100% | existing FPV, custom AXI reorder comparator | V2/V3 |
 | Routing | all-pairs realized hop == XY analytic | XY formula oracle | V2 |
 | Credit conservation | invariant as always-on SVA, regression 0 violation | SymbiYosys | V2 / formal V3 |
 | Deadlock freedom | acyclic CDG/VC proof + FPV arbiter liveness (not threshold heuristic) | VC Formal / SymbiYosys | V2 analysis / V3 formal |
 | Wormhole | always-on SVA: first-grant→last=1 no foreign-packet flit, vc_id stable | SVA | V2/V3 |
 | ECC | exhaustive single-bit FPV + double-bit sampling + `cg_ecc` 100% | secded_gen | V2/V3 |
-| Performance | zero-load ±0 vs analytic + saturation curve + loaded ±5% vs RTL (timing axis: see §6.3) | BookSim2/Garnet baseline | V2/V3 |
+| Performance | zero-load ±0 vs analytic + saturation curve + loaded ±5% vs RTL (timing axis: see §6.3) | analytic NoC baseline | V2/V3 |
 | Cycle-accuracy | see §6.3 | directed microbench + RTL calibration | V3 selected configs |
 
 ### 6.3 Timing-axis closure (cycle-accuracy calibration, P2/P3)
@@ -294,7 +294,7 @@ Microbench suite 的逐場景 testpoint（11 個 timing 場景 + 4 種 per-TB br
 
 timing coverage 採 structural、microbenchmark、contention-scenario class。
 
-Network-layer differential（BookSim2 / Garnet）：移除 AXI，同一 topology 加 synthetic traffic，比對 router/link/VC/credit 的 hop latency 與 throughput，分離 NI overhead。僅 network/flit 層。
+Network-layer differential：移除 AXI，同一 topology 加 synthetic traffic，比對 router/link/VC/credit 的 hop latency 與 throughput，分離 NI overhead。僅 network/flit 層。
 
 ---
 

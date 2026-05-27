@@ -105,7 +105,7 @@ When multiple valid approaches exist, choose based on:
 
 ### Technical Accuracy
 
-- 對外部架構（FlooNoC、AMBA CHI、AMD Versal 等）的分析必須附上依據來源
+- 對外部架構的分析必須附上依據來源（保留 AMBA / 通用 protocol spec 例外，因為是公開規範非 IP 產品）
 - 不確定的技術事實標註 `[UNVERIFIED]`，不要假裝確定
 - 引用外部設計特徵時，區分「已確認」與「推測」
 
@@ -115,6 +115,7 @@ When multiple valid approaches exist, choose based on:
 - 使用者要求 high-level summary 時，不要展開 field-level 細節
 - 使用者要求精確規格時，不要給模糊概述
 - 修改文件前先確認目標粒度（overview / spec / implementation guide）
+- 套用 Karpathy 4-lens，以 reviewer 視角而非 writer 視角審稿：一段 prose 砍掉後 reader 仍能完成原任務、就刪掉
 
 ## Project-Specific Rules
 
@@ -179,7 +180,7 @@ When multiple valid approaches exist, choose based on:
 - Disable tests instead of fixing them
 - Commit code that doesn't compile
 - Make assumptions — verify with existing code
-- Reference external IP names (FlooNoC, booksim2, pcievhost, etc.) in code or docs
+- Reference specific external IP / vendor / product-guide names in code or docs
 
 **ALWAYS**:
 - Commit working code incrementally

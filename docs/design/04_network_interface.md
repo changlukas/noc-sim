@@ -15,7 +15,7 @@ AXI Slave  ◄──                ◄──
 
 NI 透過 Router 的 Eject port 連接，使用與 Router-Router **完全相同**的 port interface。每個 NI 包含 NMU（Network Master Unit）與 NSU（Network Slave Unit），可獨立啟用/停用。
 
-**Single-chimney-per-tile model**: 每個 tile (`(x, y)` 座標) 對應**一個** NI。tile 內若有多個 IP（CPU + DMA + memory controller + accelerator 等），由 NI 上游的 AXI crossbar 將它們 mux 到單一 NI 接口；不同 IP 的識別由 AXI ID 區分，不在 flit header 出現。此模型對齊 FlooNoC 與 AMD pg313 NMU/NSU 慣例。AXI crossbar 屬於系統整合層，不在 NI scope。
+**Single-NI-per-tile model**: 每個 tile (`(x, y)` 座標) 對應**一個** NI。tile 內若有多個 IP（CPU + DMA + memory controller + accelerator 等），由 NI 上游的 AXI crossbar 將它們 mux 到單一 NI 接口；不同 IP 的識別由 AXI ID 區分，不在 flit header 出現。AXI crossbar 屬於系統整合層，不在 NI scope。
 
 > NI / Router 完整 block diagram 見 [Router 規格 §1.2](03_router.md)。
 
@@ -77,7 +77,7 @@ AXI Slave  ────►│  │  FlitPack ← ECC Gen ← AXI Response   │ 
 | Sub-Module | 職責 |
 |------------|------|
 | FlitUnpack (AW/W/AR) | Request flit → AXI request |
-| MetaBuffer | 暫存 request header（rob_idx, src_id, qos, axi_id）供 response 配對。FlooNoC `floo_meta_buffer.sv` 對齊命名（v0.3.0 曾稱 `ReqInfoStore`）|
+| MetaBuffer | 暫存 request header（rob_idx, src_id, qos, axi_id）供 response 配對（v0.3.0 曾稱 `ReqInfoStore`）|
 | W Reassembly | Multi-flit W burst 重組 |
 | ECC Check | Whole-flit SECDED 驗證 + `route_par` re-check（每個 incoming request flit）|
 | FlitPack (B/R) | AXI response → flit |
@@ -124,7 +124,7 @@ NI 使用 config struct 組織參數，由上層 instantiation 時傳入。
 | `XY_ADDR_OFFSET_X` | int | 32 | `ROUTE_CFG.XY_ADDR_OFFSET_X` | X coordinate 在 address 中的 bit offset |
 | `XY_ADDR_OFFSET_Y` | int | 36 | `ROUTE_CFG.XY_ADDR_OFFSET_Y` | Y coordinate 在 address 中的 bit offset |
 | `NUM_SAM_RULES` | int | 0 | `ROUTE_CFG.NUM_SAM_RULES` | SAM rules 數量（USE_ID_TABLE 時） |
-| `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | `ROUTE_CFG.Sam` | SAM rules 表本身。**Compile-time parameter**，不是 input port。對齊 FlooNoC 慣例（`floo_axi_chimney.sv` 中 `Sam` 也是 parameter）。系統內所有 NI 共用同一份 SAM 規則表。Runtime 修改需透過 CSR + quiesce flow（per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW`） |
+| `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | `ROUTE_CFG.Sam` | SAM rules 表本身。**Compile-time parameter**，不是 input port。系統內所有 NI 共用同一份 SAM 規則表。Runtime 修改需透過 CSR + quiesce flow（per `protocol_rules.md` `NI_CFG_QUIESCE_FLOW`） |
 
 ### 3.4 RoB Type 列舉（`rob_type_e`）
 
@@ -192,7 +192,7 @@ NI 採用 **雙 clock domain** 設計，AXI 側與 NoC 側獨立非同步。NI �
 
 **CDC implementation**: NI 內部 async FIFO 採 gray-counter pointer + 2FF synchronizer。FIFO depth 計算方式：max(aclk_i, noc_clk_i) × max round-trip latency × safety factor。具體實作見 NI 內部 sub-module 文件。
 
-**Control inputs (`id_i`)**: 視為 strap-style 配置，於 `noc_rst_ni` deassert 後保持穩定。硬體 sample 於 `noc_clk_i` domain。`id_i` 為 per-NI 唯一識別 (對齊 FlooNoC `floo_axi_chimney.sv` 的 `id_i` input)。SAM 規則表 (`Sam`) 為 compile-time parameter (per §3.3)，不是 input port。Runtime 修改 SAM 需透過 CSR + quiesce flow 配合。
+**Control inputs (`id_i`)**: 視為 strap-style 配置，於 `noc_rst_ni` deassert 後保持穩定。硬體 sample 於 `noc_clk_i` domain。`id_i` 為 per-NI 唯一識別。SAM 規則表 (`Sam`) 為 compile-time parameter (per §3.3)，不是 input port。Runtime 修改 SAM 需透過 CSR + quiesce flow 配合。
 
 ### 4.1 AXI Side Ports
 
@@ -223,15 +223,15 @@ AXI side port 定義：
 | `noc_req_i` | input | Request flit 輸入（Req Router → NSU） |
 | `noc_rsp_i` | input | Response flit 輸入（Rsp Router → NMU） |
 
-每條 noc link 包含 forward 方向的 `valid` + `flit_t` data，加上 reverse 方向的 per-VC credit return 與 bi-directional credit-init-ready handshake (per AMD pg313 §Credit-Based Flow Control)。Router port interface 對應相同訊號集合。
+每條 noc link 包含 forward 方向的 `valid` + `flit_t` data，加上 reverse 方向的 per-VC credit return 與 bi-directional credit-init-ready handshake。Router port interface 對應相同訊號集合。
 
 ### 4.3 Control Inputs
 
 | Signal | Type | Description |
 |--------|------|-------------|
-| `id_i` | `id_t` | 本 NI 的 Node ID（XY 座標）。Per-NI 唯一；strap-style，於 `noc_rst_ni` deassert 後保持穩定。對齊 FlooNoC `floo_axi_chimney.sv` 的 `id_i` input |
+| `id_i` | `id_t` | 本 NI 的 Node ID（XY 座標）。Per-NI 唯一；strap-style，於 `noc_rst_ni` deassert 後保持穩定 |
 
-SAM 規則表 (`Sam`) 為 compile-time parameter (per §3.3)，不是 input port — 對齊 FlooNoC `Sam` parameter 慣例。系統內所有 NI 共用同一份 SAM 規則表。
+SAM 規則表 (`Sam`) 為 compile-time parameter (per §3.3)，不是 input port。系統內所有 NI 共用同一份 SAM 規則表。
 
 ### 4.4 AXI Channel → NoC Link 映射
 
@@ -347,9 +347,7 @@ FREE ──► ALLOCATED ──► RESPONSE_RECEIVED ──► READY_TO_RELEASE 
 
 ### FR-06: ECC Generate / Check
 
-**描述：** Source NI 在 flit egress 產生 whole-flit SECDED ECC syndrome，Destination NI 在 flit ingress 驗證。Router fabric 為純透通，不檢查 / 不重算 ECC（per AMD pg313 §Data Integrity：「No ECC checking is performed in the switch fabric」）。
-
-對齊 AMD pg313 §Data Integrity verbatim：「In the packet domain, after chopping and conversion to the NoC packet format the NoC supports SECDED ECC across the entire flit.」
+**描述：** Source NI 在 flit egress 產生 whole-flit SECDED ECC syndrome，Destination NI 在 flit ingress 驗證。Router fabric 為純透通，不檢查 / 不重算 ECC。
 
 **ECC 參數：**
 
@@ -378,7 +376,7 @@ FREE ──► ALLOCATED ──► RESPONSE_RECEIVED ──► READY_TO_RELEASE 
 | 1-bit corrected | 使用校正資料，`ECC_CORR_ERR_CNT++`（saturating, no clear path）| 同左 |
 | 2-bit uncorrectable | **forward 損壞 flit 到 master，`rresp=OKAY`**（不合成 SLVERR），增 `ECC_UNCORR_ERR_CNT`、置 `ERR_STATUS[0]`、capture `LAST_ERR_INFO`、assert `irq_o` if `IRQ_ENABLE[0]=1` | 同左（`bresp=OKAY`）|
 
-對齊 AMD pg313 §Data Integrity：「Uncorrectable ECC errors result in a fatal interrupt」— 我們也是 interrupt，**不**合成 AXI rresp/bresp = SLVERR。Spec 內唯一合成 SLVERR 的 fabric 錯誤路徑是 `AXI4_MST_TIMEOUT_SLVERR`（NMU outstanding-transaction tracker timeout）。
+Uncorrectable ECC errors result in a fatal interrupt — **不**合成 AXI rresp/bresp = SLVERR。Spec 內唯一合成 SLVERR 的 fabric 錯誤路徑是 `AXI4_MST_TIMEOUT_SLVERR`（NMU outstanding-transaction tracker timeout）。
 
 詳見 [Flit Format §3.6 ECC Design](packet_format.md#36-ecc-design-whole-flit-secded--route-parity)。
 

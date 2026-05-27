@@ -1,8 +1,8 @@
 # NSU Block Diagram (our spec, post-A4.5)
 
-Layout follows AMD pg313 convention (AXI side on the left, NoC side on the right) but with our actual sub-block decomposition.
+Layout follows NoC IP datasheet convention (AXI side on the left, NoC side on the right) but with our actual sub-block decomposition.
 
-> **Width conversion is external (bolt-on).** Per ToO §Data Width Conversion, an external Width Bridge between the NSU AXI port (`NOC_DATA_WIDTH`) and the local slave handles `AXI_DATA_WIDTH ↔ NOC_DATA_WIDTH`. The NSU itself does not downsize. This is a structural divergence from AMD (functionally equivalent).
+> **Width conversion is external (bolt-on).** Per ToO §Data Width Conversion, an external Width Bridge between the NSU AXI port (`NOC_DATA_WIDTH`) and the local slave handles `AXI_DATA_WIDTH ↔ NOC_DATA_WIDTH`. The NSU itself does not downsize.
 
 ```mermaid
 flowchart LR
@@ -56,15 +56,15 @@ flowchart LR
 | **FlitPack B/R** | Pack AXI B/R into response flit. Inherit `qos` / `rob_idx` / `src_id` from `MetaBuffer` |
 | **VC Arbiter** | Same Hybrid R/W × QoS policy as NMU |
 
-## Differences from AMD pg313 NSU diagram
+## Sub-block mapping (reference architecture → this spec)
 
-| Block in AMD diagram | In our spec? | Note |
-|----------------------|--------------|------|
-| Rate Matching + Async Boundary Crossing | ✓ (W Reassembly + R Response Buffer + MetaBuffer + CDC FIFO) | AMD lumps four functions into one block; we explicitly separate them |
+| Reference NSU block | In our spec? | Note |
+|---------------------|--------------|------|
+| Rate Matching + Async Boundary Crossing | ✓ (W Reassembly + R Response Buffer + MetaBuffer + CDC FIFO) | reference lumps four functions into one block; we explicitly separate them |
 | De-Packetizing | ✓ (FlitUnpack) | renamed |
 | Packetizing | ✓ (FlitPack B/R) | renamed |
 | QoS | ~ partial | NSU does NOT recompute qos — only inherits from `MetaBuffer`. QoS Generator lives only in NMU |
 | **(not shown)** | **Exclusive Monitor** | added — AXI4 Exclusive Access support (A3) |
-| Down Size + chop | external bolt-on bridge | AMD puts down/upsize inside NSU; this design externalizes it to a Width Bridge between the NSU AXI port and the local slave (structural divergence). See ToO §Data Width Conversion |
+| Down Size + chop | external bolt-on bridge | reference puts down/upsize inside NSU; this design externalizes it to a Width Bridge between the NSU AXI port and the local slave (structural divergence). See ToO §Data Width Conversion |
 | **(not shown)** | **ECC Gen / Check** | added — two-layer integrity scheme |
 | **(not shown)** | **MetaBuffer** | explicit — preserves request header for response inheritance |

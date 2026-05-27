@@ -612,7 +612,7 @@ DPI-C bridge 為 thin wrapper，提供 SystemVerilog 與 C++ model 的互操作�
 |------|:----:|------|
 | Cycle-accurate timing | Y | 8-phase pipeline |
 | Wormhole switching | Y | Path lock/release FSM |
-| Credit-based flow control | Y | Per-VC credit per AMD pg313 §Credit-Based Flow Control |
+| Credit-based flow control | Y | Per-VC credit accounting (credit-based flow control) |
 | AXI protocol (AW/W/AR/B/R) | Y | Burst, reorder |
 | QoS-Aware arbitration | Y | QoS + Round-Robin |
 | ECC generate/check | Y | SECDED 行為模型 |

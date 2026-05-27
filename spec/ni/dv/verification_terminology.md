@@ -12,42 +12,41 @@
 
 本設計是 hybrid（cycle-accurate NoC perf model 又當 RTL reference），無單一 OSS 全等。
 
-| 軸 | 先例 | 借用 | 差異 |
+| 軸 | 先例類型 | 借用 | 差異 |
 |---|---|---|---|
-| 功能 reference + RTL co-sim 結構 | **Ibex / Spike lockstep** | reference 與 RTL 在明確同步點（transaction 完成 / 介面事件，非每內部 cycle）differential | Spike 是功能 ISS、無 timing |
-| reference model qualification（無外部 golden）| **Spike**（spec-derived qualification）| 靠 spec（`protocol_rules`）衍生 ABV + analytic oracle + frozen vectors | DRAMSim 有 vendor golden，本設計沒有，更靠 spec-derived |
-| timing / perf fidelity | **gem5 Garnet** | synthetic traffic + latency-throughput curve + correlation | Garnet 不做 RTL-reference co-sim、不模 AXI |
-| 介面 per-cycle 協定合法性（AXI handshake / credit / VC）| **DRAMSim / Ramulator trace-to-RTL** | C model 產 trace，replay 過 RTL 檢查介面合法 | DRAMSim 信 RTL 驗 C（方向相反）|
+| 功能 reference + RTL co-sim 結構 | RISC-V 核心 ISS/RTL lockstep | reference 與 RTL 在明確同步點（transaction 完成 / 介面事件，非每內部 cycle）differential | ISS 是功能 model、無 timing |
+| reference model qualification（無外部 golden）| spec-derived qualification | 靠 spec（`protocol_rules`）衍生 ABV + analytic oracle + frozen vectors | 本設計更靠 spec-derived，無 vendor golden |
+| timing / perf fidelity | C++ NoC perf model（wormhole mesh）| synthetic traffic + latency-throughput curve + correlation | 不做 RTL-reference co-sim、不模 AXI |
+| 介面 per-cycle 協定合法性（AXI handshake / credit / VC）| trace-to-RTL 介面驗證 | C model 產 trace，replay 過 RTL 檢查介面合法 | 方向：RTL 驗 C |
 
 本設計概括：cycle-accurate NoC C++ reference model，靠 spec-derived oracle、ABV、frozen vectors 完成 reference-model qualification，再與 RTL 做 differential co-simulation。功能在 transaction 與介面同步點 cycle-exact 比對，bulk timing 用 synthetic-traffic latency-throughput correlation 校準。
 
-OSS 對 cycle accuracy 的覆蓋：多數（gem5、Garnet、BookSim、Noxim）不追全系統 cycle-exact，只驗 latency-throughput fidelity。僅在介面協定逐 cycle contract（AXI handshake、credit/VC）才 cycle-exact，bulk 用 correlation。
+OSS 對 cycle accuracy 的覆蓋：多數 NoC perf model（wormhole mesh、trace-driven）不追全系統 cycle-exact，只驗 latency-throughput fidelity。僅在介面協定逐 cycle contract（AXI handshake、credit/VC）才 cycle-exact，bulk 用 correlation。
 
 ## 驗證資源 OSS（功能正確性來源）
 
-| 角色 | OSS | 語言 / License | 可信度 |
+| 角色 | 工具類型 | 語言 / License | 可信度 |
 |---|---|---|---|
-| AXI master | pulp `axi_test::axi_rand_master` / `axi_file_master`，cocotbext-axi `AxiMaster` | SV / SHL-0.51，Python / MIT | FlooNoC 已用、PULP 專案有多次 silicon 使用紀錄 |
-| AXI protocol checker | **YosysHQ-GmbH/SVA-AXI4-FVIP**，ZipCPU `wb2axip` faxi，verilaxi | SVA / ISC、Apache | assertion-based，對照 IHI0022E |
-| AXI slave | pulp `axi_rand_slave`，cocotbext `AxiSlave` | SV，Python | 同上 |
-| memory / DDR | 功能：pulp `axi_sim_mem` / cocotbext `AxiRam`，DDR 時序：DRAMSim3 / Ramulator | SV / Python，C++ | DRAMSim3 trace→vendor-model 自驗 |
-| flit driver/monitor | FlooNoC `tb_floo_router` / `floo_axi_test_node`，BookSim/Garnet（pattern 靈感）| SV，C++ | FlooNoC 本機已有 |
-| C/RTL 共用 stimulus | cocotbext-axi（Python 一份驅兩 DUT），Xilinx libsystemctlm-soc（SystemC TLM AXI + tlm2axi bridge）| Python / MIT，C++ / Apache | co-sim 廣用 |
+| AXI master | SV random AXI master / file-driven master | SV，Python | 業界常用，多次 silicon 使用紀錄 |
+| AXI protocol checker | SVA-based AXI4 FVIP（assertion-based，對照 IHI0022E）| SVA / ISC | assertion-based，標準規範對照 |
+| AXI slave | SV random AXI slave | SV，Python | 同上 |
+| memory / DDR | 功能：AXI RAM behavioral model；DDR 時序：cycle-accurate DDR timing model | SV / Python，C++ | trace→model 自驗 |
+| flit driver/monitor | 客製 flit driver/monitor；標準 NoC traffic pattern（pattern 靈感）| SV，C++ | spec-derived |
+| C/RTL 共用 stimulus | cocotb Python AXI extension（Python 一份驅兩 DUT）；SystemC TLM AXI bridge | Python / MIT，C++ / Apache | co-sim 廣用 |
 
 **OSS reuse 注意事項**：
-- FlooNoC `gen_jobs.py`：fork/template（script 常數、無 injection_rate、不產 mem init）。
-- 讀 job 的是 `floo_dma_test_node`（iDMA flow）非 `floo_axi_test_node`（random）。
-- OpenTitan `secded_gen.py`：限 `k≤120` < whole-flit ~396-bit，需 fork。
-- SVA-AXI4-FVIP / verilaxi 在 Verilator 下 SVA 支援有限，VCS 較完整。
+- traffic-job pattern generator：需客製實作（注入率、mem init 產生）。
+- Hsiao SECDED generator：開源工具通常限 `k≤120` < whole-flit ~396-bit，需 fork 或自行實作。
+- SVA-based FVIP 在 Verilator 下 SVA 支援有限，VCS 較完整。
 
 ## 使用範圍與限制
 
-OSS 可提供 AXI master stimulus、AXI 協定合法性檢查（SVA）、AXI slave/memory/DDR model、NoC traffic pattern 參考。OSS 不提供客製 NMU 的 flit-encoding golden。客製 flit golden 可用 NMU+NSU loopback 的 AXI-in == AXI-out 比對（FlooNoC `axi_reorder_compare` 法）降低依賴，或由 spec 推導 / C model（qualification 後）/ FlooNoC chimney 共通子集產生。
+OSS 可提供 AXI master stimulus、AXI 協定合法性檢查（SVA）、AXI slave/memory/DDR model、NoC traffic pattern 參考。OSS 不提供客製 NMU 的 flit-encoding golden。客製 flit golden 可用 NMU+NSU loopback 的 AXI-in == AXI-out 比對（cross-ID reorder tolerated，同 ID 保序）降低依賴，或由 spec 推導 / C model（qualification 後）產生。
 
 ## 必讀
 
-先讀 Ibex cosim docs（co-sim 結構，硬體 DV 最易上手），再讀 gem5 Garnet（NoC timing 驗證），最後讀 DRAMSim2 paper（trace-to-RTL 介面技術）。
+先讀 RISC-V 核心 ISS/RTL co-sim 文件（co-sim 結構，硬體 DV 最易上手），再讀 C++ NoC perf model（NoC timing 驗證），最後讀 trace-to-RTL 介面技術文件。
 
 ## Sources
 
-- pulp-platform/axi（`axi_test.sv`）、YosysHQ-GmbH/SVA-AXI4-FVIP、alexforencich/cocotbext-axi、Xilinx/libsystemctlm-soc、FlooNoC、DRAMSim3 / Ramulator、gem5 Garnet、BookSim2、OpenTitan secded_gen / dvsim。
+AXI master/slave/memory SV/Python tools (IHI0022E-aligned)、SVA-AXI4 FVIP、cocotb AXI extension library、SystemC TLM AXI bridge、Hsiao SECDED generator、cycle-accurate DDR timing model、C++ NoC perf models (wormhole mesh family)、standard NoC traffic patterns (Dally & Towles et al.)。

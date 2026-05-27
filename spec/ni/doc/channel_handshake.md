@@ -69,7 +69,7 @@ ARREADY is registered. R burst is wormhole — once started, NMU drives R-beat s
 
 ## NoC side dependencies
 
-NoC links use credit-based flow control per AMD pg313 §Credit-Based Flow Control. No per-cycle valid/ready handshake. Per-VC credit accounting decouples sender from receiver buffer state. After reset, both ends must complete a bi-directional credit-init-ready handshake (per `NOC_CREDIT_STARTUP_HANDSHAKE`) before any flit may be injected.
+NoC links use credit-based flow control. No per-cycle valid/ready handshake. Per-VC credit accounting decouples sender from receiver buffer state. After reset, both ends must complete a bi-directional credit-init-ready handshake (per `NOC_CREDIT_STARTUP_HANDSHAKE`) before any flit may be injected.
 
 ### Request link (noc_req_*)
 
@@ -88,7 +88,7 @@ flowchart LR
 
 - NMU MUST hold credit > 0 on the chosen VC before asserting `noc_req_valid_o` (per `NOC_MST_FLIT_ON_CREDIT_ONLY`). The credit counter for that VC decrements by 1 on the cycle `noc_req_valid_o = 1`.
 - `noc_req_flit_o[FLIT_WIDTH-1:0]` carries the flit data on the same cycle as `noc_req_valid_o = 1`. The flit slot is single-cycle. There is no multi-cycle stall on the wire — credit accounting is the only back-pressure mechanism.
-- NSU returns one credit per cycle per VC on `noc_req_credit_o[vc]` after popping a flit from its per-VC input buffer (per AMD pg313 verbatim: "up to one credit per cycle, per virtual channel"). Credit return on the reverse path is independent of valid/flit on the forward path.
+- NSU returns one credit per cycle per VC on `noc_req_credit_o[vc]` after popping a flit from its per-VC input buffer ("up to one credit per cycle, per virtual channel"). Credit return on the reverse path is independent of valid/flit on the forward path.
 - The `vc_id` for each flit is encoded in the flit header (see `packet_format.md` §1.2). Forward data link is shared across VCs; multiplexing is at the source via Hybrid R/W × QoS mapping (per `NOC_VC_MAPPING_HYBRID_RW_QOS`).
 
 ### Response link (noc_rsp_*)
@@ -139,4 +139,4 @@ flowchart LR
 - **NoC side**: routers preserve flit order along same source / destination route within same `qos`; flits with different routes or different `qos` may interleave / overtake.
 - **Cross-protocol**: flit reception order from `noc_rsp_i` may not match request injection order at `noc_req_o` (RoB reorders into AXI per-ID order). The RoB is the gatekeeper.
 
-**QoS-aware arbitration as extension to FlooNoC baseline**: this NI design extends the baseline FlooNoC RTL reference (`hw/floo_router.sv` + `hw/floo_output_arbiter.sv`, which uses plain round-robin wormhole arbitration without QoS) with a QoS-priority comparator stage before the round-robin fallback among same-priority flits. Wormhole no-preemption (lock-in until packet `last=1` per `NOC_MST_WORMHOLE_LOCK`) is preserved from FlooNoC unchanged. Refer to `docs/design/06_qos.md §5` for the QoS-aware arbitration policy and `docs/design/03_router.md` for the router arbiter contract; the unmodified upstream FlooNoC does NOT provide QoS-aware arbitration and a user-side modification to `floo_output_arbiter.sv` is required for RTL implementation.
+**QoS-aware arbitration**: this NI design extends standard wormhole arbitration with a QoS-priority comparator stage before the round-robin fallback among same-priority flits. Wormhole no-preemption (lock-in until packet `last=1` per `NOC_MST_WORMHOLE_LOCK`) is preserved. Refer to `docs/design/06_qos.md §5` for the QoS-aware arbitration policy and `docs/design/03_router.md` for the router arbiter contract.

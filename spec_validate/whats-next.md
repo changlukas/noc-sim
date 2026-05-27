@@ -338,8 +338,8 @@ d:\03_CLAUDE\spec\
 - IP-XACT (IEEE 1685) — IP component metadata
 - Protocol Buffers — `.proto` source + `protoc` 產 code
 - ARM AMBA AXI4 (IHI 0022) — AXI 訊號規格
-- AMD Versal NoC (pg313) — Spec 對齊參考
-- FlooNoC — chimney 概念對齊
+- ARM AMBA CHI / NoC architecture documentation — Spec 對齊參考
+- NI (network interface) 設計概念對齊
 
 ## 開放問題
 

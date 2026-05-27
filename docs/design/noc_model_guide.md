@@ -67,7 +67,7 @@ The model supports the following features:
 - **Parameterized Flit** — width fully parameterized; default 400-bit (48-bit header + 352-bit payload), carrying all five AXI channels (AW, W, AR, B, R) in a unified format
 - **XY Deterministic Routing** — X-first then Y, deadlock-free by construction
 - **Wormhole Switching** — head flit reserves the path, `last` bit releases it
-- **Credit-Based Flow Control** — per-VC credit accounting per AMD pg313 §Credit-Based Flow Control (forward `valid` + `flit`; reverse per-VC `credit[NUM_VC]`; bi-directional credit-init-ready handshake at startup)
+- **Credit-Based Flow Control** — per-VC credit accounting (forward `valid` + `flit`; reverse per-VC `credit[NUM_VC]`; bi-directional credit-init-ready handshake at startup)
 - **Req/Rsp Physical Separation** — independent request and response networks, eliminating protocol-level deadlock
 - **QoS-Aware Arbitration** — 16-level priority with round-robin tie-breaking; pluggable allocator (RoundRobin, iSLIP, QoS-Aware RR)
 - **SECDED ECC** — end-to-end data integrity (NMU generates, router passes through, NSU checks)
@@ -84,7 +84,7 @@ The model supports the following features:
 The full bit-level flit specification is documented in [packet_format.md](packet_format.md) (canonical source). Summary:
 
 - All five AXI channels (AW, W, AR, B, R) share unified `FLIT_WIDTH` (v0.4.0 default 406 bits = 54-bit header + 352-bit payload). Shorter payloads zero-padded to `PAYLOAD_WIDTH`.
-- Header carries routing/QoS/VC/RoB metadata plus integrity fields (`route_par` 1-bit even parity over `{dst_id, last}`, `flit_ecc` 10-bit whole-flit SECDED). Per AMD pg313 §Parity / §Data Integrity.
+- Header carries routing/QoS/VC/RoB metadata plus integrity fields (`route_par` 1-bit even parity over `{dst_id, last}`, `flit_ecc` 10-bit whole-flit SECDED).
 - Each NoC link uses credit-based flow control (single shared forward link + per-VC reverse credit return + bi-directional credit-init-ready handshake at startup). VC identification by header `vc_id` field.
 - `LINK_WIDTH` (forward bundle: valid + flit) = 407 bits in default config.
 
@@ -837,7 +837,7 @@ The `dump_state()` function outputs the complete internal state of every router,
 |---------|:--------:|-------|
 | Cycle-accurate timing | Y | 8-phase pipeline with configurable delays |
 | Wormhole switching | Y | Path lock/release FSM per head flit |
-| Credit-based flow control | Y | Per-VC credit counters per AMD pg313 §Credit-Based Flow Control |
+| Credit-based flow control | Y | Per-VC credit counters |
 | AXI protocol (AW/W/AR/B/R) | Y | Burst, reorder, interleaving |
 | QoS-aware arbitration | Y | 16-level priority + round-robin tie-break |
 | ECC generate/check | Y | SECDED behavioural model |

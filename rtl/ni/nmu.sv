@@ -3,7 +3,7 @@
 // AXI4 manager-side network interface for AXI4-over-NoC fabric.
 // Receives AXI4 requests from a local AXI master, packetises them into NoC
 // flits on noc_req_o, and de-packetises NoC response flits from noc_rsp_i back
-// into AXI4 B / R responses. Per the per-tile single-chimney pattern, the NMU
+// into AXI4 B / R responses. Per the per-tile single-NI pattern, the NMU
 // shares the physical NoC link pair with a sibling NSU at the NI top level.
 //
 // Spec source-of-truth: noc-sim/spec/ni/doc/signal_interface.md

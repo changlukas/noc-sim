@@ -57,7 +57,7 @@ A5 implementer-review 把 spec content ambiguity 清完；但有 4 個 architect
 #### T1.3 DV testbench scaffolding
 
 - **Decision required**：testbench 起點選哪個？
-  - (a) FlooNoC `floo_axi_chimney_test` 為 base 改
+  - (a) 從既有 NI testbench 參考為 base 改
   - (b) cocotb + AXI VIP（Python-driven）
   - (c) self-roll UVM
 - **Why deferred**：testbench 結構跟 T1.1 BFM language 是耦合的，要先定後者。
@@ -82,7 +82,7 @@ A5 implementer-review 把 spec content ambiguity 清完；但有 4 個 architect
 
 - **Why this matters**：A5 Round 2 補了 `NOC_FLIT_HDR_FLIT_ECC_GEN` rule body —「BFM 和 RTL MUST consume the same H-matrix」是 wire-level equivalence contract 的 load-bearing assertion。但 H-matrix 本身尚未產出。
 - **Concrete action**：
-  1. 進 OpenTitan repo (`hw/ip/prim/util/design/secded_gen.py`)；
+  1. 使用 Hsiao SECDED generator（如 `secded_gen.py` 工具）；
   2. 算 `(FLIT_DATA_WIDTH=396, FLIT_ECC_WIDTH=10)` 的 Hsiao matrix（396 data bits、10 ECC bits、可糾正 1-bit、可偵測 2-bit）；
   3. 輸出三份 artifact：
      - `rtl/ni/common/secded_396_10.sv`（SystemVerilog 常數表）
@@ -132,7 +132,7 @@ A5 wave `/spec-lint` 跑乾淨後仍有 2 條 borderline（非 blocking 但建�
 - **Current state**：`spec/ni/PRESENTATION_OUTLINE.md` 仍寫 “12 slides”，但實際 SLIDES.md 是 14 slides；OUTLINE 是 SLIDES 重寫前的舊 plan。
 - **Decision required**：A6 開場決定
   - (a) 把 OUTLINE 整份刪掉（SLIDES 已是 SoT）
-  - (b) 把 OUTLINE 改成 SLIDES 的「reuse legend index」（保留 AMD verbatim 引用對照表這層）
+  - (b) 把 OUTLINE 改成 SLIDES 的「reuse legend index」（保留 verbatim 引用對照表這層）
 - **Recommend**：(a) — SLIDES 已有 §Appendix 列 Reference Sources，OUTLINE 沒附加價值。
 - **Effort**：刪除 1 個 commit。
 
@@ -143,7 +143,7 @@ A5 wave `/spec-lint` 跑乾淨後仍有 2 條 borderline（非 blocking 但建�
 - **Current state**：`docs/images/NMU.png`、`docs/images/NSU.png` 是 untracked；SLIDES Slide 4 / 10 引用之。
 - **Decision required**：要不要 commit 進 repo？
   - 若是 user 手繪 → commit
-  - 若是 AMD pg313 截圖 → license issue，不要 commit；改成 mermaid 自繪
+  - 若是外部文件截圖 → license issue，不要 commit；改成 mermaid 自繪
 - **Effort**：depends on 來源。
 - **Note**：`spec/ni/1.jpg / 2.jpg / 3.jpg`、`temp.pdf`、`table_dump.txt` 是 user local 工作檔，不入版。
 
@@ -154,7 +154,7 @@ A5 wave `/spec-lint` 跑乾淨後仍有 2 條 borderline（非 blocking 但建�
 詳細項目見 §2 規劃；摘要在這供 dispatch：
 
 - T-SLIDES-1. 數字 audit（51 → 50；其餘 grep 重跑）
-- T-SLIDES-2. AMD verbatim quote attribution 補齊
+- T-SLIDES-2. verbatim quote attribution 補齊
 - T-SLIDES-3. (B)-philosophy 措辭一致性掃描
 - T-SLIDES-4. Slide 7/8 視覺資產（block diagram、protection-flow figure）
 - T-SLIDES-5. Slide 1 roadmap 跟實際 deck 順序對齊

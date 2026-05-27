@@ -3,7 +3,7 @@
 // AXI4 subordinate-side network interface for AXI4-over-NoC fabric.
 // Receives request flits from noc_req_i, de-packetises them into AXI4
 // transactions driven to a local AXI slave, and packetises B / R responses
-// back onto noc_rsp_o. Per the per-tile single-chimney pattern, the NSU
+// back onto noc_rsp_o. Per the per-tile single-NI pattern, the NSU
 // shares the physical NoC link pair with a sibling NMU at the NI top level.
 //
 // Spec source-of-truth: noc-sim/spec/ni/doc/signal_interface.md

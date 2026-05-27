@@ -186,20 +186,20 @@ Conditional presence:
 - Master-port parity signals (`axi_awaddr_par_i`, `axi_araddr_par_i`, `axi_wdata_par_i`, `axi_rdata_par_o`) present only when `ENABLE_AXI_PARITY = true` AND `EN_MST_PORT = 1`
 - Slave-port parity signals (`axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o`, `axi_rdata_par_i`) present only when `ENABLE_AXI_PARITY = true` AND `EN_SLV_PORT = 1`
 
-All address and data parity signals are per-byte (1 bit per byte), aligned with AMD pg313 §Parity standard configuration.
+All address and data parity signals are per-byte (1 bit per byte).
 
 | Channel | Signal | Value during reset | Notes |
 |---------|--------|--------------------|-------|
 | AW_IN | axi_awaddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
 | AR_IN | axi_araddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
 | W_IN | axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
-| R_IN | axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MST_PORT=1`. |
+| R_IN | axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU. Requires `EN_MST_PORT=1`. |
 | AW_OUT | axi_awaddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Held 0 while reset. Requires `EN_SLV_PORT=1`. |
 | AR_OUT | axi_araddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SLV_PORT=1`. |
 | W_OUT | axi_wdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SLV_PORT=1`. |
 | R_OUT | axi_rdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SLV_PORT=1`. |
 
-Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list (matches AMD pg313 §Data Integrity default-on stance). Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MST_PORT` / `EN_SLV_PORT`.
+Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list. Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MST_PORT` / `EN_SLV_PORT`.
 
 ## After reset (first clock edge with respective reset deasserted)
 
@@ -381,20 +381,20 @@ Conditional presence:
 - Master-port parity signals (`axi_awaddr_par_i`, `axi_araddr_par_i`, `axi_wdata_par_i`, `axi_rdata_par_o`) present only when `ENABLE_AXI_PARITY = true` AND `EN_MST_PORT = 1`
 - Slave-port parity signals (`axi_awaddr_par_o`, `axi_araddr_par_o`, `axi_wdata_par_o`, `axi_rdata_par_i`) present only when `ENABLE_AXI_PARITY = true` AND `EN_SLV_PORT = 1`
 
-All address and data parity signals are per-byte (1 bit per byte), aligned with AMD pg313 §Parity standard configuration.
+All address and data parity signals are per-byte (1 bit per byte).
 
 | Channel | Signal | Value first cycle after reset | Notes |
 |---------|--------|--------------------|-------|
 | AW_IN | axi_awaddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
 | AR_IN | axi_araddr_par_i[ADDR_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
 | W_IN | axi_wdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by DUT | Input. Per-byte parity. Requires `EN_MST_PORT=1`. |
-| R_IN | axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU (per AMD pg313 §Parity). Requires `EN_MST_PORT=1`. |
+| R_IN | axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NMU-driven per-byte parity for R responses to master. Held 0 while reset. Generated post-`flit_ecc`-check at NMU. Requires `EN_MST_PORT=1`. |
 | AW_OUT | axi_awaddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Held 0 while reset. Requires `EN_SLV_PORT=1`. |
 | AR_OUT | axi_araddr_par_o[ADDR_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SLV_PORT=1`. |
 | W_OUT | axi_wdata_par_o[NOC_DATA_WIDTH/8-1:0] | 0 | NSU-driven per-byte parity. Requires `EN_SLV_PORT=1`. |
 | R_OUT | axi_rdata_par_i[NOC_DATA_WIDTH/8-1:0] | as driven by slave | Input from local slave. Requires `EN_SLV_PORT=1`. |
 
-Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list (matches AMD pg313 §Data Integrity default-on stance). Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MST_PORT` / `EN_SLV_PORT`.
+Default `ENABLE_AXI_PARITY = true` — these parity signals are present on the wire list. Integrators MAY set `false` at instantiation to omit the entire parity sideband, in which case all `axi_*_par_*` signals are absent regardless of `EN_MST_PORT` / `EN_SLV_PORT`.
 
 ## Post-reset transitions
 
@@ -427,16 +427,16 @@ For wires driven by external DUTs (rows showing `as driven by DUT`, `as driven b
 
 ## CDC FIFO reset
 
-Internal async FIFOs at the AXI ↔ NoC boundary use the following reset semantics (FlooNoC `floo_cdc.sv` aligned — wraps PULP common_cells `cdc_fifo_gray`):
+Internal async FIFOs at the AXI ↔ NoC boundary use the following reset semantics (gray-counter pointer, 2FF synchronizer, `cdc_fifo_gray` semantics):
 
 - Write-side pointer resets on writer's domain reset (gray-counter cleared to 0).
 - Read-side pointer resets on reader's domain reset (gray-counter cleared to 0).
 - Empty signal asserts on read side when both synced gray pointers compare equal (post-reset baseline = both 0).
 
-**Cross-domain partial reset**: when one side's reset asserts while the other side's clock is running, the side that resets clears its pointer. The other side may see a stale / non-empty status that does not match the data state. This condition is not automatically recoverable at the chimney level.
+**Cross-domain partial reset**: when one side's reset asserts while the other side's clock is running, the side that resets clears its pointer. The other side may see a stale / non-empty status that does not match the data state. This condition is not automatically recoverable at the NI level.
 
 **Integrator responsibility**: cross-domain partial reset MUST be avoided by system-level reset coordination. Either (a) assert both resets simultaneously and hold for at least `max(16 aclk_i cycles, 16 noc_clk_i cycles)` per §Reset entry sequencing item 4, OR (b) provide a system-level coordination signal that prevents one side from resuming traffic while the other is mid-reset.
 
-Earlier revisions promised an automatic `flush_on_full_reset` mechanism in the chimney. That claim is retracted — no automatic chimney-level recovery is implemented. FlooNoC's CDC (`floo_cdc.sv`) also relies on integrator coordination, not chimney-level flush logic.
+Earlier revisions promised an automatic `flush_on_full_reset` mechanism in the NI. That claim is retracted — no automatic NI-level recovery is implemented. CDC async FIFO recovery relies on integrator coordination, not NI-level flush logic.
 
 **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): no automatic flush; partial-reset recovery is integrator responsibility.**

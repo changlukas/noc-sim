@@ -319,7 +319,7 @@ def generate_ni_packet_json(md_dir: Union[str, Path]) -> dict:
     return {
         "$schema_version": "ni-spec/2.0",
         "meta": {
-            "block": "Network Interface (NI / chimney: NMU + NSU)",
+            "block": "Network Interface (NI: NMU + NSU)",
             "spec_version": "v0.4.0",
         },
         "flit": {

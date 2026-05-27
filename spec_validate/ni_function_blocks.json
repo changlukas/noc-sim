@@ -62,7 +62,7 @@
         },
         {
           "id": "FEAT-NMU-ECC_GEN",
-          "summary": "Generates whole-flit SECDED (flit_ecc, Hsiao code) and 1-bit routing parity (route_par over dst_id+last) aligned with AMD pg313 §Parity.",
+          "summary": "Generates whole-flit SECDED (flit_ecc, Hsiao code) and 1-bit routing parity (route_par over dst_id+last).",
           "modes": [],
           "compile_time_params": {},
           "uses_packet_fields": ["flit_ecc", "route_par", "dst_id", "last"],

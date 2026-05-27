@@ -17,7 +17,7 @@ Lowercase signals with `_i` / `_o` direction suffixes and `_ni` for active-low r
 
 Bundle-level interface contract per sub-block. Pin-level detail (width, reset value, optional flag) stays in the Wire table below, which is the single source of truth. The `Wire source` column points to the §Channel grouping tokens.
 
-**NMU / NSU naming.** NMU (NoC Master Unit) and NSU (NoC Slave Unit) are the AMD Versal AXI-NoC names for the injection-side and ejection-side functions of one bidirectional Network Interface. NMU is injection (local AXI master to flit). NSU is ejection (flit to local AXI slave). FlooNoC keeps both functions in a single `chimney` with no NMU/NSU split, so this decomposition is a logical view. NoC backpressure is per-VC credit (see §NoC credit signals), not a ready handshake. Credit counters are statically preloaded at reset — no dynamic credit-init handshake is needed for an internal NoC. FlooNoC by contrast defaults to ready-valid and uses credit only in its VC mode.
+**NMU / NSU naming.** NMU (NoC Master Unit) and NSU (NoC Slave Unit) are the injection-side and ejection-side functions of one bidirectional Network Interface. NMU is injection (local AXI master to flit). NSU is ejection (flit to local AXI slave). This decomposition is a logical view. NoC backpressure is per-VC credit (see §NoC credit signals), not a ready handshake. Credit counters are statically preloaded at reset — no dynamic credit-init handshake is needed for an internal NoC.
 
 **Host AXI port roles.** NMU is the AXI slave on its host port, with a local AXI master as peer. NSU is the AXI master on its host port, with a local AXI slave as peer.
 
@@ -40,7 +40,7 @@ Bundle-level interface contract per sub-block. Pin-level detail (width, reset va
 
 ### Router peer reference
 
-The Router, which AMD calls the NoC Packet Switch (NPS), is a separate block. Its authoritative interface lives in the noc-sim router spec. It is listed here only as the NI's peer so the NoC-side connection is unambiguous.
+The Router (also called the NoC Packet Switch, NPS) is a separate block. Its authoritative interface lives in the noc-sim router spec. It is listed here only as the NI's peer so the NoC-side connection is unambiguous.
 
 | Interface | Direction | Peer | Flow control |
 |---|---|---|---|
@@ -179,7 +179,7 @@ Same shape as Request link, with `noc_rsp_*` prefix.
 
 ### NoC credit signals (always present)
 
-The NoC link uses per-VC credit accounting per AMD pg313 §Credit-Based Flow Control. Credit return is per-VC: one bit per VC, asserted for one cycle to return one credit on that VC. The destination unit can return up to one credit per cycle per virtual channel (AMD verbatim). When `NUM_VC = 1` (default), the per-VC array `credit_*[NUM_VC-1:0]` degenerates to a single 1-bit signal. The startup handshake uses a single bi-directional ready signal per direction, semantics aligned with AMD: "indicates credit exchange is ready".
+The NoC link uses per-VC credit accounting (credit-based flow control). Credit return is per-VC: one bit per VC, asserted for one cycle to return one credit on that VC. The destination unit can return up to one credit per cycle per virtual channel. When `NUM_VC = 1` (default), the per-VC array `credit_*[NUM_VC-1:0]` degenerates to a single 1-bit signal. The startup handshake uses a single bi-directional ready signal per direction, indicating credit exchange is ready.
 
 **Per-VC credit return signals:**
 
@@ -227,11 +227,11 @@ A dedicated AXI4-Lite slave port for software access to NMU/NSU CSR file. Width 
 
 | Signal | Direction | Width | Reset value | Notes |
 |--------|-----------|-------|-------------|-------|
-| `id_i` | input | X_WIDTH+Y_WIDTH (default 8) | §Sideband row 1 | This NI's Node ID (XY coordinate of the tile). Per-NI unique. Strap-style. Sampled in noc_clk domain. Modifying after `noc_rst_ni` deassertion is undefined. Aligns with FlooNoC `floo_axi_chimney.sv` `id_i` input. |
+| `id_i` | input | X_WIDTH+Y_WIDTH (default 8) | §Sideband row 1 | This NI's Node ID (XY coordinate of the tile). Per-NI unique. Strap-style. Sampled in noc_clk domain. Modifying after `noc_rst_ni` deassertion is undefined. |
 
-SAM rule table (`Sam`) is **not** a wire-level signal. It is a compile-time parameter (see §Parameters) — aligns with FlooNoC `Sam` parameter convention. All NIs in the system share the same `Sam` content. **Compile-time only**: runtime modification is out of scope for v0.4.0 (no `SAM_RULE_*` CSR exists). To change the SAM table, re-elaborate the design with the new `Sam` parameter value.
+SAM rule table (`Sam`) is **not** a wire-level signal. It is a compile-time parameter (see §Parameters). All NIs in the system share the same `Sam` content. **Compile-time only**: runtime modification is out of scope for v0.4.0 (no `SAM_RULE_*` CSR exists). To change the SAM table, re-elaborate the design with the new `Sam` parameter value.
 
-Single-chimney-per-tile model: each tile (`(x, y)` coordinate) has exactly one NI. Tiles with multiple IPs (CPU + DMA + memory controller + accelerator) mux them through an upstream AXI crossbar before reaching the NI; per-IP identification is by AXI ID, not by any flit-header field.
+Single-NI-per-tile model: each tile (`(x, y)` coordinate) has exactly one NI. Tiles with multiple IPs (CPU + DMA + memory controller + accelerator) mux them through an upstream AXI crossbar before reaching the NI; per-IP identification is by AXI ID, not by any flit-header field.
 
 ### Interrupt output
 
@@ -243,13 +243,13 @@ Single level-sensitive interrupt output, asserted when any unmasked `ERR_STATUS`
 
 ### Optional AXI parity sideband — present only when `ENABLE_AXI_PARITY = true`
 
-Per AMD §Data Integrity, AXI-side data and address parity is an integrator-tunable integrity layer at the host/slave AXI boundaries. Independent of the always-on whole-flit `flit_ecc` and `route_par` inside the NoC fabric. Default `ENABLE_AXI_PARITY = true` — these signals are present (matches AMD pg313's "Packet domain parity ... is always enabled" stance). Integrators MAY set `false` at instantiation to omit the sideband if AXI-side parity is not required by the deployment; in that case all `axi_*_par_*` signals are absent from the wire list.
+AXI-side data and address parity is an integrator-tunable integrity layer at the host/slave AXI boundaries. Independent of the always-on whole-flit `flit_ecc` and `route_par` inside the NoC fabric. Default `ENABLE_AXI_PARITY = true` — these signals are present (AXI parity is always enabled by default). Integrators MAY set `false` at instantiation to omit the sideband if AXI-side parity is not required by the deployment; in that case all `axi_*_par_*` signals are absent from the wire list.
 
 Coverage:
 - 1-bit even parity per byte of data (data parity)
 - 1-bit even parity per byte of address (address parity, ADDR_WIDTH/8 bits per AxAddress)
 
-對齊 AMD pg313 §Parity verbatim：「1 bit per byte for Data」與「1 bit per byte for AxAddress」standard config。
+「1 bit per byte for Data」與「1 bit per byte for AxAddress」standard config。
 
 **AXI Slave port (axi_*_i) parity inputs (when `EN_MST_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
@@ -263,7 +263,7 @@ Coverage:
 
 | Signal | Direction | Width | Active | Sample edge | Reset value | Notes |
 |--------|-----------|-------|--------|-------------|-------------|-------|
-| `axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0]` | output | NOC_DATA_WIDTH/8 | H | pos aclk | §AXI parity row 8 | Per-byte even parity over `axi_rdata_o` (NMU-generated). NMU regenerates this **after** the `flit_ecc` check stage when converting the NoC packet back to AXI protocol — aligned with AMD pg313 §Parity: "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." |
+| `axi_rdata_par_o[NOC_DATA_WIDTH/8-1:0]` | output | NOC_DATA_WIDTH/8 | H | pos aclk | §AXI parity row 8 | Per-byte even parity over `axi_rdata_o` (NMU-generated). NMU regenerates this **after** the `flit_ecc` check stage when converting the NoC packet back to AXI protocol — "Data parity for read responses is generated as 1 bit per byte after the ECC check stage, when the data is converted from NPP to AXI protocol." |
 
 **AXI Master port (axi_*_o) parity outputs (when `EN_SLV_PORT=1` and `ENABLE_AXI_PARITY=1`):**
 
@@ -277,7 +277,7 @@ Coverage:
 **Behaviour:**
 
 - NMU verifies `axi_*_par_i` on each AW/AR/W handshake at the slave port. Mismatch logged to `ERR_STATUS[2] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_MST_PARITY_CHECK`). Transaction proceeds — no SLVERR injection at AXI boundary. Software observes via CSR / IRQ.
-- NMU **generates** `axi_rdata_par_o` per byte for R responses returning to master. Generation point: after the `flit_ecc` check stage at NMU (per AMD pg313 §Parity). Formalised in `protocol_rules.md` `AXI4_MST_PARITY_GEN_R`.
+- NMU **generates** `axi_rdata_par_o` per byte for R responses returning to master. Generation point: after the `flit_ecc` check stage at NMU. Formalised in `protocol_rules.md` `AXI4_MST_PARITY_GEN_R`.
 - NSU generates `axi_*_par_o` per byte for AW/AR/W signals driven to local slave. Address parity regenerated when NMU/NSU modify the address (e.g., AddrTrans address-map lookup may change upper address bits — parity over those bytes is recomputed, lower bytes carried through).
 - NSU verifies `axi_rdata_par_i` from local slave. Mismatch logged to `ERR_STATUS[2] axi_parity_err` + `AXI_PARITY_ERR_CNT++` + `LAST_ERR_INFO` capture (per `protocol_rules.md` `AXI4_SLV_PARITY_CHECK`). R beat forwarded to AXI master with `rresp=OKAY`. Same observability path.
 - Parity is verified at AXI boundary only. Inside the NoC fabric, `flit_ecc` (whole-flit SECDED) takes over end-to-end protection.
@@ -299,7 +299,7 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | Name | Type | Default | Constraint | Description |
 |------|------|---------|------------|-------------|
 | `ADDR_WIDTH` | int | 64 | 32 ≤ x ≤ 64 | AXI address width on host side |
-| `AXI_DATA_WIDTH` | int | 256 | 32 / 64 / 128 / 256 / 512 | **External Width Bridge parameter — not used by the NI core.** The local AXI master/slave-side data width handled by the bolt-on Width Bridge (see ToO §Data Width Conversion). The NI core's own AXI port operates at `NOC_DATA_WIDTH`. Interface width 32 to 512 per AMD pg313 §AXI Support and Restrictions Table 1; 1024 not supported. |
+| `AXI_DATA_WIDTH` | int | 256 | 32 / 64 / 128 / 256 / 512 | **External Width Bridge parameter — not used by the NI core.** The local AXI master/slave-side data width handled by the bolt-on Width Bridge (see ToO §Data Width Conversion). The NI core's own AXI port operates at `NOC_DATA_WIDTH`. Supported interface widths: 32 to 512; 1024 not supported. |
 | `NOC_DATA_WIDTH` | int | 256 | 64 / 128 / 256 / 512 | NoC flit data-lane width (the `wdata` / `rdata` field inside a flit, see `packet_format.md` §3.2, §3.4) **and the NI core's AXI port width** — the NI port is fixed at this width. The external Width Bridge adapts the local master/slave `AXI_DATA_WIDTH` to it. |
 | `USER_WIDTH` | int | 8 | 1 ≤ x ≤ 32 | AXI user signal width |
 | `IN_ID_WIDTH` | int | 8 | 1 ≤ x ≤ 16 | AXI master (incoming) txnID width |
@@ -313,8 +313,8 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `B_ROB_SIZE` | int | 0 | 0 if NoRoB, else 1 ≤ x ≤ MAX_TXNS | B RoB depth |
 | `R_ROB_TYPE` | enum | NoRoB | — | R response RoB mode. Default is smallest-area (NoRoB); typical multi-destination deployments use `NormalRoB` for R — see `theory_of_operation.md` §RoB. |
 | `R_ROB_SIZE` | int | 0 | same as B_ROB_SIZE | R RoB depth |
-| `CUT_AX` | bool | false | — | AW/AR spill register (FlooNoC `ChimneyCfgN.CutAx` parameter aligned, per `floo_nw_vc_chimney.sv`) |
-| `CUT_RSP` | bool | false | — | Response spill register (FlooNoC `ChimneyCfgN.CutRsp` parameter aligned) |
+| `CUT_AX` | bool | false | — | AW/AR spill register (pipeline cut at AW/AR channel) |
+| `CUT_RSP` | bool | false | — | Response spill register (pipeline cut at response channel) |
 | `ROUTE_ALGO` | enum {XYRouting, SourceRouting, IDRouting} | XYRouting | — | Routing algorithm |
 | `USE_ID_TABLE` | bool | false | — | Use SAM table for dst_id derivation |
 | `XY_ADDR_OFFSET_X` | int | 32 | 0 ≤ x ≤ ADDR_WIDTH-X_WIDTH | X coordinate bit offset in AXI address |
@@ -324,12 +324,12 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `HEADER_WIDTH` | derived | 50 | derived = Σ(all header field params) | Flit header width. post-QoS-removal default 50 (was 54 in v0.4.0 original; `NOC_QOS_WIDTH` changed to 0). v0.3.0 was 48. |
 | `PAYLOAD_WIDTH` | derived | 352 | derived = max(per-channel payload widths) | Per-channel payload max (W/R = 352, AW/AR = 108, B = 64). v0.3.0 `wecc/recc` removed. Equivalent bits become `*_rsvd` future-extension. |
 | `FLIT_ECC_WIDTH` | int | 10 | satisfy `2^(x-1) ≥ FLIT_DATA_WIDTH + x + 1` SECDED bit-count bound (conservative form, +1 margin over canonical `≥ k+p`; bound is matrix-variant-agnostic — applies to Hsiao SECDED used here per ToO §ECC) | Whole-flit SECDED syndrome width. Default 10 covers FLIT_DATA_WIDTH up to 501 (`2^9=512 ≥ 501+10+1=512`). Integrator must bump to 11 when FLIT_DATA_WIDTH ≥ 502. |
-| `ROUTE_PAR_WIDTH` | int | 1 | fixed = 1 | Routing parity width. Always 1-bit even parity over `{dst_id, last}` (9 bits coverage at default). Aligned with AMD pg313 §Parity: NPP packet (DST ID + LAST) protected by 1-bit even parity. |
+| `ROUTE_PAR_WIDTH` | int | 1 | fixed = 1 | Routing parity width. Always 1-bit even parity over `{dst_id, last}` (9 bits coverage at default; NPP packet DST ID + LAST coverage). |
 | `X_WIDTH` | int | 4 | 2 ≤ x ≤ 8 | Mesh X coordinate width |
 | `Y_WIDTH` | int | 4 | 2 ≤ x ≤ 8 | Mesh Y coordinate width |
 | `URGENCY_WIDTH` | int | 3 | 2 ≤ x ≤ 4 | Regulator urgency level width (retained for potential future use) |
 | `ERR_COUNTER_WIDTH` | int | 16 | 8 ≤ x ≤ 32 | Error counter width |
-| `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | array length = `NUM_SAM_RULES` | SAM rule table. **Compile-time parameter, not a port** — aligns with FlooNoC `floo_axi_chimney.sv` `Sam` parameter. All NIs share the same content. Each `sam_rule_t` carries `{match, mask, dst_id}`. Used when `USE_ID_TABLE=1` (`SourceRouting`/`IDRouting`). Runtime modification is **out of scope for v0.4.0** — no `SAM_RULE_*` CSR exists; to change the table, re-elaborate the design |
+| `Sam` | `sam_rule_t [NUM_SAM_RULES-1:0]` | `'0` | array length = `NUM_SAM_RULES` | SAM rule table. **Compile-time parameter, not a port**. All NIs share the same content. Each `sam_rule_t` carries `{match, mask, dst_id}`. Used when `USE_ID_TABLE=1` (`SourceRouting`/`IDRouting`). Runtime modification is **out of scope for v0.4.0** — no `SAM_RULE_*` CSR exists; to change the table, re-elaborate the design |
 | `MESH_COLS` | int | 4 | 1 ≤ x ≤ 2^X_WIDTH | Mesh column count; bounds `dst_id.x` for `NOC_FLIT_HDR_DST_ID_VALID` |
 | `MESH_ROWS` | int | 4 | 1 ≤ x ≤ 2^Y_WIDTH | Mesh row count; bounds `dst_id.y` |
 | `NUM_VC` | int | 1 | 1 ≤ x ≤ 8; when x > 1, both `R_ROB_TYPE` and `B_ROB_TYPE` MUST be != `NoRoB` (see `theory_of_operation.md` §RoB allocator §"NoRoB single-VC restriction") | Number of virtual channels per NoC link. Upper bound 8 matches `VC_ID_WIDTH = 3` in flit header (see `packet_format.md` §1.2 Group 2). Forward data link is shared (single 1-bit `valid` + 1× FLIT_WIDTH `flit`). Credit return is per-VC array (`noc_*_credit_*[NUM_VC-1:0]`). `NUM_VC=1` (default) collapses to single-VC operation. `NUM_VC > 1` adds VC mapping at NMU per `theory_of_operation.md` §"VC Mapping" (design-time fixed VC selection) and cycle-level round-robin VC arbitration at NMU/NSU egress (see `packet_format.md` §VC Arbitration). Deadlock-free routing across VCs is the integrator's responsibility. |
@@ -340,11 +340,11 @@ NI internal async FIFOs (gray-counter pointer + 2FF synchronizer) bridge AXI ↔
 | `ECC_PER_GRANULE_WIDTH` | retired | — | — | (v0.3.0) Per-granule ECC width parameter retired with the per-granule scheme. |
 | `ECC_FAIL_WIDTH` | retired | — | — | (v0.3.0) `ecc_fail` B-payload field dropped in v0.4.0. The NoC fabric no longer signals uncorrectable ECC via AXI rresp/bresp; visibility is via `ERR_STATUS[0] ecc_uncorr_err` + `ECC_UNCORR_ERR_CNT` + `irq_o` (per `protocol_rules.md` `NOC_FLIT_HDR_FLIT_ECC_CHECK`). The corrupted flit is forwarded as-is. |
 | `ECC_WIDTH` | retired | — | — | (v0.3.0) Total per-granule ECC width replaced by parameter `FLIT_ECC_WIDTH` (whole-flit SECDED syndrome). |
-| `MAX_RO_TXNS_PER_ID` | int | 32 | 1 ≤ x ≤ MAX_TXNS_PER_ID | NormalRoB status-table FIFO depth per AXI ID (FlooNoC `MaxRoTxnsPerId`). Bounds simultaneous outstanding transactions per ID that **require reordering** (i.e., go to different destinations). Default 32 matches FlooNoC default. |
-| `ONLY_METADATA_B` | bool | true | — | B-RoB skips data-SRAM (B response is metadata-only: bid + bresp + buser). Saves significant area. R-RoB is always SRAM-backed (rdata is bulk data). FlooNoC `OnlyMetaData` parameter. |
-| `NSU_R_BUFFER_DEPTH` | int | 16 | 1 ≤ x ≤ 64 | NSU read response buffer depth (entries × R flit). Smooths AXI-slave-to-NoC R injection back-pressure. Per AMD §NSU "Read responses are buffered before forwarding to minimize bubbles". Independent of MetaBuffer (which stores request headers). |
-| `EXCLUSIVE_MONITOR_DEPTH` | int | 8 | 1 ≤ x ≤ MAX_TXNS | NSU Exclusive Monitor capacity (per-axi_id reservation slots). Per AMD §NSU AXI exclusive access handling. Limits concurrent exclusive-access reservations. |
-| `ENABLE_AXI_PARITY` | bool | true | — | Enable AXI-side byte parity (data: 1 bit/byte) and address parity (1 bit). Per AMD §Data Integrity (default-on matches AMD's "Packet domain parity ... is always enabled" stance). When true: `axi_*_par_*` sideband signals are present. When false: omitted. Independent of NoC-fabric flit-level ECC (`flit_ecc` / `route_par`). This is end-of-pipe AXI integrity only. |
+| `MAX_RO_TXNS_PER_ID` | int | 32 | 1 ≤ x ≤ MAX_TXNS_PER_ID | NormalRoB status-table FIFO depth per AXI ID. Bounds simultaneous outstanding transactions per ID that **require reordering** (i.e., go to different destinations). |
+| `ONLY_METADATA_B` | bool | true | — | B-RoB skips data-SRAM (B response is metadata-only: bid + bresp + buser). Saves significant area. R-RoB is always SRAM-backed (rdata is bulk data). |
+| `NSU_R_BUFFER_DEPTH` | int | 16 | 1 ≤ x ≤ 64 | NSU read response buffer depth (entries × R flit). Smooths AXI-slave-to-NoC R injection back-pressure. "Read responses are buffered before forwarding to minimize bubbles." Independent of MetaBuffer (which stores request headers). |
+| `EXCLUSIVE_MONITOR_DEPTH` | int | 8 | 1 ≤ x ≤ MAX_TXNS | NSU Exclusive Monitor capacity (per-axi_id reservation slots). Limits concurrent exclusive-access reservations. |
+| `ENABLE_AXI_PARITY` | bool | true | — | Enable AXI-side byte parity (data: 1 bit/byte) and address parity (1 bit). Default-on: AXI parity is always enabled. When true: `axi_*_par_*` sideband signals are present. When false: omitted. Independent of NoC-fabric flit-level ECC (`flit_ecc` / `route_par`). This is end-of-pipe AXI integrity only. |
 
 ## Optional features in / out of scope
 
@@ -378,7 +378,7 @@ This separates master-side and slave-side channels (e.g., `AW_IN` vs `AW_OUT`) s
 
 ## Signal bundles (struct dot-notation)
 
-Other spec documents (`channel_api.md`, `channel_handshake.md`, `protocol_rules.md`, `active_passive_mode.md`) refer to groups of related wires using SystemVerilog packed-struct dot-notation (e.g., `axi_req_i.awvalid`, `axi_rsp_o.b*`). These bundles are *logical groupings* over the bare wires declared in §Wire table — no separate physical wires. Convention follows ARM AXI4 and FlooNoC `*_req_t` / `*_rsp_t` style.
+Other spec documents (`channel_api.md`, `channel_handshake.md`, `protocol_rules.md`, `active_passive_mode.md`) refer to groups of related wires using SystemVerilog packed-struct dot-notation (e.g., `axi_req_i.awvalid`, `axi_rsp_o.b*`). These bundles are *logical groupings* over the bare wires declared in §Wire table — no separate physical wires. Convention follows ARM AXI4 `*_req_t` / `*_rsp_t` style.
 
 **Bundle resolution rule**: `<bundle>_<dir>.<field>` resolves to wire `<bundle-prefix>_<field>_<dir>`, where the direction suffix on the bundle instance carries to every field. Wildcards (`.aw*`, `.*valid`, `.*ready`) expand to the field set listed below.
 

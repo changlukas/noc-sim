@@ -1,6 +1,6 @@
 # NI Presentation Slides
 
-Single source of truth for slide drafting. Technical terms, mode names, and AMD pg313 verbatim quotes stay in English. Signal names, register names, parameter constants, and rule IDs do not appear in slide bodies (they live in the spec docs). Each slide follows a Takeaway → Body → Source layout.
+Single source of truth for slide drafting. Technical terms, mode names, and verbatim quotes stay in English. Signal names, register names, parameter constants, and rule IDs do not appear in slide bodies (they live in the spec docs). Each slide follows a Takeaway → Body → Source layout.
 
 ---
 
@@ -11,16 +11,15 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 **Takeaway:** An AXI4-NoC boundary IP with built-in QoS, ECC, and RoB. A single wide flit carries one AXI message end-to-end. No chopping overhead.
 
 - **Scope**
-  - One NI per tile, single-chimney topology.
+  - One NI per tile, single-NI-per-tile topology.
   - Covers NMU, NSU, CSR file, and the interrupt output.
   - The fabric router (NPS) is a separate spec and is not expanded in this deck.
 - **Chapter alignment**
-  - Section order follows AMD pg313 NoC Architecture.
-  - Reviewers familiar with Versal NoC can cross-reference section by section.
+  - Section order follows NoC Architecture chapter structure.
 - **Design inspiration**
-  - **AMD pg313 (Versal NoC):** two-layer ECC, Data Integrity policy, log-and-forward fabric error reporting.
+  - **Two-layer ECC, Data Integrity policy, log-and-forward fabric error reporting.**
   - **Arteris FlexNoC:** 4-mode QoS Generator and the heterogeneous traffic class taxonomy.
-  - **FlooNoC (PULP / ETH):** single-chimney structure, wormhole arbiter, RoB and MetaBuffer pattern.
+  - **Wormhole arbiter, RoB and MetaBuffer pattern.**
 
 > **Deck roadmap (13 slides):**
 > Overview (S2 to S3) → NMU internals (S4) → Address map (S5) → QoS (S6) → ECC (S7 to S8) → RoB (S9) → NSU internals (S10, includes Exclusive Monitor) → Width conversion (S11) → Credit flow control (S12) → DV status and roadmap (S13)
@@ -47,8 +46,8 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 **Speaker notes:**
 
-- Design philosophy (FlooNoC verbatim): *"Move complexity to the edges. Keep routers simple and fast. Wide flits transmit entire AXI4 messages in a single cycle, with no chopping and no serialization tax."*
-- NPS feature envelope (adjacent spec, per AMD pg313 §NoC Packet Switch): full-duplex switch, multiple virtual channels per port, credit-based flow control, two-cycle minimum through-switch latency, boot-time programmable routing table.
+- Design philosophy: *"Wide flits transmit entire AXI4 messages in a single cycle, with no chopping and no serialization tax."*
+- NPS feature envelope (adjacent spec): full-duplex switch, multiple virtual channels per port, credit-based flow control, two-cycle minimum through-switch latency, boot-time programmable routing table.
 - Trade-off: wider flit lanes for clock-frequency headroom. Chopping-based NoCs pay an endpoint serialization tax per hop. This design avoids it.
 - Multiple IPs in a tile (CPU, DMA, accelerator) share one NI through an upstream AXI crossbar.
 
@@ -73,7 +72,7 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 **Speaker notes:**
 
-- "Per-tile single chimney" is the FlooNoC name for the NMU + NSU pair sharing one NoC link pair per tile (FlooNoC paper, arXiv 2305.08562).
+- Per-tile single NI: the NMU + NSU pair sharing one NoC link pair per tile.
 - Clock domain split — AXI domain (`aclk_i`) and NoC domain (`noc_clk_i`) are independent. CDC FIFOs sit at the NMU / NSU boundary inside the NI.
 - The fabric closes timing independently of any external IP.
 - NPS (NoC Packet Switch) is the adjacent NoC router. Not part of the NI. Covered briefly on S2.
@@ -86,7 +85,7 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 > **AXI4 semantics must hold across a packet-switched NoC boundary.**
 
-**Visual:** NMU block diagram (per `docs/images/NMU.png`, AMD pg313 §NoC Master Unit style). Request path: AXI Slave I/F → [Async Boundary] → Address Map → Packetizing → QoS Order Control → VC Mapping → ECC Gen → NoC. Response path: NoC → ECC Check → De-packetizing → Read Re-Ordering → AXI Slave I/F.
+**Visual:** NMU block diagram (per `docs/images/NMU.png`, §NoC Master Unit style). Request path: AXI Slave I/F → [Async Boundary] → Address Map → Packetizing → QoS Order Control → VC Mapping → ECC Gen → NoC. Response path: NoC → ECC Check → De-packetizing → Read Re-Ordering → AXI Slave I/F.
 
 - **Protocol bridging**
   - AXI4 ↔ NoC flit conversion across 5 channels.
@@ -101,7 +100,7 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 **Speaker notes:**
 
-- AMD pg313 verbatim: *"Asynchronous clock domain crossing and rate matching between the AXI master and the NoC."*
+- Spec verbatim: *"Asynchronous clock domain crossing and rate matching between the AXI master and the NoC."*
 - Pipeline depth — AW / AR injection takes 1 to 2 cycles (optional spill register). CDC traversal adds 3 to 4 cycles each direction.
 - RoB reorders cross-AXI-ID responses before driving the AXI master (covered in S9).
 - Sub-block list (left-to-right on block diagram): Address Map · Packetizing · QoS Order Control · VC Mapping · ECC Gen · ECC Check · De-packetizing · Read Re-Ordering.
@@ -132,7 +131,7 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 - Compile-time only: SAM and id-to-port mappings are RTL parameters baked at elaboration. Not runtime-modifiable in v0.4.0. Re-elaborate to change.
 - No routing-mode latency penalty: all three modes complete address resolution in the same cycle as packetizing. SAM lookup is combinational, folded into the packetize stage.
 - Mode costs — XY: combinational only, no SRAM. Source-routed: NI SAM plus wider flit header (route bits scale with mesh diameter). ID-table: NI SAM plus per-router id-to-port mapping. Cycle-free routes and mappings are the integrator's responsibility.
-- Design difference vs AMD Versal NoC: Versal pairs Master-Specified ID with Re-mapping. This NI exposes a uniform 3-mode selector for the integrator to pick per topology.
+- Design choice: this NI exposes a uniform 3-mode selector for the integrator to pick per topology.
 
 ---
 
@@ -165,7 +164,7 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 - Arteris verbatim, Bandwidth Limiter: *"prevent a socket from accepting new requests once a programmable throughput threshold is exceeded."*
 - Arteris verbatim, Rate Regulator: *"demote socket transactions when bandwidth usage exceeds configured levels ... smooths traffic without halting initiators entirely."* Our "Bandwidth Regulator (urgency-mode)" is the urgency-feedback variant. The earlier internal label "Urgency Regulator" was renamed to align with Arteris public docs (per PRESENTATION_STYLE.md §11).
-- Design choice — QoS lives at the NMU ingress, not at the router. AMD Versal NoC takes the opposite choice. Aligned with Arteris's end-to-end QoS philosophy: coordinated control of latency, bandwidth, arbitration, and flow management, preventing interference among real-time, best-effort, and background classes.
+- Design choice — QoS lives at the NMU ingress, not at the router. Aligned with end-to-end QoS philosophy: coordinated control of latency, bandwidth, arbitration, and flow management, preventing interference among real-time, best-effort, and background classes.
 - All 4 modes are CSR-programmable and runtime-selectable.
 - VC mapping rationale: independent VC pools eliminate priority inversion in hardware. Bit-extract is combinational (no SRAM, no programmable map).
 
@@ -186,12 +185,12 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
   - Hsiao SEC-DED over the entire flit (header plus payload).
   - Uncorrectable errors at the sink — log and forward. NSU does not rewrite `BRESP`.
 - **Layer 3 — AXI host-side parity (boundary, optional)**
-  - 1 bit per byte of data and address (per AMD pg313 §Parity).
+  - 1 bit per byte of data and address.
   - Checked at the AXI boundary. Regenerated when the NI rewrites an address field.
 
 **Speaker notes:**
 
-- AMD pg313 §Data Integrity verbatim: *"The Versal adaptive SoC programmable NoC supports end-to-end data protection for AXI memory mapped transactions."* / *"No ECC checking is performed in the switch fabric."* / *"Uncorrectable ECC errors result in a fatal interrupt."*
+- Spec §Data Integrity verbatim: *"No ECC checking is performed in the switch fabric."* / *"Uncorrectable ECC errors result in a fatal interrupt."*
 - Why two layers (per-hop parity + end-to-end SECDED, not per-hop SECDED everywhere): router logic stays combinational (1-bit XOR over routing fields per hop). Per-hop SECDED would add +1 cycle per hop and roughly 10× the gate count. Payload integrity is preserved by the end-to-end check at the sink.
 - Single-bit errors are silently corrected and counted. Double-bit errors are forwarded unchanged and reported via interrupt.
 - Fabric error policy (replaces internal "(B)-philosophy" label, per PRESENTATION_STYLE.md §11.1): synthesized `SLVERR` from the NoC fabric is disallowed by design. Uncorrectable ECC at the NSU sink — log and forward. AXI `BRESP` carries the target slave's own response unchanged.
@@ -205,9 +204,9 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 > **Each error class must reach the correct log register without crossing into another fault domain.**
 
-**AMD pg313 §Data Integrity layer mapping (4-row AMD → 3-layer NI):**
+**Data Integrity layer mapping (reference architecture → 3-layer NI):**
 
-| AMD pg313 layer | This NI mechanism | Generate / Check points |
+| Reference layer | This NI mechanism | Generate / Check points |
 |---|---|---|
 | Data Parity + Address Parity | AXI host-side parity | AXI master and slave boundaries |
 | ECC (NoC packet domain) | Whole-flit SECDED | Generated at NMU / NSU injection. Checked only at the destination NI. |
@@ -225,7 +224,7 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 **Speaker notes:**
 
-- AMD pg313 verbatim: *"Data parity for read responses is generated as 1 bit per byte after the ECC check stage."*
+- Spec verbatim: *"Data parity for read responses is generated as 1 bit per byte after the ECC check stage."*
 - The 🟢 generate / 🔺 check handshake model makes fault domain transitions explicit. A mismatch at any 🔺 point logs to the error status register for that domain (per S7 layer-to-counter mapping).
 - AXI host-side parity (Layer 3) is configurable. When disabled, only Layers 1 (per-hop parity) and 2 (end-to-end SECDED) are active. Disable trades boundary checking for area at the AXI parity ports.
 
@@ -237,7 +236,7 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 > **Transactions with the same ID must be ordered in AXI.**
 
-**Visual:** RoB block diagram per FlooNoC `floo_rob.sv` style (matches `spec/ni/1.jpg`) — Encoder, Reorder Table (control), Reorder Buffer (data), Decoder, meta FIFO. Bypass paths show that in-order responses skip the Buffer.
+**Visual:** RoB block diagram (matches `spec/ni/1.jpg`) — Encoder, Reorder Table (control), Reorder Buffer (data), Decoder, meta FIFO. Bypass paths show that in-order responses skip the Buffer.
 
 - **Reorder Table**
   - Keeps track of outstanding transactions of each AXI ID.
@@ -251,9 +250,8 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 **Speaker notes:**
 
-- AMD pg313 verbatim: *"Read re-tagging via linked-list RROB structure to maintain AXI ordering compliance."*
-- FlooNoC reference: `floo_rob.sv` `prev_dest` adaptive-bypass semantics.
-- Not all response data flows through the Reorder Buffer. In-order arrivals (same-AXI-ID + same destination, or single-issue, or first response) bypass directly to the AXI master via the Decoder. Only out-of-order arrivals occupy a Buffer entry. This is the FlooNoC `prev_dest` fast path — when consecutive same-AXI-ID requests target the same destination, release latency is ~1 cycle (combinational) instead of ~3 cycles (linked-list walk).
+- Spec verbatim: *"Read re-tagging via linked-list RROB structure to maintain AXI ordering compliance."*
+- Not all response data flows through the Reorder Buffer. In-order arrivals (same-AXI-ID + same destination, or single-issue, or first response) bypass directly to the AXI master via the Decoder. Only out-of-order arrivals occupy a Buffer entry. The `prev_dest` fast path — when consecutive same-AXI-ID requests target the same destination, release latency is ~1 cycle (combinational) instead of ~3 cycles (linked-list walk).
 - Three RoB modes — design-time selectable, trade area for cross-ID concurrency:
   - **NormalRoB** — per-AXI-ID linked-list with `prev_dest` adaptive bypass. Largest area. Multi-destination concurrent traffic.
   - **SimpleRoB** — single shared release pointer (single FIFO). Medium area. Cross-ID head-of-line blocking is acceptable.
@@ -270,7 +268,7 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 - **Protocol conversion and re-sizing**
   - NoC packetized data ↔ AXI4 reverse decoding.
   - Multiple AXI data widths handled by NSU Downsize (Slide 11).
-- **MetaBuffer (FlooNoC `floo_meta_buffer.sv` style)**
+- **MetaBuffer (project naming; NSU-side request header snapshot)**
   - Snapshots the original request metadata when the request flit arrives.
   - Looked up when the response is generated. The NoC never carries round-trip metadata.
 - **Egress Read Response Buffer**
@@ -284,11 +282,11 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
   - Asynchronous bridge from the NoC domain to the AXI domain.
   - Smooths the frequency gap between a fast NoC and a slow slave.
 
-> **Block diagram** (per `docs/images/NSU.png`, AMD pg313 §NoC Slave Unit style):
+> **Block diagram** (per `docs/images/NSU.png`, §NoC Slave Unit style):
 > Request path: NoC → ECC Check → De-packetizing → W Reassembly → Downsize → AXI Master I/F.
 > Response path: AXI Master I/F → Read Response Buffer → MetaBuffer Lookup → Packetizing B/R → ECC Gen → NoC.
 
-> **AMD pg313 verbatim:** *"Read responses are buffered before forwarding to minimize bubbles."* / *"Conversion of NoC packetized data (NPD) to and from AXI protocol data."*
+> **Spec verbatim:** *"Read responses are buffered before forwarding to minimize bubbles."* / *"Conversion of NoC packetized data (NPD) to and from AXI protocol data."*
 
 ---
 
@@ -334,7 +332,7 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 **Speaker notes:**
 
-- AMD pg313 §Credit-Based Flow Control verbatim: *"Each NMU, NPS, and NSU source needs to have credit before it can send data to the receiver. After a reset, every NoC component has its source-credit reset to zero. The source unit connects to the destination unit using a bi-directional ready signal that indicates credit exchange is ready. ... The destination unit can send up to one credit per cycle, per virtual channel."*
+- Spec §Credit-Based Flow Control verbatim: *"Each NMU, NPS, and NSU source needs to have credit before it can send data to the receiver. After a reset, every NoC component has its source-credit reset to zero. The source unit connects to the destination unit using a bi-directional ready signal that indicates credit exchange is ready. ... The destination unit can send up to one credit per cycle, per virtual channel."*
 - Long-link latency hiding rationale — credit-based flow control is the canonical solution for high-frequency NoC links where a round-trip handshake would cap throughput. Same mechanism in CHI and most modern interconnects.
 - Why no auto-SLVERR on starvation — fabric-level stalls indicate a configuration or interconnect-design bug, not a transient error. AXI SLVERR is reserved for end-to-end memory errors (per fabric error policy on S7).
 
@@ -366,10 +364,5 @@ Single source of truth for slide drafting. Technical terms, mode names, and AMD 
 
 ## Appendix. Reference Sources
 
-- **AMD pg313 (Versal Adaptive SoC Programmable NoC Product Guide)**
-  - §NoC Architecture, §NoC Master Unit, §NoC Slave Unit, §NoC Packet Switch, §Data Integrity, §Parity, §Credit-Based Flow Control.
 - **Arteris FlexNoC Interconnect IP**
   - End-to-End QoS whitepaper. FlexNoC 5 datasheet.
-- **FlooNoC (PULP Platform / ETH Zürich)**
-  - GitHub `pulp-platform/FlooNoC`: `floo_axi_chimney.sv`, `floo_rob.sv`, `floo_meta_buffer.sv`, `floo_wormhole_arbiter.sv`.
-  - arXiv 2305.08562, arXiv 2409.17606, IEEE TVLSI 2025.

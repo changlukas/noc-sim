@@ -37,7 +37,7 @@ Used by all 5 AXI4 channels (AW, W, B, AR, R). For each channel the BFM either d
 
 ## Channel state machine (NoC side)
 
-NoC links use credit-based flow control (per AMD pg313 §Credit-Based Flow Control). The state machines differ from the AXI valid/ready model.
+NoC links use credit-based flow control. The state machines differ from the AXI valid/ready model.
 
 Outbound (BFM-driven; NMU on `noc_req_o`, NSU on `noc_rsp_o`):
 
