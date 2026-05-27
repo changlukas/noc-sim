@@ -240,3 +240,30 @@ def test_packet_cpp_functional_fields_have_enabled_true():
         assert f"constexpr bool {field}_ENABLED = true;" in text, (
             f"Expected {field}_ENABLED = true; not found in ni_flit_constants.h"
         )
+
+
+# ---------------------------------------------------------------------------
+# Pin-bundle compile smoke test
+# ---------------------------------------------------------------------------
+
+def test_pins_bundle_compiles_with_gxx(tmp_path):
+    """Smoke-compile ni::pins::*Pins bundle structs against elaborated header."""
+    if not shutil.which("g++"):
+        pytest.skip("g++ not in PATH")
+
+    # Regenerate signals header so the test reflects the current spec.
+    run_codegen("--target", "cpp", "--domain", "signals", "--out", str(INCLUDE_DIR))
+
+    src = SPEC_VALIDATE / "tests" / "cpp_smoke" / "test_pins_compile.cpp"
+    exe = tmp_path / "test_pins_compile.exe"
+    r = subprocess.run(
+        ["g++", "-std=c++17",
+         "-I", str(INCLUDE_DIR),
+         str(src),
+         "-o", str(exe)],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, f"g++ failed:\n{r.stderr}"
+    # Also actually run the binary so reset_outputs() actually executes.
+    run_result = subprocess.run([str(exe)], capture_output=True, text=True)
+    assert run_result.returncode == 0, run_result.stderr

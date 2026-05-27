@@ -139,6 +139,39 @@ def signals_signal_by_pin(signals_spec, pin_name: str) -> dict:
     return None
 
 
+def signals_pins_by_interface(signals_spec) -> dict:
+    """Return {interface_name: [signal_dict, ...]} for pin-bundle elaboration.
+
+    Each entry exposes the fields a C++/SV emitter needs to materialise an
+    interface bundle struct: pin_name, direction, width (numeric default
+    or ``width_expr``), and reset_behavior. Direction for channeled
+    signals is inherited from the channel; interface-level (NoC link)
+    signals carry their own ``direction`` field.
+    """
+    out: dict = {}
+    for iface in signals_spec.get("interfaces", []):
+        name = iface["name"]
+        pins: list = []
+        for ch in iface.get("channels", []):
+            ch_dir = ch.get("direction")
+            for sig in ch.get("signals", []):
+                pins.append({
+                    "pin_name":       sig["pin_name"],
+                    "direction":      sig.get("direction") or ch_dir,
+                    "width_expr":     sig.get("width_expr") or sig.get("default") or "1",
+                    "reset_behavior": sig.get("reset_behavior"),
+                })
+        for sig in iface.get("signals", []):
+            pins.append({
+                "pin_name":       sig["pin_name"],
+                "direction":      sig.get("direction"),
+                "width_expr":     sig.get("width_expr") or sig.get("default") or "1",
+                "reset_behavior": sig.get("reset_behavior"),
+            })
+        out[name] = pins
+    return out
+
+
 # ---------- registers domain (Task 4 will implement) ----------
 
 def regs_offsets(regs_spec) -> dict:

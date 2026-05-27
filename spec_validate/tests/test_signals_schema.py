@@ -45,3 +45,26 @@ def test_regenerated_ni_signals_has_meta_reset_signals():
     spec = loader.load_doc(SPEC_VALIDATE / "generated" / "ni_signals.json")
     assert "reset_signals" in spec["meta"]
     assert "arst_ni" in spec["meta"]["reset_signals"]
+
+
+def test_pins_bundle_struct_emitted_per_interface():
+    """Each ni_signals interface should produce a ni::pins::<Name>Pins struct.
+
+    Interface names in ni_signals.json are UPPERCASE_SNAKE
+    (e.g. AXI_SLAVE_PORT, NOC_REQ_OUT). PascalCase + 'Pins' suffix.
+    """
+    header = SPEC_VALIDATE / "include" / "ni_signals.h"
+    text = header.read_text(encoding="ascii")
+    expected_bundles = (
+        "AxiSlavePortPins",
+        "AxiMasterPortPins",
+        "NocReqInPins",
+        "NocReqOutPins",
+        "NocRspInPins",
+        "NocRspOutPins",
+        "CsrPins",
+    )
+    for bundle in expected_bundles:
+        assert f"struct {bundle}" in text, f"missing pin bundle: {bundle}"
+    assert "namespace pins" in text, "missing ni::pins namespace"
+    assert "void reset_outputs()" in text, "missing reset_outputs() method"

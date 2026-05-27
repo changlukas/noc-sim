@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_signals.json
 // Source SHA: f9a618f8ffa8
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T06:13:01Z
+// Generated at: 2026-05-27T11:16:54Z
 // ----------------------------------------------------------------------------
 #pragma once
 #include <cstdint>
@@ -64,4 +64,212 @@ constexpr int NOC_RSP_VALID_O_RESET = 0;
 constexpr int NOC_RSP_FLIT_O_RESET = 0;
 
 }  // namespace signals
+
+namespace pins {
+
+struct AxiSlavePortPins {
+  uint8_t    axi_awid_i;
+  uint64_t   axi_awaddr_i;
+  uint8_t    axi_awlen_i;
+  uint8_t    axi_awsize_i;
+  uint8_t    axi_awburst_i;
+  uint8_t    axi_awcache_i;
+  uint8_t    axi_awlock_i;
+  uint8_t    axi_awprot_i;
+  uint8_t    axi_awregion_i;
+  uint8_t    axi_awuser_i;
+  uint8_t    axi_awqos_i;
+  uint64_t   axi_wdata_i;
+  uint32_t   axi_wstrb_i;
+  uint8_t    axi_wlast_i;
+  uint8_t    axi_wuser_i;
+  uint8_t    axi_arid_i;
+  uint64_t   axi_araddr_i;
+  uint8_t    axi_arlen_i;
+  uint8_t    axi_arsize_i;
+  uint8_t    axi_arburst_i;
+  uint8_t    axi_arcache_i;
+  uint8_t    axi_arlock_i;
+  uint8_t    axi_arprot_i;
+  uint8_t    axi_arregion_i;
+  uint8_t    axi_aruser_i;
+  uint8_t    axi_arqos_i;
+  uint8_t    axi_bid_o;
+  uint8_t    axi_bresp_o;
+  uint8_t    axi_buser_o;
+  uint8_t    axi_rid_o;
+  uint64_t   axi_rdata_o;
+  uint8_t    axi_rresp_o;
+  uint8_t    axi_rlast_o;
+  uint8_t    axi_ruser_o;
+
+  void reset_outputs() {
+    axi_bid_o = signals::AXI_BID_O_RESET;
+    axi_bresp_o = signals::AXI_BRESP_O_RESET;
+    axi_buser_o = signals::AXI_BUSER_O_RESET;
+    axi_rid_o = signals::AXI_RID_O_RESET;
+    axi_rdata_o = signals::AXI_RDATA_O_RESET;
+    axi_rresp_o = signals::AXI_RRESP_O_RESET;
+    axi_rlast_o = signals::AXI_RLAST_O_RESET;
+    axi_ruser_o = signals::AXI_RUSER_O_RESET;
+  }
+};
+
+struct NocReqOutPins {
+  uint8_t    noc_req_valid_o;
+  uint64_t   noc_req_flit_o;
+  uint8_t    noc_req_credit_i;
+
+  void reset_outputs() {
+    noc_req_valid_o = signals::NOC_REQ_VALID_O_RESET;
+    noc_req_flit_o = signals::NOC_REQ_FLIT_O_RESET;
+  }
+};
+
+struct NocRspInPins {
+  uint8_t    noc_rsp_valid_i;
+  uint64_t   noc_rsp_flit_i;
+  uint8_t    noc_rsp_credit_o;
+
+  void reset_outputs() {
+    noc_rsp_credit_o = signals::NOC_RSP_CREDIT_O_RESET;
+  }
+};
+
+struct CsrPins {
+  uint8_t    csr_awid_i;
+  uint64_t   csr_awaddr_i;
+  uint8_t    csr_awlen_i;
+  uint8_t    csr_awsize_i;
+  uint8_t    csr_awburst_i;
+  uint8_t    csr_awcache_i;
+  uint8_t    csr_awlock_i;
+  uint8_t    csr_awprot_i;
+  uint8_t    csr_awregion_i;
+  uint8_t    csr_awuser_i;
+  uint8_t    csr_awqos_i;
+  uint64_t   csr_wdata_i;
+  uint32_t   csr_wstrb_i;
+  uint8_t    csr_wlast_i;
+  uint8_t    csr_wuser_i;
+  uint8_t    csr_arid_i;
+  uint64_t   csr_araddr_i;
+  uint8_t    csr_arlen_i;
+  uint8_t    csr_arsize_i;
+  uint8_t    csr_arburst_i;
+  uint8_t    csr_arcache_i;
+  uint8_t    csr_arlock_i;
+  uint8_t    csr_arprot_i;
+  uint8_t    csr_arregion_i;
+  uint8_t    csr_aruser_i;
+  uint8_t    csr_arqos_i;
+  uint8_t    csr_bid_o;
+  uint8_t    csr_bresp_o;
+  uint8_t    csr_buser_o;
+  uint8_t    csr_rid_o;
+  uint64_t   csr_rdata_o;
+  uint8_t    csr_rresp_o;
+  uint8_t    csr_rlast_o;
+  uint8_t    csr_ruser_o;
+
+  void reset_outputs() {
+    csr_bid_o = signals::CSR_BID_O_RESET;
+    csr_bresp_o = signals::CSR_BRESP_O_RESET;
+    csr_buser_o = signals::CSR_BUSER_O_RESET;
+    csr_rid_o = signals::CSR_RID_O_RESET;
+    csr_rdata_o = signals::CSR_RDATA_O_RESET;
+    csr_rresp_o = signals::CSR_RRESP_O_RESET;
+    csr_rlast_o = signals::CSR_RLAST_O_RESET;
+    csr_ruser_o = signals::CSR_RUSER_O_RESET;
+  }
+};
+
+struct NocReqInPins {
+  uint8_t    noc_req_valid_i;
+  uint64_t   noc_req_flit_i;
+  uint8_t    noc_req_credit_o;
+
+  void reset_outputs() {
+    noc_req_credit_o = signals::NOC_REQ_CREDIT_O_RESET;
+  }
+};
+
+struct AxiMasterPortPins {
+  uint8_t    axi_awid_o;
+  uint64_t   axi_awaddr_o;
+  uint8_t    axi_awlen_o;
+  uint8_t    axi_awsize_o;
+  uint8_t    axi_awburst_o;
+  uint8_t    axi_awcache_o;
+  uint8_t    axi_awlock_o;
+  uint8_t    axi_awprot_o;
+  uint8_t    axi_awregion_o;
+  uint8_t    axi_awuser_o;
+  uint8_t    axi_awqos_o;
+  uint64_t   axi_wdata_o;
+  uint32_t   axi_wstrb_o;
+  uint8_t    axi_wlast_o;
+  uint8_t    axi_wuser_o;
+  uint8_t    axi_arid_o;
+  uint64_t   axi_araddr_o;
+  uint8_t    axi_arlen_o;
+  uint8_t    axi_arsize_o;
+  uint8_t    axi_arburst_o;
+  uint8_t    axi_arcache_o;
+  uint8_t    axi_arlock_o;
+  uint8_t    axi_arprot_o;
+  uint8_t    axi_arregion_o;
+  uint8_t    axi_aruser_o;
+  uint8_t    axi_arqos_o;
+  uint8_t    axi_bid_i;
+  uint8_t    axi_bresp_i;
+  uint8_t    axi_buser_i;
+  uint8_t    axi_rid_i;
+  uint64_t   axi_rdata_i;
+  uint8_t    axi_rresp_i;
+  uint8_t    axi_rlast_i;
+  uint8_t    axi_ruser_i;
+
+  void reset_outputs() {
+    axi_awid_o = signals::AXI_AWID_O_RESET;
+    axi_awaddr_o = signals::AXI_AWADDR_O_RESET;
+    axi_awlen_o = signals::AXI_AWLEN_O_RESET;
+    axi_awsize_o = signals::AXI_AWSIZE_O_RESET;
+    axi_awburst_o = signals::AXI_AWBURST_O_RESET;
+    axi_awcache_o = signals::AXI_AWCACHE_O_RESET;
+    axi_awlock_o = signals::AXI_AWLOCK_O_RESET;
+    axi_awprot_o = signals::AXI_AWPROT_O_RESET;
+    axi_awregion_o = signals::AXI_AWREGION_O_RESET;
+    axi_awuser_o = signals::AXI_AWUSER_O_RESET;
+    axi_awqos_o = signals::AXI_AWQOS_O_RESET;
+    axi_wdata_o = signals::AXI_WDATA_O_RESET;
+    axi_wstrb_o = signals::AXI_WSTRB_O_RESET;
+    axi_wlast_o = signals::AXI_WLAST_O_RESET;
+    axi_wuser_o = signals::AXI_WUSER_O_RESET;
+    axi_arid_o = signals::AXI_ARID_O_RESET;
+    axi_araddr_o = signals::AXI_ARADDR_O_RESET;
+    axi_arlen_o = signals::AXI_ARLEN_O_RESET;
+    axi_arsize_o = signals::AXI_ARSIZE_O_RESET;
+    axi_arburst_o = signals::AXI_ARBURST_O_RESET;
+    axi_arcache_o = signals::AXI_ARCACHE_O_RESET;
+    axi_arlock_o = signals::AXI_ARLOCK_O_RESET;
+    axi_arprot_o = signals::AXI_ARPROT_O_RESET;
+    axi_arregion_o = signals::AXI_ARREGION_O_RESET;
+    axi_aruser_o = signals::AXI_ARUSER_O_RESET;
+    axi_arqos_o = signals::AXI_ARQOS_O_RESET;
+  }
+};
+
+struct NocRspOutPins {
+  uint8_t    noc_rsp_valid_o;
+  uint64_t   noc_rsp_flit_o;
+  uint8_t    noc_rsp_credit_i;
+
+  void reset_outputs() {
+    noc_rsp_valid_o = signals::NOC_RSP_VALID_O_RESET;
+    noc_rsp_flit_o = signals::NOC_RSP_FLIT_O_RESET;
+  }
+};
+
+}  // namespace pins
 }  // namespace ni
