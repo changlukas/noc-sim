@@ -58,5 +58,11 @@ def test_csr_policy_elaborated_as_constexpr():
     """ni_regs.h must expose csr_policy fields as constexpr in ni::regs::csr_policy."""
     from pathlib import Path
     text = (Path(__file__).resolve().parent.parent / "include" / "ni_regs.h").read_text()
+    ns_idx = text.find("namespace csr_policy")
+    assert ns_idx != -1, "missing namespace csr_policy"
+    body = text[ns_idx:]
+    end_idx = body.find("} // namespace csr_policy")
+    if end_idx != -1:
+        body = body[:end_idx]
     for key in ("SUB_WORD_WRITE", "UNMAPPED_READ", "MISALIGNED", "WO_READ"):
-        assert f"CSR_POLICY_{key}" in text, f"missing csr_policy elaboration: {key}"
+        assert key in body, f"missing csr_policy elaboration: {key} (within namespace)"

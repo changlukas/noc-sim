@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_registers.json
 // Source SHA: 05cc59c20bff
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T11:44:33Z
+// Generated at: 2026-05-27T11:49:05Z
 // ----------------------------------------------------------------------------
 #pragma once
 #include <cstdint>
@@ -101,14 +101,14 @@ static_assert(1 <= 32, "EXCLUSIVE_MONITOR_CTRL: field width sum (1) must be <= d
 
 // --- csr_policy ---
 namespace csr_policy {
-constexpr const char* CSR_POLICY_SUB_WORD_WRITE = "slverr";
-constexpr int         CSR_POLICY_SUB_WORD_WRITE_IS_SLVERR = 1;
-constexpr const char* CSR_POLICY_UNMAPPED_READ = "decerr";
-constexpr int         CSR_POLICY_UNMAPPED_READ_IS_DECERR = 1;
-constexpr const char* CSR_POLICY_MISALIGNED = "slverr";
-constexpr int         CSR_POLICY_MISALIGNED_IS_SLVERR = 1;
-constexpr const char* CSR_POLICY_WO_READ = "zero";
-constexpr int         CSR_POLICY_WO_READ_IS_ZERO = 1;
+constexpr const char* SUB_WORD_WRITE = "slverr";
+constexpr int         SUB_WORD_WRITE_IS_SLVERR = 1;
+constexpr const char* UNMAPPED_READ = "decerr";
+constexpr int         UNMAPPED_READ_IS_DECERR = 1;
+constexpr const char* MISALIGNED = "slverr";
+constexpr int         MISALIGNED_IS_SLVERR = 1;
+constexpr const char* WO_READ = "zero";
+constexpr int         WO_READ_IS_ZERO = 1;
 }  // namespace csr_policy
 
 }  // namespace regs

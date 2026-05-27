@@ -29,10 +29,11 @@ def _emit_csr_policy(spec) -> list[str]:
     """Emit csr_policy values as constexpr constants in ni::regs::csr_policy.
 
     For each key (sub_word_write, unmapped_read, misaligned, wo_read) emit:
-      - constexpr const char* CSR_POLICY_<KEY>           = "<value>";
-      - constexpr int         CSR_POLICY_<KEY>_IS_<VAL>  = 1;
+      - constexpr const char* <KEY>           = "<value>";
+      - constexpr int         <KEY>_IS_<VAL>  = 1;
     The integer sentinel lets c_model branch via `if constexpr (...)` without
-    string comparison.
+    string comparison. Identifiers are not prefixed with CSR_POLICY_ because
+    the enclosing namespace already provides that qualifier.
     """
     policy = spec.get("csr_policy", {})
     out: list[str] = []
@@ -41,8 +42,8 @@ def _emit_csr_policy(spec) -> list[str]:
     for key in ("sub_word_write", "unmapped_read", "misaligned", "wo_read"):
         val = policy.get(key, "")
         enum_val = val.upper().replace("-", "_")
-        out.append(f"constexpr const char* CSR_POLICY_{key.upper()} = \"{val}\";")
-        out.append(f"constexpr int         CSR_POLICY_{key.upper()}_IS_{enum_val} = 1;")
+        out.append(f"constexpr const char* {key.upper()} = \"{val}\";")
+        out.append(f"constexpr int         {key.upper()}_IS_{enum_val} = 1;")
     out.append("}  // namespace csr_policy")
     return out
 
