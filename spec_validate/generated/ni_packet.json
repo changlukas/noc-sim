@@ -2,13 +2,9 @@
   "$schema_version": "ni-spec/2.0",
   "meta": {
     "block": "Network Interface (NI / chimney: NMU + NSU)",
-    "spec_version": "v0.4.0",
-    "auto_generated_from": "../spec/ni/doc/packet_format.md",
-    "generator": "ni_spec.generator :: generate_ni_packet_json",
-    "do_not_edit": "Re-run validator/generator to refresh."
+    "spec_version": "v0.4.0"
   },
   "flit": {
-    "endianness": "little-endian byte ordering for wdata/rdata; MSB-first bit numbering for metadata",
     "field_widths": {
       "X_WIDTH": 4,
       "Y_WIDTH": 4,
@@ -44,7 +40,6 @@
         "width": 0,
         "lsb": null,
         "msb": null,
-        "stage": "arbitration",
         "enabled": true
       },
       {
@@ -53,7 +48,6 @@
         "width": 3,
         "lsb": 0,
         "msb": 2,
-        "stage": "arbitration",
         "enabled": true
       },
       {
@@ -62,7 +56,6 @@
         "width": 8,
         "lsb": 3,
         "msb": 10,
-        "stage": "routing",
         "enabled": true
       },
       {
@@ -71,7 +64,6 @@
         "width": 8,
         "lsb": 11,
         "msb": 18,
-        "stage": "routing",
         "enabled": true
       },
       {
@@ -80,7 +72,6 @@
         "width": 3,
         "lsb": 19,
         "msb": 21,
-        "stage": "routing",
         "enabled": true
       },
       {
@@ -89,7 +80,6 @@
         "width": 1,
         "lsb": 22,
         "msb": 22,
-        "stage": "routing",
         "enabled": false
       },
       {
@@ -98,7 +88,6 @@
         "width": 1,
         "lsb": 23,
         "msb": 23,
-        "stage": "wormhole",
         "enabled": true
       },
       {
@@ -107,7 +96,6 @@
         "width": 1,
         "lsb": 24,
         "msb": 24,
-        "stage": "wormhole",
         "enabled": true
       },
       {
@@ -116,7 +104,6 @@
         "width": 5,
         "lsb": 25,
         "msb": 29,
-        "stage": "wormhole",
         "enabled": true
       },
       {
@@ -125,7 +112,6 @@
         "width": 2,
         "lsb": 30,
         "msb": 31,
-        "stage": "reserved",
         "enabled": false
       },
       {
@@ -134,7 +120,6 @@
         "width": 8,
         "lsb": 32,
         "msb": 39,
-        "stage": "reserved",
         "enabled": false
       },
       {
@@ -143,7 +128,6 @@
         "width": 10,
         "lsb": 40,
         "msb": 49,
-        "stage": "ECC",
         "enabled": false
       }
     ],

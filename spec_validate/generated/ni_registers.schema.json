@@ -8,11 +8,10 @@
     "$schema_version": {"const": "ni-spec/2.0"},
     "meta": {
       "type": "object",
-      "required": ["spec_version", "auto_generated_from"],
+      "required": ["spec_version"],
       "additionalProperties": true,
       "properties": {
-        "spec_version": {"type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$"},
-        "auto_generated_from": {"type": "string"}
+        "spec_version": {"type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$"}
       }
     },
     "csr_policy": {
@@ -45,7 +44,6 @@
             "properties": {"condition_text": {"type": "string"}}
           },
           "reserved_bits_policy": {"type": "string"},
-          "description": {"type": "string"},
           "fields": {
             "type": "array",
             "items": {

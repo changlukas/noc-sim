@@ -145,8 +145,6 @@ def parse_header_fields(md_text: str) -> List[dict]:
                 "lsb": None,
                 "msb": None,
             }
-            if i_stage is not None and i_stage < len(cells):
-                field["stage"] = cells[i_stage]
             field["enabled"] = enabled
             result.append(field)
             continue
@@ -162,8 +160,6 @@ def parse_header_fields(md_text: str) -> List[dict]:
             "lsb": lsb,
             "msb": msb,
         }
-        if i_stage is not None and i_stage < len(cells):
-            field["stage"] = cells[i_stage]
         field["enabled"] = enabled
         result.append(field)
     return result
@@ -325,12 +321,8 @@ def generate_ni_packet_json(md_dir: Union[str, Path]) -> dict:
         "meta": {
             "block": "Network Interface (NI / chimney: NMU + NSU)",
             "spec_version": "v0.4.0",
-            "auto_generated_from": str(md_path).replace("\\", "/"),
-            "generator": "ni_spec.generator :: generate_ni_packet_json",
-            "do_not_edit": "Re-run validator/generator to refresh.",
         },
         "flit": {
-            "endianness": "little-endian byte ordering for wdata/rdata; MSB-first bit numbering for metadata",
             "field_widths": parse_field_widths(md_text),
             "header_fields": parse_header_fields(md_text),
             "payload_channels": parse_payload_channels(md_text),
@@ -633,32 +625,12 @@ _IFACE_NAME_MAP: Dict[str, str] = {
     "CSR":                    "CSR",
 }
 
-# Flow-control enum mapping: MD prose → canonical enum string.
-_FLOW_CTRL_MAP: Dict[str, str] = {
-    "ready/valid per channel": "valid-ready",
-    "ready/valid":             "valid-ready",
-    "per-VC credit return":    "credit",
-    "per-VC credit":           "credit",
-}
-
 # Protocol normalization: MD prose → clean identifier (matches AXI4 style).
 # AXI protocol values ("AXI4", "AXI4-Lite") are already clean — no mapping needed.
 _PROTOCOL_MAP: Dict[str, str] = {
     "NoC request flit link":  "NoC",
     "NoC response flit link": "NoC",
 }
-
-# Description for each interface (prose previously split across name/peer fields).
-_IFACE_DESCRIPTION: Dict[str, str] = {
-    "AXI_SLAVE_PORT":  "AXI slave port to local AXI master (host-side, NMU injection path)",
-    "AXI_MASTER_PORT": "AXI master port to local AXI slave (host-side, NSU ejection path)",
-    "NOC_REQ_OUT":     "NoC request flit link out to router local input",
-    "NOC_RSP_IN":      "NoC response flit link in from router local output",
-    "NOC_REQ_IN":      "NoC request flit link in from router local output",
-    "NOC_RSP_OUT":     "NoC response flit link out to router local input",
-    "CSR":             "AXI4-Lite CSR port for software configuration access",
-}
-
 
 def _build_params_namespace(md_dir: Union[str, Path],
                              signal_params: List[dict]) -> Dict[str, dict]:
@@ -742,14 +714,12 @@ def parse_top_level_interfaces(md_text: str) -> List[dict]:
 
     Interface entry shape (Task 3.5 clean shape):
       name        — UPPER_SNAKE_CASE identifier (from _IFACE_NAME_MAP)
-      description — prose (from _IFACE_DESCRIPTION)
       block       — NMU | NSU
       direction   — as-parsed from MD table
       protocol    — as-parsed from MD table
       clock       — split from clock_domain (before " / ")
       reset       — split from clock_domain (after " / ")
-      flow_control — enum "valid-ready" | "credit" (from _FLOW_CTRL_MAP)
-    Removed: peer, wire_source, clock_domain.
+    Removed: peer, wire_source, clock_domain, description, flow_control.
     """
     sec = _section_slice(md_text, r"^## Per-block interface summary")
     if sec is None:
@@ -766,7 +736,6 @@ def parse_top_level_interfaces(md_text: str) -> List[dict]:
             i_name = _col_idx(header, "Interface")
             i_dir = _col_idx(header, "Direction")
             i_proto = _col_idx(header, "Protocol")
-            i_fc = _col_idx(header, "Flow control")
             i_clk = _col_idx(header, "Clock domain")
             if i_name is None:
                 continue
@@ -787,15 +756,8 @@ def parse_top_level_interfaces(md_text: str) -> List[dict]:
                     else:
                         clock_val = clk_str.strip()
 
-                # Normalise flow_control to enum
-                fc_raw = ""
-                if i_fc is not None and i_fc < len(clean):
-                    fc_raw = clean[i_fc]
-                fc_enum = _FLOW_CTRL_MAP.get(fc_raw, fc_raw)
-
                 entry: dict = {
                     "name": clean_name,
-                    "description": _IFACE_DESCRIPTION.get(clean_name, ""),
                     "block": block,
                 }
                 if i_dir is not None and i_dir < len(clean):
@@ -807,7 +769,6 @@ def parse_top_level_interfaces(md_text: str) -> List[dict]:
                     entry["clock"] = clock_val
                 if reset_val is not None:
                     entry["reset"] = reset_val
-                entry["flow_control"] = fc_enum
                 # channels[] / signals[] 在 generate_ni_signals_json 後處理（需要 ns）
                 interfaces.append(entry)
     return interfaces
@@ -867,10 +828,6 @@ def generate_ni_signals_json(md_dir: Union[str, Path]) -> dict:
         "meta": {
             "block": "NI signal interface (top-level)",
             "spec_version": "v0.4.0",
-            "auto_generated_from": str(md_path).replace("\\", "/"),
-            "generator": "ni_spec.generator :: generate_ni_signals_json",
-            "do_not_edit": "Re-run validator/generator to refresh.",
-            "scope_note": "Top-level interface + parameters。AXI signal width parameters 來源 packet_format.md §1.2 Group 3。",
         },
         "block_enables": _select_params(ns, _BLOCK_ENABLE_PARAMS),
         "interfaces": interfaces,
@@ -1175,7 +1132,6 @@ def parse_register_map(md_path: Path) -> list:
                 "kind": "reserved",
                 "access": None,
                 "reset_expr": None,
-                "description": desc_raw if desc_raw else None,
             })
             continue
 
@@ -1204,8 +1160,6 @@ def parse_register_map(md_path: Path) -> list:
             "reset_expr": reset,
             "width_expr": "32",
         }
-        if desc_raw:
-            entry["description"] = desc_raw
         rows.append(entry)
 
     return rows
@@ -1373,9 +1327,6 @@ def generate_ni_protocol_rule_index_json(md_dir, out_path: Path) -> dict:
         "$schema_version": "ni-spec/2.0",
         "meta": {
             "spec_version": spec_version,
-            "auto_generated_from": "spec/ni/doc/protocol_rules.md",
-            "generator": "ni_spec.generator :: generate_ni_protocol_rule_index_json",
-            "do_not_edit": "Re-run validator/generator to refresh.",
         },
         "rules": parse_protocol_rule_index(md_dir_path / "protocol_rules.md"),
     }
@@ -1427,9 +1378,6 @@ def generate_ni_registers_json(md_dir: Union[str, Path], out_path: Union[str, Pa
         "$schema_version": "ni-spec/2.0",
         "meta": {
             "spec_version": spec_version,
-            "auto_generated_from": "spec/ni/doc/registers.md",
-            "generator": "ni_spec.generator :: generate_ni_registers_json",
-            "do_not_edit": "Re-run validator/generator to refresh.",
         },
         "csr_policy": csr_policy,
         "registers": registers,

@@ -108,12 +108,10 @@
             "minLength": 1,
             "description": "UPPER_SNAKE_CASE identifier (e.g. AXI_SLAVE_PORT, NOC_REQ_OUT)"
           },
-          "description":  {"type": "string"},
           "direction":    {"type": "string"},
           "protocol":     {"type": "string"},
           "clock":        {"type": "string", "description": "Clock signal name (e.g. aclk_i)"},
           "reset":        {"type": "string", "description": "Reset signal name (e.g. arst_ni)"},
-          "flow_control": {"enum": ["valid-ready", "credit"]},
           "channels": {
             "type": "array",
             "description": "AXI / AXI4-Lite only — 5 channels (AW/W/B/AR/R) each with signals[].",

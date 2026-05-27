@@ -8,13 +8,10 @@
     "$schema_version": {"const": "ni-spec/2.0"},
     "meta": {
       "type": "object",
-      "required": ["spec_version", "auto_generated_from"],
+      "required": ["spec_version"],
       "additionalProperties": false,
       "properties": {
-        "spec_version": {"type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$"},
-        "auto_generated_from": {"type": "string"},
-        "generator": {"type": "string"},
-        "do_not_edit": {"type": "string"}
+        "spec_version": {"type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$"}
       }
     },
     "rules": {

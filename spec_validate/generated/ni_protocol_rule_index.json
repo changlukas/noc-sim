@@ -1,10 +1,7 @@
 {
   "$schema_version": "ni-spec/2.0",
   "meta": {
-    "spec_version": "v0.4.0",
-    "auto_generated_from": "spec/ni/doc/protocol_rules.md",
-    "generator": "ni_spec.generator :: generate_ni_protocol_rule_index_json",
-    "do_not_edit": "Re-run validator/generator to refresh."
+    "spec_version": "v0.4.0"
   },
   "rules": [
     {

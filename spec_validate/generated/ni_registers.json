@@ -1,10 +1,7 @@
 {
   "$schema_version": "ni-spec/2.0",
   "meta": {
-    "spec_version": "v0.4.0",
-    "auto_generated_from": "spec/ni/doc/registers.md",
-    "generator": "ni_spec.generator :: generate_ni_registers_json",
-    "do_not_edit": "Re-run validator/generator to refresh."
+    "spec_version": "v0.4.0"
   },
   "csr_policy": {
     "sub_word_write": "slverr",
@@ -19,8 +16,7 @@
       "kind": "register",
       "access": "RW",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "啟用 Packet Probe."
+      "width_expr": "32"
     },
     {
       "offset": "0x044",
@@ -28,8 +24,7 @@
       "kind": "register",
       "access": "RW",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "統計模式 (0=Combined, 1=Read, 2=Write)."
+      "width_expr": "32"
     },
     {
       "offset": "0x048",
@@ -37,8 +32,7 @@
       "kind": "register",
       "access": "RW",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "統計視窗 (cycles)."
+      "width_expr": "32"
     },
     {
       "offset": "0x04C",
@@ -46,8 +40,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "傳輸 bytes 累計 (saturating)."
+      "width_expr": "32"
     },
     {
       "offset": "0x050",
@@ -55,8 +48,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "計算的頻寬 (per current window)."
+      "width_expr": "32"
     },
     {
       "offset": "0x060",
@@ -64,8 +56,7 @@
       "kind": "register",
       "access": "RW",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "啟用 Transaction Probe."
+      "width_expr": "32"
     },
     {
       "offset": "0x064",
@@ -73,8 +64,7 @@
       "kind": "register",
       "access": "RW",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "延遲閾值 0 (cycles)."
+      "width_expr": "32"
     },
     {
       "offset": "0x068",
@@ -82,8 +72,7 @@
       "kind": "register",
       "access": "RW",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "延遲閾值 1."
+      "width_expr": "32"
     },
     {
       "offset": "0x06C",
@@ -91,8 +80,7 @@
       "kind": "register",
       "access": "RW",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "延遲閾值 2."
+      "width_expr": "32"
     },
     {
       "offset": "0x070",
@@ -100,8 +88,7 @@
       "kind": "register",
       "access": "RW",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "延遲閾值 3."
+      "width_expr": "32"
     },
     {
       "offset": "0x080",
@@ -109,8 +96,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "Bin 0 計數 (saturating)."
+      "width_expr": "32"
     },
     {
       "offset": "0x084",
@@ -118,8 +104,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "Bin 1 計數."
+      "width_expr": "32"
     },
     {
       "offset": "0x088",
@@ -127,8 +112,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "Bin 2 計數."
+      "width_expr": "32"
     },
     {
       "offset": "0x08C",
@@ -136,8 +120,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "Bin 3 計數."
+      "width_expr": "32"
     },
     {
       "offset": "0x090",
@@ -145,8 +128,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "Bin 4 計數."
+      "width_expr": "32"
     },
     {
       "offset": "0x094",
@@ -154,8 +136,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0xFFFF",
-      "width_expr": "32",
-      "description": "最小延遲 (16-bit; initialised to all-1s sentinel value; first observed transaction-latency overwrites; subsequent observations write only if smaller). Cleared back to 0xFFFF via `TXN_PROBE_EN` 1→0→1 transition."
+      "width_expr": "32"
     },
     {
       "offset": "0x098",
@@ -163,8 +144,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "最大延遲."
+      "width_expr": "32"
     },
     {
       "offset": "0x09C",
@@ -172,8 +152,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "總 transaction 數 (saturating)."
+      "width_expr": "32"
     },
     {
       "offset": "0x100",
@@ -182,7 +161,6 @@
       "access": "RW1C",
       "reset_expr": "0x0",
       "width_expr": "32",
-      "description": "錯誤狀態 — write 1 to clear bit and the associated saturating counter. See §ERR_STATUS. <!-- source: 06_qos.md §4.1, post-fix RW1C -->",
       "fields": [
         {
           "name": "ecc_uncorr_err",
@@ -213,8 +191,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "ECC uncorrectable 錯誤計數 (saturating, `ERR_COUNTER_WIDTH` bits). Cleared via `ERR_STATUS[0]` write-1 (ecc_uncorr_err)."
+      "width_expr": "32"
     },
     {
       "offset": "0x10C",
@@ -223,7 +200,6 @@
       "access": "RO",
       "reset_expr": "0x0",
       "width_expr": "32",
-      "description": "最近錯誤資訊 (sticky semantics; see §LAST_ERR_INFO for field layout).",
       "fields": [
         {
           "name": "err_axi_id",
@@ -253,8 +229,7 @@
       "name": "(reserved for `LAST_ERR_INFO_HI`)",
       "kind": "reserved",
       "access": null,
-      "reset_expr": null,
-      "description": "Allocated for compile-time `LAST_ERR_INFO` extension when total field width exceeds 32 bits (e.g., `AXI_ID_WIDTH=16` with extended `X_WIDTH+Y_WIDTH`). Unused at default parameters; reads as DECERR until activated."
+      "reset_expr": null
     },
     {
       "offset": "0x114",
@@ -263,7 +238,6 @@
       "access": "RW",
       "reset_expr": "0x0",
       "width_expr": "32",
-      "description": "Per-bit IRQ mask, layout 1:1 with `ERR_STATUS`. `irq_o = OR over i of (ERR_STATUS[i] & IRQ_ENABLE[i])`. Default 0 = all IRQs masked; software opts in. See §IRQ_ENABLE for field layout.",
       "fields": [
         {
           "name": "ecc_uncorr_irq_en",
@@ -294,8 +268,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "flit_ecc 單位元（已修正）錯誤累計 (saturating, `ERR_COUNTER_WIDTH` bits). Pure informational; cumulative since hardware reset; no software clear path. Software polls and tracks deltas for health-monitoring purposes."
+      "width_expr": "32"
     },
     {
       "offset": "0x11C",
@@ -303,8 +276,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "route_par mismatch (flit dropped at router/sink) 累計 (saturating, `ERR_COUNTER_WIDTH` bits). Cleared via `ERR_STATUS[1]` write-1 (route_par_err)."
+      "width_expr": "32"
     },
     {
       "offset": "0x120",
@@ -312,8 +284,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "AXI host-side parity mismatch 累計 (saturating, `ERR_COUNTER_WIDTH` bits). Covers both NMU-side `axi_*_i_par_i` checks and NSU-side `axi_rdata_par_i` checks. Cleared via `ERR_STATUS[2]` write-1 (axi_parity_err)."
+      "width_expr": "32"
     },
     {
       "offset": "0x130",
@@ -321,8 +292,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "NMU live outstanding read transactions. Width = `ceil(log2(MAX_TXNS+1))`. AXI-edge-defined per `protocol_rules.md` `NI_CFG_PENDING_COUNT_ACCURACY`. See §PENDING_R_COUNT."
+      "width_expr": "32"
     },
     {
       "offset": "0x134",
@@ -330,8 +300,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "NMU live outstanding write transactions. Same width formula and contract as `PENDING_R_COUNT`. See §PENDING_W_COUNT."
+      "width_expr": "32"
     },
     {
       "offset": "0x13C",
@@ -340,7 +309,6 @@
       "access": "RW",
       "reset_expr": "0x0",
       "width_expr": "32",
-      "description": "NMU-side quiesce request bit. See §QUIESCE_CTRL.",
       "fields": [
         {
           "name": "quiesce_req",
@@ -358,7 +326,6 @@
       "access": "RO",
       "reset_expr": "0x0",
       "width_expr": "32",
-      "description": "NMU quiesce drain-complete indicator. See §QUIESCE_STATUS.",
       "fields": [
         {
           "name": "quiesce_idle",
@@ -376,7 +343,6 @@
       "access": "WO",
       "reset_expr": "0x0",
       "width_expr": "32",
-      "description": "NSU Exclusive Monitor `clear_all` trigger (W1 self-clearing). See §EXCLUSIVE_MONITOR_CTRL.",
       "fields": [
         {
           "name": "clear_all",
@@ -393,8 +359,7 @@
       "kind": "register",
       "access": "RO",
       "reset_expr": "0x0",
-      "width_expr": "32",
-      "description": "NSU Exclusive Monitor live `occupancy` count. See §EXCLUSIVE_MONITOR_STATUS."
+      "width_expr": "32"
     }
   ]
 }

@@ -42,7 +42,6 @@
       "required": ["header_fields", "payload_channels", "derived"],
       "additionalProperties": true,
       "properties": {
-        "endianness": {"type": "string"},
         "field_widths": {
           "type": "object",
           "additionalProperties": {"type": "integer", "minimum": 0}
@@ -60,7 +59,6 @@
               "width":           {"type": "integer", "minimum": 0},
               "lsb":             {"type": ["integer", "null"], "minimum": 0},
               "msb":             {"type": ["integer", "null"], "minimum": 0},
-              "stage":           {"type": "string"},
               "enabled":         {
                 "type": "boolean",
                 "default": true,
