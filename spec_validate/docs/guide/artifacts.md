@@ -26,11 +26,11 @@ spec_validate/
     ni_blocks_pkg.sv
 ```
 
-`include/` and `rtl_pkg/` are listed in `spec_validate/.gitignore`. They are re-emitted on demand and generally not tracked. One legacy header, `ni_flit_constants.h`, remains tracked for history.
+`include/` and `rtl_pkg/` are listed in `spec_validate/.gitignore`. They are re-elaborated on demand and generally not tracked. One legacy header, `ni_flit_constants.h`, remains tracked for history.
 
 ## Provenance banner
 
-Every emitted file starts with five comment lines plus a horizontal rule above and below:
+Every elaborated file starts with five comment lines plus a horizontal rule above and below:
 
 ```
 // ----------------------------------------------------------------------------
@@ -44,9 +44,9 @@ Every emitted file starts with five comment lines plus a horizontal rule above a
 
 | Banner field | Meaning |
 |--------------|---------|
-| `Source` | POSIX path to the JSON SSoT this file was emitted from, prefixed with `spec_validate/`. |
+| `Source` | POSIX path to the JSON SSoT this file was elaborated from, prefixed with `spec_validate/`. |
 | `Source SHA` | First 12 hex chars of the SHA-256 of the source JSON bytes. |
-| `Generator version` | Tool version, hard-coded in `tools/emit/common.py`. Independent of the spec version. |
+| `Generator version` | Tool version, hard-coded in `tools/elaborate/common.py`. Independent of the spec version. |
 | `Generated at` | UTC ISO-8601 timestamp. Excluded from `--check` comparison. |
 
 `sv` outputs use the same banner with `//` as the comment prefix.
@@ -84,6 +84,6 @@ Every emitted file starts with five comment lines plus a horizontal rule above a
 After a JSON SSoT changes:
 
 1. `py -3 tools/codegen.py --check` will exit 1 listing any artifact that needs refresh.
-2. Re-emit the affected `(target, domain)` and commit alongside the SSoT change.
+2. Re-elaborate the affected `(target, domain)` and commit alongside the SSoT change.
 
 `--check` is the canonical contract: if it passes, downstream code and RTL match the JSON SSoT exactly (timestamp aside).

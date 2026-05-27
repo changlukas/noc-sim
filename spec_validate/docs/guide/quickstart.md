@@ -2,7 +2,7 @@
 
 Generate one C++ header, compile the sample program, run it.
 
-## 1. Emit the packet constants header
+## 1. Elaborate the packet constants header
 
 From `spec_validate/`:
 
@@ -65,7 +65,7 @@ When a JSON SSoT changes, verify the committed artifacts are up to date:
 py -3 tools/codegen.py --check
 ```
 
-Exit code `0` means clean; `1` means at least one artifact needs to be re-emitted and committed.
+Exit code `0` means clean; `1` means at least one artifact needs to be re-elaborated and committed.
 
 ## Next
 

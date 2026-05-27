@@ -25,14 +25,14 @@ from pathlib import Path
 # Ensure spec_validate/ is on the import path.
 SPEC_VALIDATE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SPEC_VALIDATE))
-# Ensure tools/ sub-packages are importable as "tools.emit.*".
+# Ensure tools/ sub-packages are importable as "tools.elaborate.*".
 TOOLS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS_DIR.parent))
 
 from ni_spec.loader import load_spec_version
-from tools.emit import common
-from tools.emit import cpp_packet, cpp_signals, cpp_registers, cpp_blocks
-from tools.emit import sv_packet, sv_signals, sv_registers, sv_blocks
+from tools.elaborate import common
+from tools.elaborate import cpp_packet, cpp_signals, cpp_registers, cpp_blocks
+from tools.elaborate import sv_packet, sv_signals, sv_registers, sv_blocks
 
 
 # Maps (target, domain) -> (emitter_func, output_filename, source_json_rel)

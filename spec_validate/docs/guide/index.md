@@ -5,15 +5,15 @@ A toolchain that generates C++ headers and SystemVerilog packages from machine-r
 ## What it does
 
 - Reads JSON SSoT from `generated/` (and `ni_function_blocks.json` at the package root).
-- Emits C++ headers into `include/` for the C-model.
-- Emits SystemVerilog packages into `rtl_pkg/` for co-sim.
+- Elaborates C++ headers into `include/` for the C-model.
+- Elaborates SystemVerilog packages into `rtl_pkg/` for co-sim.
 - Detects drift between committed artifacts and current SSoT (`--check`).
 - Smoke-lints SV output with verilator (`--lint-sv`).
 
 ## Read order
 
 1. [Installing](installing.md) — Python plus optional `g++` / `verilator`.
-2. [Quickstart](quickstart.md) — emit one header, compile the sample, run it.
+2. [Quickstart](quickstart.md) — elaborate one header, compile the sample, run it.
 3. [Architecture](architecture.md) — how a JSON SSoT becomes a `.h` or `.sv`.
 4. [Commands](commands.md) — every `codegen.py` flag and what it does.
 5. [Artifacts](artifacts.md) — what gets generated, where, when.

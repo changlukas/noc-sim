@@ -10,7 +10,7 @@ py -3 tools/codegen.py --check
 py -3 tools/codegen.py --lint-sv
 ```
 
-## Emit one artifact
+## Elaborate one artifact
 
 ```bash
 py -3 tools/codegen.py --target cpp --domain packet
@@ -35,7 +35,7 @@ The eight `(target, domain)` combinations and their outputs:
 | `sv` | `registers` | `ni_regs_pkg.sv` | `generated/ni_registers.json` |
 | `sv` | `blocks` | `ni_blocks_pkg.sv` | `ni_function_blocks.json` |
 
-Exit codes: `0` success, `1` source JSON missing or emitter error, `2` argument error.
+Exit codes: `0` success, `1` source JSON missing or elaborator error, `2` argument error.
 
 ## Drift check
 
@@ -43,7 +43,7 @@ Exit codes: `0` success, `1` source JSON missing or emitter error, `2` argument 
 py -3 tools/codegen.py --check
 ```
 
-Re-emits all eight artifacts into a scratch dir, diffs each against the committed `include/` and `rtl_pkg/`, and prints a unified diff (up to 40 lines per file) for anything that drifted.
+Re-elaborates all eight artifacts into a scratch dir, diffs each against the committed `include/` and `rtl_pkg/`, and prints a unified diff (up to 40 lines per file) for anything that drifted.
 
 The `Generated at:` line is excluded from comparison, so timestamps alone never trigger drift.
 

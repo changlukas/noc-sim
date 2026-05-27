@@ -23,10 +23,10 @@
                          │ ni_spec.constants (stable API; firewall)
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  tools/emit/cpp_*.py + tools/emit/sv_*.py  (4 + 4 emitters)        │
+│  tools/elaborate/cpp_*.py + tools/elaborate/sv_*.py  (4 + 4 emitters)        │
 │  → each returns a string of C++ or SystemVerilog code              │
 └────────────────────────┬─────────────────────────────────────────┘
-                         │ tools/emit/common.py (provenance banner)
+                         │ tools/elaborate/common.py (provenance banner)
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  tools/codegen.py  (dispatcher)                                     │
@@ -103,7 +103,7 @@ py -3 tools/codegen.py --lint-sv
 
 CLI 統一入口、不寫 emit 邏輯、只做 routing。讀 `--target` / `--domain` → 找對應 emitter → 呼叫 `emit()` → prepend banner → 寫檔 OR diff。`--check` / `--lint-sv` 兩個 sub-command 也在這裡。
 
-### Per-domain emitters：`tools/emit/cpp_*.py` 與 `sv_*.py`（8 個檔）
+### Per-domain emitters：`tools/elaborate/cpp_*.py` 與 `sv_*.py`（8 個檔）
 
 每個 emitter 做一件事：讀對應 source（透過 `ni_spec.constants` API，**不直接 parse JSON**）→ return code string。Emitter 自己不知道輸出 path、不寫檔。
 
@@ -120,7 +120,7 @@ CLI 統一入口、不寫 emit 邏輯、只做 routing。讀 `--target` / `--dom
 
 **SV typing 注意**：integer constants 用 `localparam int unsigned`（不用 bare `parameter` — 會 silent truncate / signed-unsigned bug）。Enums 用 `typedef enum logic [N-1:0] { ... } foo_e;`（不用 bare parameter list — 等同 C++ `enum class` 的型別安全）。`N = $clog2(member_count)` 由 emitter 算出來填。
 
-### 共用 helper：`tools/emit/common.py` (46 LOC)
+### 共用 helper：`tools/elaborate/common.py` (46 LOC)
 
 只負責產 provenance banner。每個 .h / .sv 開頭都會有這 5 行：
 
@@ -134,9 +134,9 @@ CLI 統一入口、不寫 emit 邏輯、只做 routing。讀 `--target` / `--dom
 
 Debug 時可知道哪份檔案從哪個 JSON、什麼 hash、什麼時候生的。`--check` 比對時故意跳過 `Generated at:` 那行（每次 regen 都會變）、只比其他 4 行 + 內容 body。
 
-### 套件 marker：`tools/emit/__init__.py` (empty)
+### 套件 marker：`tools/elaborate/__init__.py` (empty)
 
-讓 `from tools.emit import cpp_packet` 能 work、無實際內容。
+讓 `from tools.elaborate import cpp_packet` 能 work、無實際內容。
 
 ## Output 範例
 
@@ -288,13 +288,13 @@ g++ -std=c++17 -I include examples\use_constants.cpp -o use_constants.exe
 1. **Source**：新增 `spec/ni/doc/interrupts.md` + parse 函式 in `ni_spec/generator.py`
 2. **Schema**：新增 `generated/ni_interrupts.schema.json` + Layer 1 / Layer 2 validators in `ni_spec/invariants.py`
 3. **Constants API**：在 `ni_spec/constants.py` 加 `interrupts_*()` accessor 函式（stable API、firewall against schema changes）
-4. **Emitters**：加 `tools/emit/cpp_interrupts.py` + `tools/emit/sv_interrupts.py`、都消費 `ni_spec.constants.interrupts_*`
+4. **Emitters**：加 `tools/elaborate/cpp_interrupts.py` + `tools/elaborate/sv_interrupts.py`、都消費 `ni_spec.constants.interrupts_*`
 5. **Dispatcher**：在 `tools/codegen.py` 的 domain map 加 `interrupts` entry
 6. **Tests**：加對應 tests in `tests/test_*.py`
 
 ### 加新 emit target（例如 Python C model）
 
-照同樣 pattern 在 `tools/emit/` 加 `py_*.py` 系列、`codegen.py` 加 `--target py`。
+照同樣 pattern 在 `tools/elaborate/` 加 `py_*.py` 系列、`codegen.py` 加 `--target py`。
 
 ## 注意事項
 
@@ -310,7 +310,7 @@ CI 不強制（per `2026-05-26-spec-as-code-unified-design.md` §4.3）— 但 r
 
 ## 修改 codegen 時
 
-`tools/codegen.py` 是 dispatcher、emit 邏輯在 `tools/emit/{cpp,sv}_*.py`。所有「怎麼從 JSON 撈值」邏輯在 `ni_spec.constants`（stable API）—— 要加新常數時：
+`tools/codegen.py` 是 dispatcher、emit 邏輯在 `tools/elaborate/{cpp,sv}_*.py`。所有「怎麼從 JSON 撈值」邏輯在 `ni_spec.constants`（stable API）—— 要加新常數時：
 
 1. 先擴 `ni_spec.constants.py`（加 accessor function）
 2. 再在 emitter 呼叫新 API
