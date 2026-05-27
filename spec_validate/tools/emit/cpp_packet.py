@@ -1,7 +1,6 @@
 """C++ emitter for packet domain.
 
 Consumes ni_spec.constants only -- no direct JSON parsing.
-Refactored from gen_cpp_header.py:emit().
 """
 from __future__ import annotations
 from pathlib import Path

@@ -5,7 +5,6 @@ Tests cover:
 - --check mode exits 0 when all committed headers match regen.
 - --check mode detects drift when a header is modified.
 - examples/use_constants.cpp still compiles and runs after regen.
-- gen_cpp_header.py deprecation wrapper still works (prints warning to stderr).
 - per-field enabled flag: ENABLED constants present in C++ header.
 """
 from __future__ import annotations
@@ -182,26 +181,6 @@ def test_use_constants_cpp_compiles_and_runs(tmp_path):
     assert "0x000000000F80902A" in run_result.stdout, (
         f"Expected header value not found in output:\n{run_result.stdout}"
     )
-
-
-# ---------------------------------------------------------------------------
-# Deprecation wrapper test
-# ---------------------------------------------------------------------------
-
-def test_gen_cpp_header_deprecation_wrapper():
-    """gen_cpp_header.py must print a deprecation warning to stderr and still work."""
-    wrapper = SPEC_VALIDATE / "tools" / "gen_cpp_header.py"
-    r = subprocess.run(
-        [sys.executable, str(wrapper), "--out", str(INCLUDE_DIR / "ni_flit_constants.h")],
-        capture_output=True, text=True, cwd=str(SPEC_VALIDATE),
-    )
-    assert r.returncode == 0, f"Wrapper failed: {r.stderr}"
-    assert "deprecated" in r.stderr.lower(), (
-        f"Expected deprecation warning on stderr, got: {r.stderr!r}"
-    )
-    # Header should still exist and contain FLIT_WIDTH
-    text = (INCLUDE_DIR / "ni_flit_constants.h").read_text(encoding="ascii")
-    assert "FLIT_WIDTH" in text
 
 
 # ---------------------------------------------------------------------------

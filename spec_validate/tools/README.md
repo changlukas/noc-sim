@@ -138,12 +138,6 @@ Debug 時可知道哪份檔案從哪個 JSON、什麼 hash、什麼時候生的�
 
 讓 `from tools.emit import cpp_packet` 能 work、無實際內容。
 
-### 過渡 wrapper：`tools/gen_cpp_header.py` (deprecated)
-
-舊 entry point。內容被改成：印 deprecation warning 到 stderr，forward 到 `codegen.py --target cpp --domain packet`。下個 minor version 才會真刪。
-
-避免直接刪檔讓既有 docs / scripts / muscle memory 立刻爆。**新 code 不要用、用 `codegen.py`**。
-
 ## Output 範例
 
 ### C++（`include/ni_flit_constants.h` 截錄）
@@ -313,10 +307,6 @@ g++ -std=c++17 -I include examples\use_constants.cpp -o use_constants.exe
 ### `--check` 跟 `--lint-sv` 是 advisory tools
 
 CI 不強制（per `2026-05-26-spec-as-code-unified-design.md` §4.3）— 但 release 前建議手動跑一輪。
-
-### `gen_cpp_header.py` 是 deprecated
-
-新 code 不要 invoke。下個 minor version 會刪 wrapper。
 
 ## 修改 codegen 時
 

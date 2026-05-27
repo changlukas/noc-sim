@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 
-# C++ build artifacts (platform-specific binaries — regenerate via tools/gen_cpp_header.py + g++)
+# C++ build artifacts (platform-specific binaries — regenerate via tools/codegen.py + g++)
 *.exe
 *.o
 *.obj
