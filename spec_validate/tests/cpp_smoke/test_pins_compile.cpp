@@ -22,6 +22,9 @@ int main() {
     ni::pins::CsrPins csr{};
     csr.reset_outputs();
 
+    ni::pins::NocReqInPins  req_in{};  req_in.reset_outputs();
+    ni::pins::NocRspOutPins rsp_out{}; rsp_out.reset_outputs();
+
     std::printf("AxiSlavePortPins sizeof=%zu\n", sizeof(slv));
     std::printf("CsrPins sizeof=%zu\n", sizeof(csr));
     return 0;

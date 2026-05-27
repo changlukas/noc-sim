@@ -3,9 +3,10 @@
 // Source:    spec_validate/generated/ni_signals.json
 // Source SHA: f9a618f8ffa8
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T11:16:54Z
+// Generated at: 2026-05-27T11:30:09Z
 // ----------------------------------------------------------------------------
 #pragma once
+#include <array>
 #include <cstdint>
 
 namespace ni {
@@ -79,7 +80,7 @@ struct AxiSlavePortPins {
   uint8_t    axi_awregion_i;
   uint8_t    axi_awuser_i;
   uint8_t    axi_awqos_i;
-  uint64_t   axi_wdata_i;
+  std::array<uint8_t, 32> axi_wdata_i;
   uint32_t   axi_wstrb_i;
   uint8_t    axi_wlast_i;
   uint8_t    axi_wuser_i;
@@ -98,7 +99,7 @@ struct AxiSlavePortPins {
   uint8_t    axi_bresp_o;
   uint8_t    axi_buser_o;
   uint8_t    axi_rid_o;
-  uint64_t   axi_rdata_o;
+  std::array<uint8_t, 32> axi_rdata_o;
   uint8_t    axi_rresp_o;
   uint8_t    axi_rlast_o;
   uint8_t    axi_ruser_o;
@@ -108,7 +109,7 @@ struct AxiSlavePortPins {
     axi_bresp_o = signals::AXI_BRESP_O_RESET;
     axi_buser_o = signals::AXI_BUSER_O_RESET;
     axi_rid_o = signals::AXI_RID_O_RESET;
-    axi_rdata_o = signals::AXI_RDATA_O_RESET;
+    axi_rdata_o = {};  // wide signal, zero-initialized
     axi_rresp_o = signals::AXI_RRESP_O_RESET;
     axi_rlast_o = signals::AXI_RLAST_O_RESET;
     axi_ruser_o = signals::AXI_RUSER_O_RESET;
@@ -117,18 +118,18 @@ struct AxiSlavePortPins {
 
 struct NocReqOutPins {
   uint8_t    noc_req_valid_o;
-  uint64_t   noc_req_flit_o;
+  std::array<uint8_t, 51> noc_req_flit_o;
   uint8_t    noc_req_credit_i;
 
   void reset_outputs() {
     noc_req_valid_o = signals::NOC_REQ_VALID_O_RESET;
-    noc_req_flit_o = signals::NOC_REQ_FLIT_O_RESET;
+    noc_req_flit_o = {};  // wide signal, zero-initialized
   }
 };
 
 struct NocRspInPins {
   uint8_t    noc_rsp_valid_i;
-  uint64_t   noc_rsp_flit_i;
+  std::array<uint8_t, 51> noc_rsp_flit_i;
   uint8_t    noc_rsp_credit_o;
 
   void reset_outputs() {
@@ -148,7 +149,7 @@ struct CsrPins {
   uint8_t    csr_awregion_i;
   uint8_t    csr_awuser_i;
   uint8_t    csr_awqos_i;
-  uint64_t   csr_wdata_i;
+  std::array<uint8_t, 32> csr_wdata_i;
   uint32_t   csr_wstrb_i;
   uint8_t    csr_wlast_i;
   uint8_t    csr_wuser_i;
@@ -167,7 +168,7 @@ struct CsrPins {
   uint8_t    csr_bresp_o;
   uint8_t    csr_buser_o;
   uint8_t    csr_rid_o;
-  uint64_t   csr_rdata_o;
+  std::array<uint8_t, 32> csr_rdata_o;
   uint8_t    csr_rresp_o;
   uint8_t    csr_rlast_o;
   uint8_t    csr_ruser_o;
@@ -177,7 +178,7 @@ struct CsrPins {
     csr_bresp_o = signals::CSR_BRESP_O_RESET;
     csr_buser_o = signals::CSR_BUSER_O_RESET;
     csr_rid_o = signals::CSR_RID_O_RESET;
-    csr_rdata_o = signals::CSR_RDATA_O_RESET;
+    csr_rdata_o = {};  // wide signal, zero-initialized
     csr_rresp_o = signals::CSR_RRESP_O_RESET;
     csr_rlast_o = signals::CSR_RLAST_O_RESET;
     csr_ruser_o = signals::CSR_RUSER_O_RESET;
@@ -186,7 +187,7 @@ struct CsrPins {
 
 struct NocReqInPins {
   uint8_t    noc_req_valid_i;
-  uint64_t   noc_req_flit_i;
+  std::array<uint8_t, 51> noc_req_flit_i;
   uint8_t    noc_req_credit_o;
 
   void reset_outputs() {
@@ -206,7 +207,7 @@ struct AxiMasterPortPins {
   uint8_t    axi_awregion_o;
   uint8_t    axi_awuser_o;
   uint8_t    axi_awqos_o;
-  uint64_t   axi_wdata_o;
+  std::array<uint8_t, 32> axi_wdata_o;
   uint32_t   axi_wstrb_o;
   uint8_t    axi_wlast_o;
   uint8_t    axi_wuser_o;
@@ -225,7 +226,7 @@ struct AxiMasterPortPins {
   uint8_t    axi_bresp_i;
   uint8_t    axi_buser_i;
   uint8_t    axi_rid_i;
-  uint64_t   axi_rdata_i;
+  std::array<uint8_t, 32> axi_rdata_i;
   uint8_t    axi_rresp_i;
   uint8_t    axi_rlast_i;
   uint8_t    axi_ruser_i;
@@ -242,7 +243,7 @@ struct AxiMasterPortPins {
     axi_awregion_o = signals::AXI_AWREGION_O_RESET;
     axi_awuser_o = signals::AXI_AWUSER_O_RESET;
     axi_awqos_o = signals::AXI_AWQOS_O_RESET;
-    axi_wdata_o = signals::AXI_WDATA_O_RESET;
+    axi_wdata_o = {};  // wide signal, zero-initialized
     axi_wstrb_o = signals::AXI_WSTRB_O_RESET;
     axi_wlast_o = signals::AXI_WLAST_O_RESET;
     axi_wuser_o = signals::AXI_WUSER_O_RESET;
@@ -262,12 +263,12 @@ struct AxiMasterPortPins {
 
 struct NocRspOutPins {
   uint8_t    noc_rsp_valid_o;
-  uint64_t   noc_rsp_flit_o;
+  std::array<uint8_t, 51> noc_rsp_flit_o;
   uint8_t    noc_rsp_credit_i;
 
   void reset_outputs() {
     noc_rsp_valid_o = signals::NOC_RSP_VALID_O_RESET;
-    noc_rsp_flit_o = signals::NOC_RSP_FLIT_O_RESET;
+    noc_rsp_flit_o = {};  // wide signal, zero-initialized
   }
 };
 

@@ -26,6 +26,8 @@ def _cpp_type_for_width(width_expr: str) -> str:
     try:
         w = int(width_expr)
     except (TypeError, ValueError):
+        # symbolic width_expr (e.g. param name) -- defer with conservative uint64_t.
+        # Future: resolve symbol against parameters[] like _resolved_field_widths does.
         return "uint64_t"
     if w <= 8:
         return "uint8_t"
@@ -33,7 +35,11 @@ def _cpp_type_for_width(width_expr: str) -> str:
         return "uint16_t"
     if w <= 32:
         return "uint32_t"
-    return "uint64_t"
+    if w <= 64:
+        return "uint64_t"
+    # Wide signals (e.g. 402-bit flit): use byte array, no silent truncation.
+    bytes_needed = (w + 7) // 8
+    return f"std::array<uint8_t, {bytes_needed}>"
 
 
 def _to_pascal(name: str) -> str:
@@ -65,10 +71,22 @@ def _emit_pin_bundles(spec) -> list[str]:
             rb = s.get("reset_behavior") or {}
             if rb.get("kind") == "external_driven":
                 continue
-            const_name = s["pin_name"].upper() + "_RESET"
-            # Constants live in ni::signals; we are in ni::pins. The enclosing
-            # ``ni`` scope is visible, so ``signals::FOO`` resolves correctly.
-            out.append(f"    {s['pin_name']} = signals::{const_name};")
+            # Detect wide-array type vs scalar -- for array types use ``= {}``
+            # since the RESET constant is ``int 0`` and won't assign to an
+            # array. For scalars, still use the named RESET constant for
+            # traceability.
+            try:
+                is_wide = int(s["width_expr"]) > 64
+            except (TypeError, ValueError):
+                is_wide = False
+            if is_wide:
+                out.append(f"    {s['pin_name']} = {{}};  // wide signal, zero-initialized")
+            else:
+                const_name = s["pin_name"].upper() + "_RESET"
+                # Constants live in ni::signals; we are in ni::pins. The
+                # enclosing ``ni`` scope is visible, so ``signals::FOO``
+                # resolves correctly.
+                out.append(f"    {s['pin_name']} = signals::{const_name};")
             emitted_any = True
         if not emitted_any:
             out.append("    // (no output pins with reset values in this interface)")
@@ -100,6 +118,7 @@ def emit(signals_json: Path, spec_version: str) -> str:
 
     out: list[str] = []
     out.append("#pragma once")
+    out.append("#include <array>")
     out.append("#include <cstdint>")
     out.append("")
     out.append("namespace ni {")
