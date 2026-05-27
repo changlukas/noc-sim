@@ -60,7 +60,7 @@ For scripts that consume the spec directly (test stimulus generation, custom emi
 from ni_spec.loader import load_doc
 from ni_spec import constants as C
 
-packet = load_doc("spec_validate/generated/ni_packet.json")
+packet = load_doc("generated/ni_packet.json")
 
 C.flit_width(packet)                    # int -- total bits per flit
 C.header_field_pos(packet, "dst_id")    # (lsb, msb) -- or (None, None) if width=0

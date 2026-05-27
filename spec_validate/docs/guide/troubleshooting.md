@@ -53,7 +53,7 @@ Emitted files are written with `encoding="ascii"`, `errors="strict"`. If a spec 
 
 ## A `static_assert` fires in the generated header
 
-The arithmetic invariants in `ni_flit_constants.h` (`FLIT_WIDTH == HEADER_WIDTH + PAYLOAD_WIDTH`, and the SECDED bound) caught an internal contradiction in the source spec. Fix the width arithmetic in the source MD (and re-derive the JSON) — do not edit the header.
+The arithmetic invariants in `ni_flit_constants.h` (`FLIT_WIDTH == HEADER_WIDTH + PAYLOAD_WIDTH`, and the SECDED bound) caught an internal contradiction in the JSON SSoT. Fix the width arithmetic in `generated/ni_packet.json` and re-emit — do not edit the header.
 
 ## Tests fail with `ImportError` for `tools.emit`
 

@@ -18,10 +18,9 @@ This toolchain is a directory-based Python project. There is no `pip install`.
 
 ## Verifying the install
 
-From the repo root:
+From `spec_validate/`:
 
 ```bash
-cd spec_validate
 py -3 tools/codegen.py --help
 ```
 

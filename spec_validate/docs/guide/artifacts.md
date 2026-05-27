@@ -44,7 +44,7 @@ Every emitted file starts with five comment lines plus a horizontal rule above a
 
 | Banner field | Meaning |
 |--------------|---------|
-| `Source` | POSIX path to the JSON SSoT this file was emitted from, relative to the repo root. |
+| `Source` | POSIX path to the JSON SSoT this file was emitted from, prefixed with `spec_validate/`. |
 | `Source SHA` | First 12 hex chars of the SHA-256 of the source JSON bytes. |
 | `Generator version` | Tool version, hard-coded in `tools/emit/common.py`. Independent of the spec version. |
 | `Generated at` | UTC ISO-8601 timestamp. Excluded from `--check` comparison. |

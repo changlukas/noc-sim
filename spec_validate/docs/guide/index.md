@@ -14,7 +14,7 @@ A toolchain that generates C++ headers and SystemVerilog packages from machine-r
 
 1. [Installing](installing.md) — Python plus optional `g++` / `verilator`.
 2. [Quickstart](quickstart.md) — emit one header, compile the sample, run it.
-3. [Architecture](architecture.md) — how an MD file becomes a `.h` or `.sv`.
+3. [Architecture](architecture.md) — how a JSON SSoT becomes a `.h` or `.sv`.
 4. [Commands](commands.md) — every `codegen.py` flag and what it does.
 5. [Artifacts](artifacts.md) — what gets generated, where, when.
 6. [Using constants](using-constants.md) — consume the output from C++ or Python.
