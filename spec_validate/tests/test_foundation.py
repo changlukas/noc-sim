@@ -38,10 +38,12 @@ def test_header_field_enabled_returns_true_for_functional():
 def test_header_field_enabled_returns_false_for_padding():
     """header_field_enabled returns False for padding fields."""
     spec = _load_packet()
-    assert C.header_field_enabled(spec, "axi_ch") is False
     assert C.header_field_enabled(spec, "route_par") is False
+    assert C.header_field_enabled(spec, "rsvd_commtype") is False
     assert C.header_field_enabled(spec, "multicast") is False
     assert C.header_field_enabled(spec, "flit_ecc") is False
+    # axi_ch is functional (MUST for AXI request/response routing)
+    assert C.header_field_enabled(spec, "axi_ch") is True
 
 
 def test_header_field_enabled_raises_for_unknown():
@@ -56,7 +58,7 @@ def test_header_fields_padding_list():
     """header_fields_padding returns exactly the four padding field names."""
     spec = _load_packet()
     padding = C.header_fields_padding(spec)
-    assert set(padding) == {"axi_ch", "route_par", "multicast", "flit_ecc"}
+    assert set(padding) == {"route_par", "rsvd_commtype", "multicast", "flit_ecc"}
 
 
 def test_header_fields_padding_json_has_enabled_bool():
@@ -74,12 +76,13 @@ def test_parser_extracts_enabled_from_md():
     md_text = md_path.read_text(encoding="utf-8")
     fields = parse_header_fields(md_text)
     field_map = {f["name"]: f["enabled"] for f in fields}
-    # Padding fields
-    assert field_map["axi_ch"] is False
+    # Padding fields (stubbed to zero, future-implementation)
     assert field_map["route_par"] is False
+    assert field_map["rsvd_commtype"] is False
     assert field_map["multicast"] is False
     assert field_map["flit_ecc"] is False
-    # Functional fields
+    # Functional fields (driven by hardware)
+    assert field_map["axi_ch"] is True   # MUST for AXI channel routing
     assert field_map["src_id"] is True
     assert field_map["last"] is True
 

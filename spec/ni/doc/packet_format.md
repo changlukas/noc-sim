@@ -146,7 +146,7 @@ Header 預設 `HEADER_WIDTH = 50 bits`（原 v0.4.0 為 54 bits；`NOC_QOS_WIDTH
 | Field | Width Symbol | Default Range | Stage | Enabled | Description |
 |-------|--------------|---------------|-------|---------|-------------|
 | noc_qos | `NOC_QOS_WIDTH` | (none — width=0) | arbitration | true | NoC-layer QoS priority placeholder; currently `NOC_QOS_WIDTH=0` so this field occupies zero bits and does not appear in the flit. Reserved for future router arbitration extension. |
-| axi_ch | `AXI_CH_WIDTH` | [2:0] | arbitration | false | AXI channel type (5 channels: AW/W/AR/B/R) |
+| axi_ch | `AXI_CH_WIDTH` | [2:0] | arbitration | true | AXI channel type (5 channels: AW/W/AR/B/R) — MUST be functional for AXI request/response routing |
 | src_id | `X_WIDTH + Y_WIDTH` | [10:3] | routing | true | Source node ID (X+Y coordinate) |
 | dst_id | `X_WIDTH + Y_WIDTH` | [18:11] | routing | true | Destination node ID (X+Y coordinate) |
 | vc_id | `VC_ID_WIDTH` | [21:19] | routing | true | Virtual Channel ID |
@@ -154,7 +154,7 @@ Header 預設 `HEADER_WIDTH = 50 bits`（原 v0.4.0 為 54 bits；`NOC_QOS_WIDTH
 | last | `LAST_WIDTH` | [23] | wormhole | true | Packet end marker (1 = last flit of packet) |
 | rob_req | `ROB_REQ_WIDTH` | [24] | wormhole | true | RoB request flag (NMU sets; 1 = RoB allocate) |
 | rob_idx | `ROB_IDX_WIDTH` | [29:25] | wormhole | true | RoB entry index (`rob_req=1` valid) |
-| rsvd_commtype | `RSVD_COMMTYPE_WIDTH` | [31:30] | reserved | true | Reserved (future communication type extension) |
+| rsvd_commtype | `RSVD_COMMTYPE_WIDTH` | [31:30] | reserved | false | Reserved for future multicast comm-type control (single transfer vs broadcast); paired with `multicast` field |
 | multicast | `MULTICAST_WIDTH` | [39:32] | reserved | false | Reserved (future multicast destination encoding) |
 | flit_ecc | `FLIT_ECC_WIDTH` | [49:40] | ECC | false | Whole-flit SECDED syndrome (covers `header[39:0]` + `payload`) |
 | | **HEADER_WIDTH** = 50 | | | | |

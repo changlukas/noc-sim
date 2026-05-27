@@ -102,7 +102,7 @@ class TestSvPacketEmit:
     def test_padding_fields_enabled_zero(self):
         """Fields declared as padding must emit ENABLED = 1'b0 in SV package."""
         text = _sv_text("ni_flit_pkg.sv")
-        for field in ("AXI_CH", "ROUTE_PAR", "MULTICAST", "FLIT_ECC"):
+        for field in ("ROUTE_PAR", "RSVD_COMMTYPE", "MULTICAST", "FLIT_ECC"):
             assert f"localparam bit          {field}_ENABLED = 1'b0;" in text, (
                 f"Expected {field}_ENABLED = 1'b0; not found in ni_flit_pkg.sv"
             )
@@ -110,7 +110,8 @@ class TestSvPacketEmit:
     def test_functional_fields_enabled_one(self):
         """Functional fields must emit ENABLED = 1'b1 in SV package."""
         text = _sv_text("ni_flit_pkg.sv")
-        for field in ("SRC_ID", "DST_ID", "VC_ID", "LAST", "ROB_REQ", "ROB_IDX"):
+        # axi_ch is MUST functional (AXI channel routing)
+        for field in ("AXI_CH", "SRC_ID", "DST_ID", "VC_ID", "LAST", "ROB_REQ", "ROB_IDX"):
             assert f"localparam bit          {field}_ENABLED = 1'b1;" in text, (
                 f"Expected {field}_ENABLED = 1'b1; not found in ni_flit_pkg.sv"
             )

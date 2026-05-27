@@ -54,7 +54,7 @@
         "lsb": 0,
         "msb": 2,
         "stage": "arbitration",
-        "enabled": false
+        "enabled": true
       },
       {
         "name": "src_id",
@@ -126,7 +126,7 @@
         "lsb": 30,
         "msb": 31,
         "stage": "reserved",
-        "enabled": true
+        "enabled": false
       },
       {
         "name": "multicast",

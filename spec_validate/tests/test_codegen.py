@@ -246,8 +246,8 @@ def test_packet_cpp_has_enabled_constants():
 def test_packet_cpp_padding_fields_have_enabled_false():
     """Fields declared as padding must emit ENABLED = false in C++ header."""
     text = (INCLUDE_DIR / "ni_flit_constants.h").read_text(encoding="ascii")
-    # These four are marked enabled=false per user direction
-    for field in ("AXI_CH", "ROUTE_PAR", "MULTICAST", "FLIT_ECC"):
+    # These four are marked enabled=false per user direction (stubbed to zero, future-impl)
+    for field in ("ROUTE_PAR", "RSVD_COMMTYPE", "MULTICAST", "FLIT_ECC"):
         assert f"constexpr bool {field}_ENABLED = false;" in text, (
             f"Expected {field}_ENABLED = false; not found in ni_flit_constants.h"
         )
@@ -256,7 +256,8 @@ def test_packet_cpp_padding_fields_have_enabled_false():
 def test_packet_cpp_functional_fields_have_enabled_true():
     """Functional fields must emit ENABLED = true in C++ header."""
     text = (INCLUDE_DIR / "ni_flit_constants.h").read_text(encoding="ascii")
-    for field in ("SRC_ID", "DST_ID", "VC_ID", "LAST", "ROB_REQ", "ROB_IDX"):
+    # axi_ch is MUST functional (AXI channel routing)
+    for field in ("AXI_CH", "SRC_ID", "DST_ID", "VC_ID", "LAST", "ROB_REQ", "ROB_IDX"):
         assert f"constexpr bool {field}_ENABLED = true;" in text, (
             f"Expected {field}_ENABLED = true; not found in ni_flit_constants.h"
         )
