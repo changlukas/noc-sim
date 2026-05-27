@@ -1,6 +1,6 @@
 # NI Spec-as-Code Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Use superpowers:subagent-driven-development or superpowers:executing-plans to implement task-by-task. Steps use `- [ ]` checkbox syntax.
 
 **Goal:** 實作 `2026-05-26-spec-as-code-unified-design.md` §8.2 的 8 項 todo — 把 NI 規格從 prose Markdown 推進到 single source of truth + dual codegen（C++ header + SV package），讓 C model 與 RTL 從同源產出常數。
 
@@ -14,7 +14,7 @@
 
 **Total effort estimate:** ~10 engineering days across 8 tasks.
 
-**Design doc cross-ref:** 全部 schema 細節、Sub-domain 設計、命名約定都在 `2026-05-26-spec-as-code-unified-design.md` §5.x 與 §6.x。本 plan 不重複那些內容，只引用。
+**Design doc cross-ref:** `2026-05-26-spec-as-code-unified-design.md` §5.x / §6.x —— schema 細節、sub-domain 設計、命名約定。本 plan 只引用，不重複。
 
 ---
 
@@ -59,7 +59,7 @@
 | `spec_validate/generated/ni_signals.schema.json` | 加 `pin_name`、`reset_behavior`、`presence`、`width_expr` 欄位 |
 | `spec_validate/generated/ni_signals.json` | regen 含新欄位（Task 2/3） |
 | `spec_validate/include/ni_flit_constants.h` | regen 帶 provenance header（Task 7 重 emit） |
-| `spec_validate/tools/gen_cpp_header.py` | deprecate wrapper（呼叫新 `codegen.py`）|
+| `spec_validate/tools/gen_cpp_header.py` | ~~deprecate wrapper~~ — 已刪除 (cf22464) |
 
 ### 不動
 
@@ -1887,9 +1887,9 @@ Refs design §5.5, §8.2 item 6."
 - 每個產出 .h 開頭含 §6.6 規定的 5 個 provenance 欄位
 - 重新產 `ni_flit_constants.h` 與 committed 版「**剔除 provenance header 後**」內容相同（regression check）
 - 新產 `ni_signals.h` / `ni_regs.h` / `ni_blocks.h` 可被 `examples/use_constants.cpp` style C++ 程式 `#include` 並 compile
-- 舊 `tools/gen_cpp_header.py` 變 wrapper 呼叫新 codegen
+- `tools/gen_cpp_header.py` 已刪除（cf22464）
 
-**Rollback:** revert codegen.py + emit/ + .h files; restore gen_cpp_header.py
+**Rollback:** revert codegen.py + emit/ + .h files
 
 **Files:**
 - Create: `spec_validate/tools/codegen.py`
@@ -1899,7 +1899,6 @@ Refs design §5.5, §8.2 item 6."
 - Create: `spec_validate/tools/emit/cpp_signals.py`
 - Create: `spec_validate/tools/emit/cpp_registers.py`
 - Create: `spec_validate/tools/emit/cpp_blocks.py`
-- Modify: `spec_validate/tools/gen_cpp_header.py`
 - Modify: `spec_validate/include/ni_flit_constants.h`（regen with provenance）
 - Create: `spec_validate/include/ni_signals.h`
 - Create: `spec_validate/include/ni_regs.h`
@@ -1942,7 +1941,7 @@ def header_banner(*, source_json: Path, spec_version: str,
 
 - [ ] **7.3 Create `tools/emit/cpp_packet.py`**
 
-Move logic from `gen_cpp_header.py:emit()` into here, refactored to consume `ni_spec.constants` not raw JSON. Output should match current `ni_flit_constants.h` minus the new banner.
+Emits packet constants; consumes `ni_spec.constants` only (not raw JSON). Output must match committed `ni_flit_constants.h` minus the new banner.
 
 ```python
 """C++ emitter for packet domain. Consumes ni_spec.constants only."""
@@ -1983,7 +1982,7 @@ def emit(packet_json: Path, spec_version: str) -> str:
 
 ```python
 #!/usr/bin/env python
-"""Unified codegen entry point. Replaces gen_cpp_header.py."""
+"""Unified codegen entry point."""
 from __future__ import annotations
 import argparse, sys, tempfile, shutil, difflib
 from pathlib import Path
@@ -2117,23 +2116,7 @@ namespace ni::blocks {
 }
 ```
 
-- [ ] **7.6 Deprecate `gen_cpp_header.py`** — replace contents with:
-
-```python
-#!/usr/bin/env python
-"""DEPRECATED — use tools/codegen.py --target cpp --domain packet --out include/.
-This wrapper will be removed in next minor version."""
-import subprocess, sys
-from pathlib import Path
-
-print("WARNING: gen_cpp_header.py is deprecated; "
-      "use 'tools/codegen.py --target cpp --domain packet'", file=sys.stderr)
-THIS = Path(__file__).resolve()
-cmd = [sys.executable, str(THIS.parent / "codegen.py"),
-       "--target", "cpp", "--domain", "packet",
-       "--out", str(THIS.parent.parent / "include")]
-sys.exit(subprocess.call(cmd))
-```
+- [x] **7.6 ~~Deprecate `gen_cpp_header.py`~~** — wrapper was created per this step, then deleted in commit cf22464. No action needed.
 
 - [ ] **7.7 Write tests for codegen**
 
@@ -2211,16 +2194,14 @@ g++ -std=c++17 -I include examples/use_constants.cpp -o use_constants.exe
 ```
 git add spec_validate/tools/codegen.py \
         spec_validate/tools/emit/ \
-        spec_validate/tools/gen_cpp_header.py \
         spec_validate/include/ni_*.h \
         spec_validate/tests/test_codegen.py
 git commit -m "feat(spec_validate): unified codegen.py + 4 C++ emitters
 
-- tools/codegen.py replaces gen_cpp_header.py with --target/--domain/--check
+- tools/codegen.py: --target/--domain/--check dispatcher
 - 4 per-domain emitters consume ni_spec.constants only (no direct JSON)
 - Provenance banner: tool version + source path + JSON SHA + spec_ver + timestamp
 - --check mode regenerates to scratch dir and diffs vs committed
-- gen_cpp_header.py becomes deprecated wrapper
 
 Refs design §6.1, §6.6, §6.7, §8.2 item 7."
 ```
@@ -2467,16 +2448,9 @@ g++ -std=c++17 -I include examples/use_constants.cpp -o use_constants.exe
 
 All steps PASS. If anything fails, return to the task that introduced the failing component.
 
-- [ ] **9.2 Execute supersede checklist** (§9.1 of design doc)
+- [x] **9.2 Execute supersede checklist** (§9.1 of design doc) — ✅ 已完成（commit cf22464）
 
-逐項對照 disposition 表，確認三份舊文件的 unique decision 都已被新 design 吸收或拒絕。確認 OK 後 `git rm`:
-
-```
-git rm spec_validate/whats-next.md
-git rm spec_validate/docs/plans/2026-05-25-ni-spec-modular-design.md
-git rm spec_validate/docs/plans/spec_as_code_plan.md
-git commit -m "chore: delete superseded plan docs (supersede checklist passed)"
-```
+三份舊文件均已刪除：`whats-next.md`、`2026-05-25-ni-spec-modular-design.md`、`spec_as_code_plan.md`。
 
 ---
 
@@ -2492,26 +2466,18 @@ git commit -m "chore: delete superseded plan docs (supersede checklist passed)"
 - §8.2 #7 codegen + C++ → Task 7 ✓
 - §8.2 #8 SV emitters + lint + static_assert → Task 8 ✓
 
-**Placeholder scan**: 沒留 TBD / TODO；每個 step 都有具體 code 或 command。
-
 **Type consistency**:
-- `ni_spec.constants.signals_pin_names(signals_spec)` 在 Task 1 stub、Task 2 實作、Task 3 + Task 7 consume — 簽章一致
-- `Issue` 是 `invariants.py` 既有 namedtuple — 沿用，沒新建
-- Schema field `kind: "external_driven"` 在 Task 2 schema 定義、Task 3 generator 寫入、Task 8 SV emitter 讀取 — 用同一個 enum string
+- `ni_spec.constants.signals_pin_names(signals_spec)` — Task 1 stub → Task 2 實作 → Task 3/7 consume，簽章一致
+- `Issue` 是 `invariants.py` 既有 namedtuple，沿用
+- `kind: "external_driven"` — Task 2 定義 → Task 3 寫入 → Task 8 SV emitter 讀取，同一 enum string
 
-**Known coupling between tasks**:
-- Task 5 函式 `check_blocks_xref_registers` 依賴 Task 4 完成；plan 已標 dependency
-- Task 6 channel xref 依賴 Task 2 完成（pin_name 要先存在）；plan 已標
-- Task 7 `cpp_blocks.py` 依賴 Task 5 的 `blocks_*` constants；plan 已標
+**Known coupling**:
+- Task 5 `check_blocks_xref_registers` 依賴 Task 4；Task 6 channel xref 依賴 Task 2；Task 7 `cpp_blocks.py` 依賴 Task 5 —— 均已在 task header 標 dependency
 
 ---
 
 ## Execution Handoff
 
-Plan complete and saved to `spec_validate/docs/plans/2026-05-26-spec-as-code-implementation.md`. Two execution options:
+**1. Subagent-Driven (recommended)** — per-Task fresh subagent，task 間 review
 
-**1. Subagent-Driven (recommended)** — 我為每個 Task dispatch 一個 fresh subagent，task 間 review、fast iteration
-
-**2. Inline Execution** — 在這個 session 跑全部 task，用 batch + checkpoint
-
-Which approach?
+**2. Inline Execution** — 單 session 跑全部 task，batch + checkpoint

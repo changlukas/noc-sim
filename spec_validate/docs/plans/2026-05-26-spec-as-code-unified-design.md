@@ -3,7 +3,7 @@
 > **Date**: 2026-05-26
 > **Status**: Active — 後續實作以本文為準
 >
-> **Supersedes**（將刪除 / 歸檔）：
+> **Supersedes**（已刪除，commit cf22464）：
 > - `spec_validate/whats-next.md`（前 session handoff，Phase 3-6 細節被本文取代）
 > - `spec_validate/docs/plans/2026-05-25-ni-spec-modular-design.md`（Path B 轉向後已 obsolete）
 > - `spec_validate/docs/plans/spec_as_code_plan.md`（motivation 已吸收進本文 §1-2，部分方向調整見 §3-4）
@@ -80,7 +80,7 @@ NI 規格目前以 Markdown 散文寫成，給人讀。它有三個無法靠「�
                                            (未來, defer)
 ```
 
-**讀法**：三條消費路徑（C++ / SV / Python）共用同一份 generated JSON，常數一致由 codegen 對偶輸出保證。
+三條消費路徑（C++ / SV / Python）共用同一份 generated JSON，常數一致由 codegen 對偶輸出保證。
 
 ### 3.1 Per-domain 路線表
 
@@ -94,13 +94,13 @@ NI 規格目前以 Markdown 散文寫成，給人讀。它有三個無法靠「�
 
 ### 3.2 Per-domain source 選擇的判斷依據
 
-每個 domain 的 source 路線是個案決定，不是通則。以下列出做出每個選擇背後的考量，未來新增 domain 時對照看哪條最像：
+每個 domain 的 source 路線是個案決定，不是通則：
 
 - **結構化規格事實**（每根 wire / 每個 bit / 每個 register 都有具體屬性、人類要讀 prose 來理解）→ MD-as-source + generator parse。例：packet / signals / registers
 - **清單型 metadata 且主要消費者是機器**（entry 少、欄位固定、value 大量是 cross-ref name list）→ 直接 JSON。例：function_blocks 的 `uses_packet_fields[]` 本身是 list of name，包成 MD 表格只是多一層 parser
 - **行為規約 prose**（rule condition 是 prose、難 DSL 化）→ 留 MD，metadata 部分（id / severity / channels）lift-shift 進 JSON 做 cross-ref check，condition prose 不機器化。例：protocol_rules（§5.5）
 
-**注意**：function_blocks 走 JSON 不是「<20 entries 都該走 JSON」的通則 — 而是這個 domain 的 cross-ref 結構正好讓 JSON 比 MD 自然。其他 domain 若 entry 數一樣少但內容多是 prose（例：未來想加 architectural notes），仍應走 MD。
+function_blocks 走 JSON 不是「<20 entries 都該走 JSON」的通則，而是這個 domain 的 cross-ref 結構正好讓 JSON 比 MD 自然。其他 domain 若 entry 數一樣少但內容多是 prose，仍應走 MD。
 
 ---
 
@@ -132,7 +132,7 @@ NI 規格目前以 Markdown 散文寫成，給人讀。它有三個無法靠「�
 
 ### 4.3 Deliberately not doing（這次評估後決定不做的，附理由）
 
-這節寫給未來的 reviewer / 接手者看：以下幾條曾被認真評估、決定不做的事，**不是被忽略**。如果未來情況變化（規模、團隊大小、新 EDA dependency 進來），可以重新評估。
+以下幾條曾被認真評估、決定不做，**不是被忽略**。觸發條件成立時可重新評估。
 
 | 不做的事 | 為什麼不做 | 觸發重評的條件 |
 |---|---|---|
@@ -141,7 +141,7 @@ NI 規格目前以 Markdown 散文寫成，給人讀。它有三個無法靠「�
 | **CI / pre-commit hook 強制化** | 目前單人專案，full CI infra 是 over-engineering。改用較輕的方式：`tools/codegen.py --check` mode 加 `.gitignore` 把 `include/` 與 `rtl_pkg/` 排除（防止手改 commit 進去） | 第二位 contributor 加入，或 PR-based workflow 啟動時升為 mandatory CI |
 | **Function block 內 behavior 描述機器化**（例：ROB release algorithm） | 永不做。Datapath / FSM 留 C model + RTL 各自實作 | 不重評估 |
 
-這份清單跟 §4.2 的差別：§4.2 是「永遠不做」或「defer 到未來再說」；§4.3 是「現在認真評估過，覺得當下不值得做」，是個有具體觸發條件可以回頭的決定。
+§4.2 是「永遠不做」或「defer」；§4.3 是「當下評估不值得做」，觸發條件成立時可回頭。
 
 ---
 
@@ -171,7 +171,7 @@ NI 規格目前以 Markdown 散文寫成，給人讀。它有三個無法靠「�
                                        (留純散文)
 ```
 
-每個 domain 接著進 §6 的 codegen pipeline，產 `.h` + `.sv` 給 C++/SV 消費。
+每個 domain 進 §6 codegen pipeline，產 `.h` + `.sv`。
 
 ### 5.1 Packet format（已完成，僅補 SV codegen）
 
@@ -309,7 +309,7 @@ NI 規格目前以 Markdown 散文寫成，給人讀。它有三個無法靠「�
 
 ### 5.5 Protocol rules（narrow lift-shift）
 
-**修正過的決定**：原本打算完全 defer 留純散文。re-review 後改成「結構化 metadata 抓進 JSON、condition prose 留 MD」的窄版本 — 因為 cross-ref check（id 唯一、channel token 屬於 ni_signals.bundles）是便宜的 1 天工，能擋住一些 spec 維護期常見的 typo bug。
+原本完全 defer；re-review 後改為「結構化 metadata 抓進 JSON、condition prose 留 MD」的窄版本。cross-ref check（id 唯一、channel token 屬於 ni_signals.bundles）1 天工，能擋住 spec 維護期常見的 typo bug。
 
 | 欄位 | 內容 |
 |---|---|
@@ -326,8 +326,6 @@ NI 規格目前以 Markdown 散文寫成，給人讀。它有三個無法靠「�
 - ❌ C model runtime assertion 自動生成
 
 這些等真要做 formal verification 或 C model 細到要逐 rule check 時再評估。
-
-**為什麼這次改變決定**：reviewer 點對一件事 — `id` 唯一性 + channel token referential integrity 是 spec 維護期常見會出錯的東西，跟「行為一致性」是兩件事。lift-shift metadata 不解決行為一致（co-sim 才能），但能擋住 spec 自己亂掉（rule 寫了不存在的 channel name 之類）。1 天工換這層保障值得。
 
 ---
 
@@ -348,12 +346,12 @@ spec_validate/
 │   ├── ni_regs_pkg.sv
 │   └── ni_blocks_pkg.sv
 └── tools/
-    └── codegen.py                   ← 統一入口 (取代 gen_cpp_header.py)
+    └── codegen.py                   ← 統一入口
 ```
 
-`tools/codegen.py --target {cpp|sv} --domain {packet|signals|registers|blocks} --out <path>`，一個 CLI 控四種 domain × 兩種語言共 8 種輸出組合。內部 dispatcher，per-domain emitter 各自 module，但共享 spec loading / formatter。比八個獨立 script 乾淨，且符合「資料/邏輯分離」精神（emitter 邏輯都吃 `ni_spec.constants`）。
+`tools/codegen.py --target {cpp|sv} --domain {packet|signals|registers|blocks} --out <path>`，一個 CLI 控四種 domain × 兩種語言共 8 種輸出組合。內部 dispatcher，per-domain emitter 各自 module，共享 spec loading / formatter。emitter 邏輯都吃 `ni_spec.constants`（資料/邏輯分離）。
 
-舊 `gen_cpp_header.py` deprecate —— 留一輪 wrapper 呼叫新指令，最終可刪。
+`gen_cpp_header.py` 是原始 wrapper，已在 commit cf22464 刪除。
 
 ### 6.2 C++ namespace vs SV package 命名 + 型別對齊（強制）
 
@@ -365,11 +363,11 @@ spec_validate/
 | mode enum（每 block 一個強型別 enum） | `enum class ROBMode { Normal, Simple, NoRoB }` | `typedef enum logic [clog2-1:0] { ROB_MODE_NORMAL, ROB_MODE_SIMPLE, ROB_MODE_NOROB } rob_mode_e;` |
 | function block 列表 enum | `enum class FunctionBlock { ROB, QOS, ECC, ... }` | `typedef enum logic [clog2-1:0] { FUNCTION_BLOCK_ROB, FUNCTION_BLOCK_QOS, ... } function_block_e;` |
 
-**為什麼 SV 一定要 `typedef enum` 不能用 bare parameter**：reviewer 點對 — 若 SV 只發 `parameter ROB_MODE_NORMAL = 0`、`parameter ROB_MODE_SIMPLE = 1`，這在型別系統上是 32-bit signed int 而非 enum。RTL 用 `logic [1:0] mode` 接時可能 silent truncate、可能 signed/unsigned 比較炸。`typedef enum logic [N-1:0] { ... } rob_mode_e;` 才跟 C++ `enum class ROBMode` 真的型別對等。位寬 `N = $clog2(count)`，codegen 算出來填。
+**為什麼 SV 一定要 `typedef enum` 不能用 bare parameter**：bare `parameter ROB_MODE_NORMAL = 0` 在 SV 型別系統是 32-bit signed int，`logic [1:0] mode` 接時可能 silent truncate。`typedef enum logic [N-1:0] { ... } rob_mode_e;` 才與 C++ `enum class ROBMode` 型別對等。位寬 `N = $clog2(count)`，codegen 算出來填。
 
-**為什麼整數常數要 `int unsigned`**：bit width、register offset 是非負量。SV `parameter ROB_IDX_LSB = 29` 默認 signed 32-bit，作為 vector 寬度用時若跟 signed 互動會有 implicit conversion bug。codegen 一律 emit `int unsigned`。
+**為什麼整數常數要 `int unsigned`**：bit width、register offset 是非負量。SV `parameter` 默認 signed 32-bit，作為 vector 寬度用時若跟 signed 互動會有 implicit conversion bug。codegen 一律 emit `int unsigned`。
 
-SV 沒 namespace 分層 → 用 `<pkg>::<NAME>`，name 內用 prefix 編 sub-namespace 進去（如 `FUNCTION_BLOCK_ROB`）。**Codegen tool 強制兩邊一致命名規則 + 型別匹配**，差別是 C++ 多一層 `::` 分隔、SV flat + SV 顯式型別 (`int unsigned` / `logic [N-1:0]`)。
+SV 沒 namespace 分層，用 `<pkg>::<NAME>`，name 內用 prefix 編 sub-namespace（如 `FUNCTION_BLOCK_ROB`）。Codegen 強制兩邊一致命名規則 + 型別匹配，差別是 C++ 多一層 `::` 分隔、SV flat + 顯式型別。
 
 ### 6.3 Codegen ↔ validator 耦合
 
@@ -412,9 +410,7 @@ static_assert(HEADER_WIDTH + PAYLOAD_WIDTH == FLIT_WIDTH,
 - name-existence cross-ref（symbol 是否存在於另一個 spec，跨 .h 邊界，編譯期看不到）
 - width_param 表達式 eval（grammar 解析）
 
-**不要把這個叫做「drift protection」**：static_assert 只擋算術錯誤，不擋「人手改了 .h 沒重 gen」這種 drift。後者要靠 codegen `--check` mode 比對（見 §6.7 與 §4.3 CI 段）。
-
-**驗證 sequencing**：static_assert 只能在 codegen 真的開始 emit 時加。§8.2 中放在 codegen 完成之後，不是早期 phase。
+static_assert 只擋算術錯誤，不擋「人手改了 .h 沒重 gen」這種 drift。後者靠 codegen `--check` mode（§6.7 / §4.3）。
 
 ### 6.6 Codegen output header（每個 .h / .sv 開頭必要欄位）
 
@@ -433,14 +429,7 @@ static_assert(HEADER_WIDTH + PAYLOAD_WIDTH == FLIT_WIDTH,
 
 SV 同樣 4 行用 `//` 開頭。
 
-**為什麼這 5 欄位**：
-- Generator 版本 → 哪個 codegen tool 生的
-- Source JSON → trace 回 SSoT
-- JSON SHA → 偵測「我手改 generated JSON 後重 gen」的歷史
-- Spec ver → 不同 spec 版本的衍生品比對
-- 時戳 → 時間排序
-
-`tools/codegen.py --check` mode（見 §6.7）會比對「重新算的 JSON SHA == .h 內 header 寫的 SHA」，不一致就 fail。
+`tools/codegen.py --check` 比對「重新算的 JSON SHA == .h 內 header 寫的 SHA」，不一致就 fail。
 
 ### 6.7 Schema version contract + spec_version SSoT
 
@@ -519,7 +508,7 @@ SV 同樣 4 行用 `//` 開頭。
      (不必跑 Python, 編譯就能擋住 spec drift)
 ```
 
-「Validator 是 C model 前身」這條，**精神由「常數 API」+「invariants 同步」+「目錄結構鏡像」三件事承載**，不靠 code 原地長成。
+「Validator 是 C model 前身」這條精神由「常數 API」+「invariants 同步」+「目錄結構鏡像」三件事承載，不靠 code 原地長成。
 
 ### 7.1 現況：Python `ni_spec/` 的「資料/邏輯分離」已就位
 
@@ -574,14 +563,14 @@ C++ side 對應原則：
 
 ### 7.4 「精神延續」的真正貢獻
 
-spec_as_code 第 6 節「validator 是 C model 前身」這條，在跨語言（Python → C++）的現實下：
+跨語言（Python → C++）的現實：
 
-- ✘ **不是**「省一次 rewrite」—— behavior 從 Python 翻 C++ 仍要 rewrite
-- ✓ **而是**「rewrite 時不會迷失方向」—— 因為架構原則 + 常數 API + invariants 都已 stable，rewrite 只是把行為從 Python 翻 C++，不必重新討論「資料怎麼存 / 常數從哪來 / 怎麼驗一致」
+- ✘ 不是「省一次 rewrite」—— behavior 從 Python 翻 C++ 仍要 rewrite
+- ✓ 而是「rewrite 時不會迷失方向」—— 架構原則 + 常數 API + invariants 都已 stable，rewrite 只是把行為翻 C++，不必重新討論「資料怎麼存 / 常數從哪來 / 怎麼驗一致」
 
 ### 7.5 Python prototype reference model 的位置（defer）
 
-當下不決定 Python 是否做 high-level functional ref model。`c_model/behavior/`（or `ni_spec/behavior/`）目錄留架構空位，等真開始寫 C model 時再決定。
+`c_model/behavior/`（or `ni_spec/behavior/`）目錄留架構空位，等真開始寫 C model 時再決定。
 
 ---
 
@@ -596,7 +585,7 @@ spec_as_code 第 6 節「validator 是 C model 前身」這條，在跨語言（
 
 ### 8.2 待做 ❌（按邏輯依賴排序，8 項）
 
-> Reviewer 點出原 7 項清單藏了幾個隱含依賴（`constants.py` API extension 沒當 gate、signal pin-name redesign 沒擺在 reset merge 前、CI 被當選項）。重排成 8 項，依賴方向清晰。
+> 原 7 項清單藏了隱含依賴（`constants.py` API extension 沒當 gate、signal pin-name redesign 沒擺在 reset merge 前），重排成 8 項。
 
 1. **Foundation gates**（~0.5 day）
    - 寫 §6.7 schema-version contract 文件
@@ -637,7 +626,7 @@ spec_as_code 第 6 節「validator 是 C model 前身」這條，在跨語言（
    - dispatcher：`--target {cpp|sv} --domain {packet|signals|registers|blocks} [--check]`
    - C++ emitters 4 個 domain + provenance header（§6.6）
    - regen 既有 `ni_flit_constants.h`，與 committed 版做 byte-level diff (regression check)
-   - deprecate 舊 `gen_cpp_header.py`：留 wrapper 一輪，下版本刪
+   - `gen_cpp_header.py` 已刪除（cf22464）
 
 8. **SV emitters + 簡單 lint smoke test**（~2 day，依賴 #7）
    - 4 個 SV emitter（`ni_{flit,signals,regs,blocks}_pkg.sv`）
@@ -657,11 +646,11 @@ spec_as_code 第 6 節「validator 是 C model 前身」這條，在跨語言（
 
 1. **writing-plans skill 接手** —— 將 §8.2 的 8 項待做轉成 implementation plan，含每項的：依賴、預估工程量、test criteria、檔案級 deliverable
 
-2. **舊文件處理** —— 待本文 user review 通過後執行。**刪除前要過下面的 supersede checklist**，逐項確認舊文件的 unique decision 已被新 design 吸收或明確拒絕。
+2. **舊文件處理** —— ✅ 已完成（commit cf22464）。
 
-### 9.1 Supersede checklist（刪舊文件前對照用）
+### 9.1 Supersede checklist（已完成）
 
-刪除三份舊文件之前，下表逐項列舉舊文件提到但本文沒有直接重複的 decision / context，要每條標出 disposition（migrated / rejected / 仍適用，本文未變動）：
+三份舊文件已在 commit cf22464 刪除。刪除前逐項確認 disposition：
 
 | 舊文件 | Unique 內容 | Disposition |
 |---|---|---|
@@ -674,9 +663,7 @@ spec_as_code 第 6 節「validator 是 C model 前身」這條，在跨語言（
 | `spec_as_code_plan.md` §6 「validator 是 C model 前身（同一連續譜系）」框架 | 認為 validator 會原地長成 C model | 跨語言後不成立。**Disposition: 框架 retired，新版見 §7.4** |
 | `spec_as_code_plan.md` §7 真正划算的三類（flit+SV/C / CSR PeakRDL / Validator 分層） | 三類中第 2 類 (PeakRDL) 已 rejected | **Disposition: 部分 migrated（第 1 與第 3 類），第 2 類 rejected** |
 
-過完這 checklist 後刪：
-- `spec_validate/whats-next.md`
-- `spec_validate/docs/plans/2026-05-25-ni-spec-modular-design.md`
-- `spec_validate/docs/plans/spec_as_code_plan.md`
-
-如果發現 disposition 表中漏列某 decision，**先把它寫進本文對應段落再刪舊檔**。
+以下三份文件已刪除（commit cf22464）：
+- `spec_validate/whats-next.md` ✅
+- `spec_validate/docs/plans/2026-05-25-ni-spec-modular-design.md` ✅
+- `spec_validate/docs/plans/spec_as_code_plan.md` ✅
