@@ -1,190 +1,96 @@
-# Development Guidelines — NoC C++ Behavior Model
+# CLAUDE.md — NoC C++ Behavior Model
 
-## Philosophy
+## Project Overview
 
-### Core Beliefs
+**Namespace**: `noc::`
 
-- **Incremental progress over big bangs** — Small changes that compile and pass tests
-- **Learning from existing code** — Study and plan before implementing
-- **Pragmatic over dogmatic** — Adapt to project reality
-- **Clear intent over clever code** — Be boring and obvious
+**Architecture**: User Code → NocSystem Public API → Internal Components → Co-Sim Bridge (DPI-C)
 
-### Simplicity Means
+- **Uniform Router**: No Edge/Compute distinction; all routers identical.
+- **Dual Flow Control**: Valid/Ready (Version A) AND Credit-Based (Version B), compile-time template.
+- **Factory Pattern**: JSON config → factory function → template instantiation (analogous to RTL parameter).
+- **Hot-Swap Interface**: `Router_Interface<Mode>` / `NI_Interface<Mode>` abstract base classes.
 
-- Single responsibility per function/class
-- Avoid premature abstractions
-- No clever tricks — choose the boring solution
-- If you need to explain it, it's too complex
+**Build**: C++17, CMake, GoogleTest.
+- Use `py -3` instead of `python3` (Windows).
+- Path separators: forward slash `/` or double backslash `\\`.
 
-## Process
+**Communication**:
+- Reply in Traditional Chinese; keep technical terms in English.
+- User is not fluent in C++; use RTL analogies when explaining implementation concepts.
+- Ask before making any design decision.
 
-### 1. Planning & Staging
+## Key Design Docs
 
-Break complex work into 3-5 stages. Document in `IMPLEMENTATION_PLAN.md`:
+- `docs/design/README.md` — file index
+- `docs/design/REVIEW_ISSUES.md` — design decision tracker
+- `docs/PROJECT_GOALS.md` — architecture overview
 
-```markdown
-## Stage N: [Name]
-**Goal**: [Specific deliverable]
-**Success Criteria**: [Testable outcomes]
-**Tests**: [Specific test cases]
-**Status**: [Not Started|In Progress|Complete]
-```
+## Doc Writing Rules
 
-- Update status as you progress
-- Remove file when all stages are done
+### Parameter Discipline
 
-### 2. Implementation Flow
-
-1. **Understand** — Study existing patterns in codebase
-2. **Test** — Write test first (red)
-3. **Implement** — Minimal code to pass (green)
-4. **Refactor** — Clean up with tests passing
-5. **Commit** — With clear message linking to plan
-
-### 3. When Stuck (After 3 Attempts)
-
-**CRITICAL**: Maximum 3 attempts per issue, then STOP.
-
-1. **Document what failed** — What you tried, specific error messages, why you think it failed
-2. **Research alternatives** — Find 2-3 similar implementations, note different approaches
-3. **Question fundamentals** — Right abstraction level? Can it split into smaller problems? Simpler approach?
-4. **Try different angle** — Different pattern? Remove abstraction instead of adding?
-
-## Technical Standards
-
-### Architecture Principles
-
-- **Composition over inheritance** — Use dependency injection
-- **Interfaces over singletons** — Enable testing and flexibility
-- **Explicit over implicit** — Clear data flow and dependencies
-- **Test-driven when possible** — Never disable tests, fix them
-
-### Code Quality
-
-- **Every commit must**:
-  - Compile successfully
-  - Pass all existing tests
-  - Include tests for new functionality
-  - Follow project formatting/linting
-
-- **Before committing**:
-  - Run formatters/linters
-  - Self-review changes
-  - Ensure commit message explains "why"
-
-### Error Handling
-
-- Fail fast with descriptive messages
-- Include context for debugging
-- Handle errors at appropriate level
-- Never silently swallow exceptions
-
-## Decision Framework
-
-When multiple valid approaches exist, choose based on:
-
-1. **Testability** — Can I easily test this?
-2. **Readability** — Will someone understand this in 6 months?
-3. **Consistency** — Does this match project patterns?
-4. **Simplicity** — Is this the simplest solution that works?
-5. **Reversibility** — How hard to change later?
-
-## Document Quality Rules
-
-### Parameter Discipline (CRITICAL)
-
-- **修改任何參數值、範圍、預設值前，必須先列出提案等待使用者核可**
-- 不確定的數值寧可留空或標註 `[TBD]`，絕不猜測後當事實寫入
-- 每次修改參數後，列出所有引用相同參數的其他文件，確認一致性
+- Before changing any parameter value, range, or default: propose the change and wait for user approval.
+- Mark uncertain values `[TBD]`; never guess and write as fact.
+- After any parameter edit, list all other files referencing that parameter and confirm consistency.
 
 ### Cross-File Consistency
 
-- 編輯 spec 文件後，必須檢查並列出所有引用相同定義的其他 `.md` 檔案
-- 多檔編輯時，對所有目標檔案套用相同變更，不可只改第一個就停止
-- 若發現跨文件不一致，先回報差異，等使用者決定以哪個版本為準
+- After editing a spec file, list every other `.md` that references the same definition.
+- When editing multiple files, apply the change to all of them — do not stop after the first.
+- If a cross-file mismatch is found, surface the diff and let the user decide which version wins.
 
 ### Technical Accuracy
 
-- 對外部架構的分析必須附上依據來源（保留 AMBA / 通用 protocol spec 例外，因為是公開規範非 IP 產品）
-- 不確定的技術事實標註 `[UNVERIFIED]`，不要假裝確定
-- 引用外部設計特徵時，區分「已確認」與「推測」
+- Claims about external architectures require a cited source. Public protocol specs (AMBA, etc.) are acceptable references; vendor-specific IP/product guides are not.
+- Mark uncertain technical facts `[UNVERIFIED]`; distinguish confirmed from inferred.
+- Do not reference specific external IP, vendor, or product-guide names in code or docs.
 
 ### Writing Quality
 
-- 預設使用精確、專業的工程文件語氣，避免口語化或模糊用詞
-- 使用者要求 high-level summary 時，不要展開 field-level 細節
-- 使用者要求精確規格時，不要給模糊概述
-- 修改文件前先確認目標粒度（overview / spec / implementation guide）
-- 套用 Karpathy 4-lens，以 reviewer 視角而非 writer 視角審稿：一段 prose 砍掉後 reader 仍能完成原任務、就刪掉
+- Default tone: precise, professional engineering prose. No filler words ("notably", "additionally", "in conclusion").
+- Match detail level to the ask: high-level summary → no field-level expansion; exact spec request → no vague overview.
+- Confirm target granularity (overview / spec / implementation guide) before editing a doc.
+- Apply the Karpathy 4-lens reviewer perspective: if removing a sentence leaves the reader able to complete their original task, delete the sentence.
 
-## Project-Specific Rules
+## Process
 
-### Language & Communication
+Break complex work into 3-5 stages. Document each stage in `IMPLEMENTATION_PLAN.md`:
 
-- 回應使用繁體中文，技術術語保持英文
-- 使用者不熟悉 C++，解釋時用 RTL 類比
-- 在做任何設計決策前要先詢問使用者
+```
+## Stage N: [Name]
+Goal: [specific deliverable]
+Success Criteria: [testable outcomes]
+Status: [Not Started | In Progress | Complete]
+```
 
-### Architecture
+Remove `IMPLEMENTATION_PLAN.md` when all stages are complete.
 
-- **Namespace**: `noc::`
-- **Architecture**: User Code → NocSystem Public API → Internal Components → Co-Sim Bridge (DPI-C)
-- **Uniform Router**: No Edge/Compute distinction, all routers identical
-- **Dual Flow Control**: Valid/Ready (Version A) AND Credit-Based (Version B), compile-time template
-- **Factory Pattern**: JSON config -> factory function -> template instantiation (like RTL parameter)
-- **Hot-Swap Interface**: `Router_Interface<Mode>` / `NI_Interface<Mode>` abstract base classes
+**When stuck after 3 attempts — STOP.** Document what failed (attempts, error messages, hypotheses). Research 2-3 alternative approaches. Question whether the abstraction level is right. Try a different angle before resuming.
 
-### Build & Test
-
-- C++17 standard
-- Build: CMake
-- Test framework: GoogleTest
-- Use `py -3` instead of `python3` (Windows)
-- Path separators: forward slash `/` or double backslash `\\`
-
-### Key Design Docs
-
-- `docs/design/README.md` — File index
-- `docs/design/REVIEW_ISSUES.md` — Design decision tracker
-- `docs/PROJECT_GOALS.md` — Architecture overview and goals
-
-### Git Conventions
-
-- Commit message format: `type(scope): description` (English)
-- Types: feat, fix, docs, style, refactor, test, chore, perf
-- Branch: feature work on feature branches, PRs to `main`
+Commit incrementally: every commit must compile, pass all existing tests, and include tests for new functionality.
 
 ## Quality Gates
 
-### Definition of Done
+Every commit:
+- Compiles successfully.
+- Passes all existing tests.
+- Includes tests for new functionality.
+- Has a commit message in format `type(scope): description` (English).
+- Valid types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`.
 
-- [ ] Tests written and passing
-- [ ] Code follows project conventions
-- [ ] No linter/formatter warnings
-- [ ] Commit messages are clear
-- [ ] Implementation matches plan
-- [ ] No TODOs without issue numbers
+Branch: feature work on feature branches; PRs target `main`.
 
-### Test Guidelines
+## Reminders
 
-- Test behavior, not implementation
-- One assertion per test when possible
-- Clear test names describing scenario
-- Use existing test utilities/helpers
-- Tests should be deterministic
+Never:
+- Use `--no-verify` to bypass commit hooks.
+- Disable tests instead of fixing them.
+- Commit non-compiling code.
+- Make assumptions — verify against existing code.
+- Reference external IP, vendor, or product-guide names in code or docs.
 
-## Important Reminders
-
-**NEVER**:
-- Use `--no-verify` to bypass commit hooks
-- Disable tests instead of fixing them
-- Commit code that doesn't compile
-- Make assumptions — verify with existing code
-- Reference specific external IP / vendor / product-guide names in code or docs
-
-**ALWAYS**:
-- Commit working code incrementally
-- Update plan documentation as you go
-- Learn from existing implementations
-- Stop after 3 failed attempts and reassess
-- Explain C++ concepts using RTL analogies for the user
+Always:
+- Commit working code incrementally.
+- Update `IMPLEMENTATION_PLAN.md` as you progress.
+- Use RTL analogies when explaining C++ concepts to the user.
