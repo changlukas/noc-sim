@@ -7,3 +7,5 @@ function(add_cmodel_test name)
   add_dependencies(${name} codegen_check)
   gtest_discover_tests(${name})
 endfunction()
+
+add_cmodel_test(test_pins_smoke)
