@@ -180,15 +180,6 @@ Per-VC credit return signals:
 | RSP_OUT | noc_rsp_credit_i[NUM_VC-1:0] | as driven by router | Input. |
 | RSP_IN | noc_rsp_credit_o[NUM_VC-1:0] | 0 (all VCs) | NMU not returning credits while reset. |
 
-Credit startup handshake signals:
-
-| Channel | Signal | Value during reset | Notes |
-|---------|--------|--------------------|-------|
-| REQ_OUT | noc_req_credit_init_ready_o | 0 | NMU asserts AFTER reset deassertion when ready to start credit exchange. |
-| REQ_OUT | noc_req_credit_init_ready_i | as driven by router | Router asserts after its reset deassertion. |
-| RSP_OUT | noc_rsp_credit_init_ready_o | 0 | NSU asserts AFTER reset deassertion. |
-| RSP_OUT | noc_rsp_credit_init_ready_i | as driven by router | Router asserts after its reset deassertion. |
-
 ### Optional AXI parity signals — AXI domain (arst_ni)
 
 Conditional presence:
@@ -384,15 +375,6 @@ Per-VC credit return signals:
 | RSP_OUT | noc_rsp_credit_i[NUM_VC-1:0] | as driven by router | Input. |
 | RSP_IN | noc_rsp_credit_o[NUM_VC-1:0] | 0 (all VCs) | NMU not returning credits while reset. |
 
-Credit startup handshake signals:
-
-| Channel | Signal | Value first cycle after reset | Notes |
-|---------|--------|--------------------|-------|
-| REQ_OUT | noc_req_credit_init_ready_o | 0 | NMU asserts AFTER reset deassertion when ready to start credit exchange. |
-| REQ_OUT | noc_req_credit_init_ready_i | as driven by router | Router asserts after its reset deassertion. |
-| RSP_OUT | noc_rsp_credit_init_ready_o | 0 | NSU asserts AFTER reset deassertion. |
-| RSP_OUT | noc_rsp_credit_init_ready_i | as driven by router | Router asserts after its reset deassertion. |
-
 ### Optional AXI parity signals — AXI domain (arst_ni)
 
 Conditional presence:
@@ -422,7 +404,6 @@ After the first cycle, several wires transition over time as the BFM enables sti
 - `axi_bready_o`: held at 1 (always-ready to drain — B is metadata-only, no NSU back-pressure path).
 - `axi_rready_o`: 1 by default; drops to 0 when NSU R-buffer is full (per `theory_of_operation.md` §NSU Read response buffer). NSU back-pressures the local AXI slave on this signal.
 - BFM-driven `*valid_o` outputs (master-port responses `axi_bvalid_o`, `axi_rvalid_o`; slave-port requests `axi_awvalid_o`, `axi_wvalid_o`, `axi_arvalid_o`; NoC `noc_req_valid_o`, `noc_rsp_valid_o`; CSR `csr_bvalid_o`, `csr_rvalid_o`): 0 → asserted only when a transaction is ready to drive.
-- `noc_req_credit_init_ready_o`, `noc_rsp_credit_init_ready_o`: 0 → 1 once the NMU/NSU is ready to start credit exchange (per AMD pg313 §Credit-Based Flow Control bi-directional handshake).
 - `irq_o`: 0 → 1 on the `aclk_i` edge any unmasked `ERR_STATUS` bit asserts; deasserts on the cycle software RW1C clears all set+enabled bits.
 
 For wires driven by external DUTs (rows showing `as driven by DUT`, `as driven by router`, or `as driven by slave`), values during the after-reset window remain externally controlled.

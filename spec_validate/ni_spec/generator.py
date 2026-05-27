@@ -506,32 +506,28 @@ _AXI_CHANNEL_SIGNALS = {
 # 每個 NoC link interface 帶的 signals（per-signal name + width_param + direction）
 # 跟 AXI 同樣風格 — 看 JSON 就知道每根 wire 名字/寬度/方向。
 # Credit return 是反向走（_o 側 interface 收 _i credit；_i 側 interface 送 _o credit）。
-# Credit init handshake 雙向，只在 _o 側 interface 有（per signal_interface.md §Channel grouping）。
+# Internal NoC 使用 static credit preload at reset，不需要 dynamic credit-init handshake。
 _NOC_INTERFACE_SIGNALS = {
     # Keys are UPPER_SNAKE_CASE (post Task 3.5 canonical names).
     "NOC_REQ_OUT": [
-        ("req_valid_o",              "1",          "output"),
-        ("req_flit_o",               "FLIT_WIDTH", "output"),
-        ("req_credit_i",             "NUM_VC",     "input"),
-        ("req_credit_init_ready_o",  "1",          "output"),
-        ("req_credit_init_ready_i",  "1",          "input"),
+        ("req_valid_o",  "1",          "output"),
+        ("req_flit_o",   "FLIT_WIDTH", "output"),
+        ("req_credit_i", "NUM_VC",     "input"),
     ],
     "NOC_RSP_IN": [
-        ("rsp_valid_i",              "1",          "input"),
-        ("rsp_flit_i",               "FLIT_WIDTH", "input"),
-        ("rsp_credit_o",             "NUM_VC",     "output"),
+        ("rsp_valid_i",  "1",          "input"),
+        ("rsp_flit_i",   "FLIT_WIDTH", "input"),
+        ("rsp_credit_o", "NUM_VC",     "output"),
     ],
     "NOC_REQ_IN": [
-        ("req_valid_i",              "1",          "input"),
-        ("req_flit_i",               "FLIT_WIDTH", "input"),
-        ("req_credit_o",             "NUM_VC",     "output"),
+        ("req_valid_i",  "1",          "input"),
+        ("req_flit_i",   "FLIT_WIDTH", "input"),
+        ("req_credit_o", "NUM_VC",     "output"),
     ],
     "NOC_RSP_OUT": [
-        ("rsp_valid_o",              "1",          "output"),
-        ("rsp_flit_o",               "FLIT_WIDTH", "output"),
-        ("rsp_credit_i",             "NUM_VC",     "input"),
-        ("rsp_credit_init_ready_o",  "1",          "output"),
-        ("rsp_credit_init_ready_i",  "1",          "input"),
+        ("rsp_valid_o",  "1",          "output"),
+        ("rsp_flit_o",   "FLIT_WIDTH", "output"),
+        ("rsp_credit_i", "NUM_VC",     "input"),
     ],
 }
 

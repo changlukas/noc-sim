@@ -17,7 +17,7 @@ Lowercase signals with `_i` / `_o` direction suffixes and `_ni` for active-low r
 
 Bundle-level interface contract per sub-block. Pin-level detail (width, reset value, optional flag) stays in the Wire table below, which is the single source of truth. The `Wire source` column points to the §Channel grouping tokens.
 
-**NMU / NSU naming.** NMU (NoC Master Unit) and NSU (NoC Slave Unit) are the AMD Versal AXI-NoC names for the injection-side and ejection-side functions of one bidirectional Network Interface. NMU is injection (local AXI master to flit). NSU is ejection (flit to local AXI slave). FlooNoC keeps both functions in a single `chimney` with no NMU/NSU split, so this decomposition is a logical view. NoC backpressure is per-VC credit (see §NoC credit signals), not a ready handshake. Each NoC direction also runs a startup credit-init handshake (see §NoC credit signals). FlooNoC by contrast defaults to ready-valid and uses credit only in its VC mode.
+**NMU / NSU naming.** NMU (NoC Master Unit) and NSU (NoC Slave Unit) are the AMD Versal AXI-NoC names for the injection-side and ejection-side functions of one bidirectional Network Interface. NMU is injection (local AXI master to flit). NSU is ejection (flit to local AXI slave). FlooNoC keeps both functions in a single `chimney` with no NMU/NSU split, so this decomposition is a logical view. NoC backpressure is per-VC credit (see §NoC credit signals), not a ready handshake. Credit counters are statically preloaded at reset — no dynamic credit-init handshake is needed for an internal NoC. FlooNoC by contrast defaults to ready-valid and uses credit only in its VC mode.
 
 **Host AXI port roles.** NMU is the AXI slave on its host port, with a local AXI master as peer. NSU is the AXI master on its host port, with a local AXI slave as peer.
 
@@ -190,24 +190,10 @@ The NoC link uses per-VC credit accounting per AMD pg313 §Credit-Based Flow Con
 | `noc_rsp_credit_i[NUM_VC-1:0]` | input | NUM_VC | H | pos noc_clk | §NoC credit row 3 | no | yes | Per-VC credit return for response link. |
 | `noc_rsp_credit_o[NUM_VC-1:0]` | output | NUM_VC | H | pos noc_clk | §NoC credit row 4 | no | yes | Per-VC credit return for NMU response input buffer. |
 
-**Credit startup handshake signals (per AMD pg313 §Credit-Based Flow Control):**
-
-After reset, source-credit counters initialise to 0 per VC. Both ends must complete a bi-directional ready handshake before credit exchange begins. These signals carry that handshake. After both ends assert their ready, both stay HIGH for the lifetime of the link; they do not gate per-cycle data transfers (that role belongs to credits).
-
-| Signal | Direction | Width | Active | Sample edge | Reset value | Optional | BFM supports | Notes |
-|--------|-----------|-------|--------|-------------|-------------|----------|--------------|-------|
-| `noc_req_credit_init_ready_o` | output | 1 | H | pos noc_clk | §NoC credit-init row 1 | no | yes | NMU asserts after `noc_rst_ni` deassertion when ready to start credit exchange on the request output link. |
-| `noc_req_credit_init_ready_i` | input | 1 | H | pos noc_clk | §NoC credit-init row 2 | no | yes | Router asserts when ready to receive on `noc_req` link. Credit exchange begins on the cycle both `*_o` and `*_i` are HIGH. |
-| `noc_rsp_credit_init_ready_o` | output | 1 | H | pos noc_clk | §NoC credit-init row 3 | no | yes | NSU asserts after `noc_rst_ni` deassertion when ready to start credit exchange on the response output link. |
-| `noc_rsp_credit_init_ready_i` | input | 1 | H | pos noc_clk | §NoC credit-init row 4 | no | yes | Router asserts when ready to receive on `noc_rsp` link. |
-
 **Behaviour summary:**
 
 - A flit is driven on `noc_*_flit_o` only when the source has at least one credit on the chosen VC. NMU/NSU decrement the per-VC credit counter on the cycle `noc_*_valid_o=1`.
-- Source-credit counters initialise to 0 per VC at reset deassertion.
-- Credit exchange begins only after both ends raise their respective `*_credit_init_ready_*` signals (bi-directional handshake).
-- Once exchange begins, credit counters are seeded with `INPUT_BUFFER_DEPTH / NUM_VC` per VC (where `INPUT_BUFFER_DEPTH` is the receiver's per-link buffer depth, a router-side parameter the integrator must communicate).
-- **Credit-init handshake precise cycle timing**: let cycle T be the first `noc_clk_i` edge where both `noc_*_credit_init_ready_o` and `noc_*_credit_init_ready_i` are sampled HIGH simultaneously. (a) Cycle T — both ready signals first observed HIGH together. (b) Cycle T+1 — credit counter seed updates to `INPUT_BUFFER_DEPTH / NUM_VC` per VC (flop next-edge update). (c) Cycle T+2 — earliest cycle on which `noc_*_valid_o = 1` can appear (registered valid output, requires credit > 0 condition sampled on cycle T+1). The 1-cycle latency at each step follows directly from the fully-registered output discipline (per `theory_of_operation.md` §Driver) — every output is a flop, so each condition observed on cycle X becomes a driven signal on cycle X+1. **Designer-confirmed (D1→D2 ambiguity triage, 2026-05-10): T / T+1 / T+2 sequence.**
+- Source-credit counters are statically preloaded to `INPUT_BUFFER_DEPTH / NUM_VC` per VC at reset deassertion (where `INPUT_BUFFER_DEPTH` is the receiver's per-link buffer depth, a router-side parameter the integrator must communicate). No dynamic credit-init handshake is required for an internal NoC — static preload at reset is sufficient.
 - Credit return latency is `CREDIT_DELAY` cycles (router-side parameter, default 1).
 - Credit starvation: if the receiver returns no credits, the source is permanently stalled on that VC until credits resume. There is no automatic timeout / SLVERR escalation in v0.4.0 — software detects via PENDING counters / IRQ and handles recovery externally.
 
@@ -383,9 +369,9 @@ Multiple logical channels across two AXI ports + NoC + CSR. Protocol-rule IDs in
 | B_OUT | axi_b*_i |
 | AR_OUT | axi_ar*_o |
 | R_OUT | axi_r*_i |
-| REQ_OUT | `noc_req_valid_o`, `noc_req_flit_o`, `noc_req_credit_i[NUM_VC-1:0]`, `noc_req_credit_init_ready_o`, `noc_req_credit_init_ready_i` |
+| REQ_OUT | `noc_req_valid_o`, `noc_req_flit_o`, `noc_req_credit_i[NUM_VC-1:0]` |
 | REQ_IN | `noc_req_valid_i`, `noc_req_flit_i`, `noc_req_credit_o[NUM_VC-1:0]` |
-| RSP_OUT | `noc_rsp_valid_o`, `noc_rsp_flit_o`, `noc_rsp_credit_i[NUM_VC-1:0]`, `noc_rsp_credit_init_ready_o`, `noc_rsp_credit_init_ready_i` |
+| RSP_OUT | `noc_rsp_valid_o`, `noc_rsp_flit_o`, `noc_rsp_credit_i[NUM_VC-1:0]` |
 | RSP_IN | `noc_rsp_valid_i`, `noc_rsp_flit_i`, `noc_rsp_credit_o[NUM_VC-1:0]` |
 | CSR_AW / CSR_W / CSR_B / CSR_AR / CSR_R | csr_aw* / csr_w* / csr_b* / csr_ar* / csr_r* |
 

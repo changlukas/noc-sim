@@ -484,30 +484,6 @@
           },
           "presence": null,
           "width_expr": null
-        },
-        {
-          "width_param": null,
-          "direction": "output",
-          "default": "1",
-          "pin_name": "noc_req_credit_init_ready_o",
-          "reset_behavior": {
-            "kind": "async-active-low",
-            "value": "0",
-            "domain": "noc_rst_ni"
-          },
-          "presence": null,
-          "width_expr": null
-        },
-        {
-          "width_param": null,
-          "direction": "input",
-          "default": "1",
-          "pin_name": "noc_req_credit_init_ready_i",
-          "reset_behavior": {
-            "kind": "external_driven"
-          },
-          "presence": null,
-          "width_expr": null
         }
       ],
       "port_parameters": [
@@ -1546,30 +1522,6 @@
           "direction": "input",
           "default": "1",
           "pin_name": "noc_rsp_credit_i",
-          "reset_behavior": {
-            "kind": "external_driven"
-          },
-          "presence": null,
-          "width_expr": null
-        },
-        {
-          "width_param": null,
-          "direction": "output",
-          "default": "1",
-          "pin_name": "noc_rsp_credit_init_ready_o",
-          "reset_behavior": {
-            "kind": "async-active-low",
-            "value": "0",
-            "domain": "noc_rst_ni"
-          },
-          "presence": null,
-          "width_expr": null
-        },
-        {
-          "width_param": null,
-          "direction": "input",
-          "default": "1",
-          "pin_name": "noc_rsp_credit_init_ready_i",
           "reset_behavior": {
             "kind": "external_driven"
           },
