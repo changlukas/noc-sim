@@ -124,17 +124,32 @@ def test_payload_field_position(packet_spec):
 
 
 # -- derived totals -------------------------------------------------
-# Tests target the `*_resolved` helpers introduced in PP-2. PP-3 will switch
-# generators over to them; PP-6 will drop the legacy thin getters that still
-# read from `flit.derived`.
+# PP-6: flit.derived no longer exists in JSON. These tests now assert
+# self-consistency between the resolved helpers and the symbolic source
+# (field_widths + width_param + per-channel payload_width). When the spec
+# numbers change, these assertions remain valid by construction.
 
-def test_header_width(packet_spec):
-    assert C.header_width_resolved(packet_spec) == packet_spec["flit"]["derived"]["HEADER_WIDTH"]
+def test_header_width_is_sum_of_field_widths(packet_spec):
+    """header_width_resolved == sum of every header field's resolved width."""
+    expected = sum(C.header_field_width(packet_spec, f["name"])
+                   for f in packet_spec["flit"]["header_fields"])
+    assert C.header_width_resolved(packet_spec) == expected
 
 
-def test_payload_width(packet_spec):
-    assert C.payload_width_resolved(packet_spec) == packet_spec["flit"]["derived"]["PAYLOAD_WIDTH"]
+def test_payload_width_is_max_of_channel_widths(packet_spec):
+    """payload_width_resolved == max authored payload_width across channels."""
+    expected = max(C.payload_channel_width(packet_spec, ch["name"])
+                   for ch in packet_spec["flit"]["payload_channels"])
+    assert C.payload_width_resolved(packet_spec) == expected
 
 
-def test_flit_width(packet_spec):
-    assert C.flit_width_resolved(packet_spec) == packet_spec["flit"]["derived"]["FLIT_WIDTH"]
+def test_flit_width_is_header_plus_payload(packet_spec):
+    """flit_width_resolved == header_width_resolved + payload_width_resolved."""
+    assert (C.flit_width_resolved(packet_spec)
+            == C.header_width_resolved(packet_spec)
+               + C.payload_width_resolved(packet_spec))
+
+
+def test_link_width_is_flit_width_plus_valid_bit(packet_spec):
+    """LINK_WIDTH == FLIT_WIDTH + 1 (the valid signal). Per packet_format.md:112."""
+    assert C.link_width_resolved(packet_spec) == C.flit_width_resolved(packet_spec) + 1

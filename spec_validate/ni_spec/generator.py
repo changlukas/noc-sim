@@ -141,9 +141,6 @@ def parse_header_fields(md_text: str) -> List[dict]:
             field: dict = {
                 "name": name,
                 "width_param": cells[i_wp],
-                "width": 0,
-                "lsb": None,
-                "msb": None,
             }
             field["enabled"] = enabled
             result.append(field)
@@ -152,13 +149,12 @@ def parse_header_fields(md_text: str) -> List[dict]:
         rng = _parse_bit_range(rng_cell)
         if rng is None:
             continue
-        lsb, msb = rng
+        # Bit range parsed only to validate the row; positions are computed
+        # on-the-fly by constants.header_field_position. Per PP-6 the JSON is
+        # purely symbolic — width/lsb/msb are derived, not authored.
         field = {
             "name": name,
             "width_param": cells[i_wp],
-            "width": msb - lsb + 1,
-            "lsb": lsb,
-            "msb": msb,
         }
         field["enabled"] = enabled
         result.append(field)
@@ -182,6 +178,7 @@ def _parse_payload_section(md_text: str, section_re: str, channel_name: str) -> 
     if None in (i_name, i_wp, i_rng):
         return None
     fields = []
+    max_msb = -1
     for cells in rows:
         if max(i_name, i_wp, i_rng) >= len(cells):
             continue
@@ -190,20 +187,24 @@ def _parse_payload_section(md_text: str, section_re: str, channel_name: str) -> 
         if not name or rng is None:
             continue
         lsb, msb = rng
+        if msb > max_msb:
+            max_msb = msb
         wp = cells[i_wp]
-        # "derived (3)" → 規一化為 "derived"，width 由 bit range 推
+        # "derived (3)" → 規一化為 "derived"，width 由 channel.payload_width
+        # 與其他 field 之和推得（payload_field_width helper 處理）
         if wp.startswith("derived"):
             wp = "derived"
+        # PP-6: per-field width/lsb/msb are derived. JSON keeps only the
+        # symbolic (name, width_param) pair; helpers compute positions.
         fields.append({
             "name": name,
             "width_param": wp,
-            "width": msb - lsb + 1,
-            "lsb": lsb,
-            "msb": msb,
         })
     if not fields:
         return None
-    payload_width = max(f["msb"] for f in fields) + 1
+    # Per-channel payload_width stays in JSON — it is authored metadata
+    # (set by the spec author per AXI channel), not a derived quantity.
+    payload_width = max_msb + 1
     return {
         "name": channel_name,
         "network": _CHANNEL_TO_NETWORK[channel_name],
@@ -316,6 +317,11 @@ def generate_ni_packet_json(md_dir: Union[str, Path]) -> dict:
         raise FileNotFoundError(f"找不到 {md_path}")
     md_text = md_path.read_text(encoding="utf-8")
 
+    # PP-6: flit.derived is dropped from JSON. Resolved totals (HEADER_WIDTH,
+    # FLIT_WIDTH, LINK_WIDTH, etc.) are computed on demand by
+    # ni_spec.constants.*_resolved helpers — JSON is purely symbolic.
+    # parse_derived(md_text) is still used by signal namespace builder
+    # (_build_params_namespace) to seed AXI parameter widths.
     return {
         "$schema_version": "ni-spec/2.0",
         "meta": {
@@ -326,7 +332,6 @@ def generate_ni_packet_json(md_dir: Union[str, Path]) -> dict:
             "field_widths": parse_field_widths(md_text),
             "header_fields": parse_header_fields(md_text),
             "payload_channels": parse_payload_channels(md_text),
-            "derived": parse_derived(md_text),
             "route_par_coverage": ["dst_id", "last"],
         },
     }

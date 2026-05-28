@@ -37,97 +37,61 @@
       {
         "name": "noc_qos",
         "width_param": "NOC_QOS_WIDTH",
-        "width": 0,
-        "lsb": null,
-        "msb": null,
         "enabled": true
       },
       {
         "name": "axi_ch",
         "width_param": "AXI_CH_WIDTH",
-        "width": 3,
-        "lsb": 0,
-        "msb": 2,
         "enabled": true
       },
       {
         "name": "src_id",
         "width_param": "X_WIDTH + Y_WIDTH",
-        "width": 8,
-        "lsb": 3,
-        "msb": 10,
         "enabled": true
       },
       {
         "name": "dst_id",
         "width_param": "X_WIDTH + Y_WIDTH",
-        "width": 8,
-        "lsb": 11,
-        "msb": 18,
         "enabled": true
       },
       {
         "name": "vc_id",
         "width_param": "VC_ID_WIDTH",
-        "width": 3,
-        "lsb": 19,
-        "msb": 21,
         "enabled": true
       },
       {
         "name": "route_par",
         "width_param": "ROUTE_PAR_WIDTH",
-        "width": 1,
-        "lsb": 22,
-        "msb": 22,
         "enabled": false
       },
       {
         "name": "last",
         "width_param": "LAST_WIDTH",
-        "width": 1,
-        "lsb": 23,
-        "msb": 23,
         "enabled": true
       },
       {
         "name": "rob_req",
         "width_param": "ROB_REQ_WIDTH",
-        "width": 1,
-        "lsb": 24,
-        "msb": 24,
         "enabled": true
       },
       {
         "name": "rob_idx",
         "width_param": "ROB_IDX_WIDTH",
-        "width": 5,
-        "lsb": 25,
-        "msb": 29,
         "enabled": true
       },
       {
         "name": "rsvd_commtype",
         "width_param": "RSVD_COMMTYPE_WIDTH",
-        "width": 2,
-        "lsb": 30,
-        "msb": 31,
         "enabled": false
       },
       {
         "name": "multicast",
         "width_param": "MULTICAST_WIDTH",
-        "width": 8,
-        "lsb": 32,
-        "msb": 39,
         "enabled": false
       },
       {
         "name": "flit_ecc",
         "width_param": "FLIT_ECC_WIDTH",
-        "width": 10,
-        "lsb": 40,
-        "msb": 49,
         "enabled": false
       }
     ],
@@ -139,80 +103,47 @@
         "fields": [
           {
             "name": "awid",
-            "width_param": "AXI_ID_WIDTH",
-            "width": 8,
-            "lsb": 0,
-            "msb": 7
+            "width_param": "AXI_ID_WIDTH"
           },
           {
             "name": "awaddr",
-            "width_param": "AXI_ADDR_WIDTH",
-            "width": 64,
-            "lsb": 8,
-            "msb": 71
+            "width_param": "AXI_ADDR_WIDTH"
           },
           {
             "name": "awlen",
-            "width_param": "AXI_LEN_WIDTH",
-            "width": 8,
-            "lsb": 72,
-            "msb": 79
+            "width_param": "AXI_LEN_WIDTH"
           },
           {
             "name": "awsize",
-            "width_param": "AXI_SIZE_WIDTH",
-            "width": 3,
-            "lsb": 80,
-            "msb": 82
+            "width_param": "AXI_SIZE_WIDTH"
           },
           {
             "name": "awburst",
-            "width_param": "AXI_BURST_WIDTH",
-            "width": 2,
-            "lsb": 83,
-            "msb": 84
+            "width_param": "AXI_BURST_WIDTH"
           },
           {
             "name": "awcache",
-            "width_param": "AXI_CACHE_WIDTH",
-            "width": 4,
-            "lsb": 85,
-            "msb": 88
+            "width_param": "AXI_CACHE_WIDTH"
           },
           {
             "name": "awlock",
-            "width_param": "AXI_LOCK_WIDTH",
-            "width": 1,
-            "lsb": 89,
-            "msb": 89
+            "width_param": "AXI_LOCK_WIDTH"
           },
           {
             "name": "awprot",
-            "width_param": "AXI_PROT_WIDTH",
-            "width": 3,
-            "lsb": 90,
-            "msb": 92
+            "width_param": "AXI_PROT_WIDTH"
           },
           {
             "name": "awregion",
-            "width_param": "AXI_REGION_WIDTH",
-            "width": 4,
-            "lsb": 93,
-            "msb": 96
+            "width_param": "AXI_REGION_WIDTH"
           },
           {
             "name": "awuser",
-            "width_param": "AXI_USER_WIDTH",
-            "width": 8,
-            "lsb": 97,
-            "msb": 104
+            "width_param": "AXI_USER_WIDTH"
           },
           {
             "name": "aw_rsvd",
-            "width_param": "derived",
-            "width": 3,
-            "lsb": 105,
-            "msb": 107
+            "width_param": "derived"
           }
         ]
       },
@@ -223,80 +154,47 @@
         "fields": [
           {
             "name": "arid",
-            "width_param": "AXI_ID_WIDTH",
-            "width": 8,
-            "lsb": 0,
-            "msb": 7
+            "width_param": "AXI_ID_WIDTH"
           },
           {
             "name": "araddr",
-            "width_param": "AXI_ADDR_WIDTH",
-            "width": 64,
-            "lsb": 8,
-            "msb": 71
+            "width_param": "AXI_ADDR_WIDTH"
           },
           {
             "name": "arlen",
-            "width_param": "AXI_LEN_WIDTH",
-            "width": 8,
-            "lsb": 72,
-            "msb": 79
+            "width_param": "AXI_LEN_WIDTH"
           },
           {
             "name": "arsize",
-            "width_param": "AXI_SIZE_WIDTH",
-            "width": 3,
-            "lsb": 80,
-            "msb": 82
+            "width_param": "AXI_SIZE_WIDTH"
           },
           {
             "name": "arburst",
-            "width_param": "AXI_BURST_WIDTH",
-            "width": 2,
-            "lsb": 83,
-            "msb": 84
+            "width_param": "AXI_BURST_WIDTH"
           },
           {
             "name": "arcache",
-            "width_param": "AXI_CACHE_WIDTH",
-            "width": 4,
-            "lsb": 85,
-            "msb": 88
+            "width_param": "AXI_CACHE_WIDTH"
           },
           {
             "name": "arlock",
-            "width_param": "AXI_LOCK_WIDTH",
-            "width": 1,
-            "lsb": 89,
-            "msb": 89
+            "width_param": "AXI_LOCK_WIDTH"
           },
           {
             "name": "arprot",
-            "width_param": "AXI_PROT_WIDTH",
-            "width": 3,
-            "lsb": 90,
-            "msb": 92
+            "width_param": "AXI_PROT_WIDTH"
           },
           {
             "name": "arregion",
-            "width_param": "AXI_REGION_WIDTH",
-            "width": 4,
-            "lsb": 93,
-            "msb": 96
+            "width_param": "AXI_REGION_WIDTH"
           },
           {
             "name": "aruser",
-            "width_param": "AXI_USER_WIDTH",
-            "width": 8,
-            "lsb": 97,
-            "msb": 104
+            "width_param": "AXI_USER_WIDTH"
           },
           {
             "name": "ar_rsvd",
-            "width_param": "derived",
-            "width": 3,
-            "lsb": 105,
-            "msb": 107
+            "width_param": "derived"
           }
         ]
       },
@@ -307,38 +205,23 @@
         "fields": [
           {
             "name": "wlast",
-            "width_param": "AXI_LAST_WIDTH",
-            "width": 1,
-            "lsb": 0,
-            "msb": 0
+            "width_param": "AXI_LAST_WIDTH"
           },
           {
             "name": "wuser",
-            "width_param": "AXI_USER_WIDTH",
-            "width": 8,
-            "lsb": 1,
-            "msb": 8
+            "width_param": "AXI_USER_WIDTH"
           },
           {
             "name": "wdata",
-            "width_param": "NOC_DATA_WIDTH",
-            "width": 256,
-            "lsb": 9,
-            "msb": 264
+            "width_param": "NOC_DATA_WIDTH"
           },
           {
             "name": "wstrb",
-            "width_param": "WSTRB_WIDTH",
-            "width": 32,
-            "lsb": 265,
-            "msb": 296
+            "width_param": "WSTRB_WIDTH"
           },
           {
             "name": "w_rsvd",
-            "width_param": "derived",
-            "width": 55,
-            "lsb": 297,
-            "msb": 351
+            "width_param": "derived"
           }
         ]
       },
@@ -349,38 +232,23 @@
         "fields": [
           {
             "name": "bid",
-            "width_param": "AXI_ID_WIDTH",
-            "width": 8,
-            "lsb": 0,
-            "msb": 7
+            "width_param": "AXI_ID_WIDTH"
           },
           {
             "name": "bresp",
-            "width_param": "AXI_RESP_WIDTH",
-            "width": 2,
-            "lsb": 8,
-            "msb": 9
+            "width_param": "AXI_RESP_WIDTH"
           },
           {
             "name": "buser",
-            "width_param": "AXI_USER_WIDTH",
-            "width": 8,
-            "lsb": 10,
-            "msb": 17
+            "width_param": "AXI_USER_WIDTH"
           },
           {
             "name": "rsvd_mc_status",
-            "width_param": "RSVD_MC_STATUS_WIDTH",
-            "width": 2,
-            "lsb": 18,
-            "msb": 19
+            "width_param": "RSVD_MC_STATUS_WIDTH"
           },
           {
             "name": "b_rsvd",
-            "width_param": "derived",
-            "width": 44,
-            "lsb": 20,
-            "msb": 63
+            "width_param": "derived"
           }
         ]
       },
@@ -391,58 +259,31 @@
         "fields": [
           {
             "name": "rlast",
-            "width_param": "AXI_LAST_WIDTH",
-            "width": 1,
-            "lsb": 0,
-            "msb": 0
+            "width_param": "AXI_LAST_WIDTH"
           },
           {
             "name": "rid",
-            "width_param": "AXI_ID_WIDTH",
-            "width": 8,
-            "lsb": 1,
-            "msb": 8
+            "width_param": "AXI_ID_WIDTH"
           },
           {
             "name": "rresp",
-            "width_param": "AXI_RESP_WIDTH",
-            "width": 2,
-            "lsb": 9,
-            "msb": 10
+            "width_param": "AXI_RESP_WIDTH"
           },
           {
             "name": "ruser",
-            "width_param": "AXI_USER_WIDTH",
-            "width": 8,
-            "lsb": 11,
-            "msb": 18
+            "width_param": "AXI_USER_WIDTH"
           },
           {
             "name": "rdata",
-            "width_param": "NOC_DATA_WIDTH",
-            "width": 256,
-            "lsb": 19,
-            "msb": 274
+            "width_param": "NOC_DATA_WIDTH"
           },
           {
             "name": "r_rsvd",
-            "width_param": "derived",
-            "width": 77,
-            "lsb": 275,
-            "msb": 351
+            "width_param": "derived"
           }
         ]
       }
     ],
-    "derived": {
-      "WSTRB_WIDTH": 32,
-      "HEADER_WIDTH": 50,
-      "HEADER_DATA_WIDTH": 40,
-      "PAYLOAD_WIDTH": 352,
-      "FLIT_DATA_WIDTH": 392,
-      "FLIT_WIDTH": 402,
-      "LINK_WIDTH": 403
-    },
     "route_par_coverage": [
       "dst_id",
       "last"

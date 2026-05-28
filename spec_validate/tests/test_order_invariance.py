@@ -47,12 +47,19 @@ def test_field_widths_declaration_order_preserved_in_header():
 
 
 def test_header_fields_declaration_order_preserved():
-    """Header fields (DST_ID_LSB, SRC_ID_LSB, ...) must appear in declaration order."""
+    """Header fields (DST_ID_LSB, SRC_ID_LSB, ...) must appear in declaration order.
+
+    Width-0 fields (e.g. noc_qos when NOC_QOS_WIDTH=0) are skipped because the
+    elaborator does not emit _LSB / _MSB constants for them (not bit-addressable).
+    Width is resolved via constants.header_field_width since PP-6 dropped the
+    pre-computed ``width`` key from each header_fields entry.
+    """
+    from ni_spec import constants as C
     spec = json.loads(JSON_PATH.read_text(encoding="utf-8"))
     text = HEADER_PATH.read_text(encoding="utf-8")
     lsb_order = re.findall(r"constexpr\s+int\s+(\w+)_LSB\s*=", text)
     expected = []
     for f in spec["flit"]["header_fields"]:
-        if f.get("width", 1) != 0:
+        if C.header_field_width(spec, f["name"]) != 0:
             expected.append(f["name"].upper())
     assert lsb_order == expected

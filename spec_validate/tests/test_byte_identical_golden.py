@@ -14,9 +14,25 @@ SPEC_VALIDATE = Path(__file__).resolve().parent.parent
 GOLDEN_DIR    = Path(__file__).resolve().parent / "golden"
 
 
-def _strip_timestamp(text: str) -> str:
-    """Remove the 'Generated at: <UTC>' line (only line that varies between regens)."""
-    return re.sub(r"^//\s*Generated at:.*$\n?", "", text, flags=re.MULTILINE)
+def _strip_provenance(text: str) -> str:
+    """Remove provenance metadata that varies independently of elaborated content.
+
+    Strips:
+      - ``// Generated at: <UTC>``    (re-runs change the timestamp)
+      - ``// Source SHA: <hash>``     (JSON content evolves as the spec
+                                       schema is normalised, e.g. PP-6 drops
+                                       resolved fields; the body is unchanged)
+
+    The intent of these goldens is to gate the *elaborated* artifact body,
+    not the provenance banner which is metadata about the upstream JSON.
+    """
+    text = re.sub(r"^//\s*Generated at:.*$\n?", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^//\s*Source SHA:.*$\n?",   "", text, flags=re.MULTILINE)
+    return text
+
+
+# Backwards-compatible alias (was the public name before PP-6).
+_strip_timestamp = _strip_provenance
 
 
 def _regen(target: str, domain: str, out_dir: Path) -> str:
