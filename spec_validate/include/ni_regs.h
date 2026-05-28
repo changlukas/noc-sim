@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_registers.json
 // Source SHA: 05cc59c20bff
 // Generator version: v1.0.0
-// Generated at: 2026-05-28T03:57:01Z
+// Generated at: 2026-05-28T04:05:42Z
 // ----------------------------------------------------------------------------
 #pragma once
 #include <cstdint>
@@ -59,38 +59,40 @@ constexpr int QUIESCE_CTRL_QUIESCE_REQ_MASK = 0x1;
 constexpr int QUIESCE_STATUS_QUIESCE_IDLE_MASK = 0x1;
 constexpr int EXCLUSIVE_MONITOR_CTRL_CLEAR_ALL_MASK = 0x1;
 
-// --- access mode enums (one per register) ---
-enum class PKT_PROBE_ENAccess { RW };
-enum class PKT_PROBE_MODEAccess { RW };
-enum class PKT_WINDOW_SIZEAccess { RW };
-enum class PKT_BYTE_COUNTAccess { RO };
-enum class PKT_BANDWIDTHAccess { RO };
-enum class TXN_PROBE_ENAccess { RW };
-enum class TXN_THRESHOLD_0Access { RW };
-enum class TXN_THRESHOLD_1Access { RW };
-enum class TXN_THRESHOLD_2Access { RW };
-enum class TXN_THRESHOLD_3Access { RW };
-enum class TXN_BIN_0_COUNTAccess { RO };
-enum class TXN_BIN_1_COUNTAccess { RO };
-enum class TXN_BIN_2_COUNTAccess { RO };
-enum class TXN_BIN_3_COUNTAccess { RO };
-enum class TXN_BIN_4_COUNTAccess { RO };
-enum class TXN_MIN_LATENCYAccess { RO };
-enum class TXN_MAX_LATENCYAccess { RO };
-enum class TXN_TOTAL_COUNTAccess { RO };
-enum class ERR_STATUSAccess { RW1C };
-enum class ECC_UNCORR_ERR_CNTAccess { RO };
-enum class LAST_ERR_INFOAccess { RO };
-enum class IRQ_ENABLEAccess { RW };
-enum class ECC_CORR_ERR_CNTAccess { RO };
-enum class ROUTE_PAR_ERR_CNTAccess { RO };
-enum class AXI_PARITY_ERR_CNTAccess { RO };
-enum class PENDING_R_COUNTAccess { RO };
-enum class PENDING_W_COUNTAccess { RO };
-enum class QUIESCE_CTRLAccess { RW };
-enum class QUIESCE_STATUSAccess { RO };
-enum class EXCLUSIVE_MONITOR_CTRLAccess { WO };
-enum class EXCLUSIVE_MONITOR_STATUSAccess { RO };
+// --- access mode enum + per-register constexpr ---
+enum class AccessMode { RO, RW, RW1C, WO };
+
+constexpr AccessMode PKT_PROBE_EN_ACCESS = AccessMode::RW;
+constexpr AccessMode PKT_PROBE_MODE_ACCESS = AccessMode::RW;
+constexpr AccessMode PKT_WINDOW_SIZE_ACCESS = AccessMode::RW;
+constexpr AccessMode PKT_BYTE_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode PKT_BANDWIDTH_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_PROBE_EN_ACCESS = AccessMode::RW;
+constexpr AccessMode TXN_THRESHOLD_0_ACCESS = AccessMode::RW;
+constexpr AccessMode TXN_THRESHOLD_1_ACCESS = AccessMode::RW;
+constexpr AccessMode TXN_THRESHOLD_2_ACCESS = AccessMode::RW;
+constexpr AccessMode TXN_THRESHOLD_3_ACCESS = AccessMode::RW;
+constexpr AccessMode TXN_BIN_0_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_BIN_1_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_BIN_2_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_BIN_3_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_BIN_4_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_MIN_LATENCY_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_MAX_LATENCY_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_TOTAL_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode ERR_STATUS_ACCESS = AccessMode::RW1C;
+constexpr AccessMode ECC_UNCORR_ERR_CNT_ACCESS = AccessMode::RO;
+constexpr AccessMode LAST_ERR_INFO_ACCESS = AccessMode::RO;
+constexpr AccessMode IRQ_ENABLE_ACCESS = AccessMode::RW;
+constexpr AccessMode ECC_CORR_ERR_CNT_ACCESS = AccessMode::RO;
+constexpr AccessMode ROUTE_PAR_ERR_CNT_ACCESS = AccessMode::RO;
+constexpr AccessMode AXI_PARITY_ERR_CNT_ACCESS = AccessMode::RO;
+constexpr AccessMode PENDING_R_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode PENDING_W_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode QUIESCE_CTRL_ACCESS = AccessMode::RW;
+constexpr AccessMode QUIESCE_STATUS_ACCESS = AccessMode::RO;
+constexpr AccessMode EXCLUSIVE_MONITOR_CTRL_ACCESS = AccessMode::WO;
+constexpr AccessMode EXCLUSIVE_MONITOR_STATUS_ACCESS = AccessMode::RO;
 
 // --- static_assert: per-register field width sum <= data_width (design doc sec 6.4) ---
 static_assert(3 <= 32, "ERR_STATUS: field width sum (3) must be <= data_width (32)");

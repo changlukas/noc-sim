@@ -66,6 +66,29 @@ def _emit_all_offsets(spec) -> list[str]:
     return out
 
 
+def _emit_access_mode(spec) -> list[str]:
+    """Emit single AccessMode enum class + per-register constexpr <REG>_ACCESS.
+
+    Replaces the older shape (one single-value enum class per register). WC is
+    silently remapped to RW because no current register uses WC; the enum can
+    grow when a real consumer appears.
+    """
+    out: list[str] = []
+    out.append("// --- access mode enum + per-register constexpr ---")
+    out.append("enum class AccessMode { RO, RW, RW1C, WO };")
+    out.append("")
+    for r in spec.get("registers", []):
+        if r.get("kind") == "reserved":
+            continue
+        name = r["name"].upper()
+        access = r.get("access", "RW")
+        if access == "WC":
+            access = "RW"  # WC dropped from enum (no current consumer)
+        out.append(f"constexpr AccessMode {name}_ACCESS = AccessMode::{access};")
+    out.append("")
+    return out
+
+
 def _emit_csr_policy(spec) -> list[str]:
     """Emit csr_policy values as constexpr constants in ni::regs::csr_policy.
 
@@ -133,22 +156,8 @@ def emit(registers_json: Path, spec_version: str) -> str:
         out.append("// (No field mask definitions in this spec.)")
     out.append("")
 
-    # Access mode enums -- one per register with a defined access mode
-    out.append("// --- access mode enums (one per register) ---")
-    has_access = False
-    for reg in spec.get("registers", []):
-        if reg.get("kind") != "register":
-            continue
-        access = reg.get("access")
-        if not access:
-            continue
-        reg_ident = _to_identifier(reg["name"])
-        # Emit as a single-value enum class so the type carries semantics.
-        out.append(f"enum class {reg_ident}Access {{ {access} }};")
-        has_access = True
-    if not has_access:
-        out.append("// (No access mode enums in this spec.)")
-    out.append("")
+    # Access mode enum + per-register constexpr (single shared enum class).
+    out.extend(_emit_access_mode(spec))
 
     # --- static_assert: per-register field width sum <= data_width (design doc sec 6.4) ---
     # Only registers with both fields and a parseable width_expr are checked.

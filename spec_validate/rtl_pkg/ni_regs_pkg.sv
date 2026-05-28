@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_registers.json
 // Source SHA: 05cc59c20bff
 // Generator version: v1.0.0
-// Generated at: 2026-05-28T03:57:02Z
+// Generated at: 2026-05-28T04:05:43Z
 // ----------------------------------------------------------------------------
 `ifndef NI_REGS_PKG_SVH
 `define NI_REGS_PKG_SVH
@@ -56,6 +56,41 @@ package ni_regs_pkg;
   localparam int unsigned QUIESCE_CTRL_QUIESCE_REQ_MASK = 0x1;
   localparam int unsigned QUIESCE_STATUS_QUIESCE_IDLE_MASK = 0x1;
   localparam int unsigned EXCLUSIVE_MONITOR_CTRL_CLEAR_ALL_MASK = 0x1;
+
+  // --- access mode typedef + per-register localparam ---
+  typedef enum logic [1:0] { ACCESS_RO, ACCESS_RW, ACCESS_RW1C, ACCESS_WO } access_mode_e;
+
+  localparam access_mode_e PKT_PROBE_EN_ACCESS = ACCESS_RW;
+  localparam access_mode_e PKT_PROBE_MODE_ACCESS = ACCESS_RW;
+  localparam access_mode_e PKT_WINDOW_SIZE_ACCESS = ACCESS_RW;
+  localparam access_mode_e PKT_BYTE_COUNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e PKT_BANDWIDTH_ACCESS = ACCESS_RO;
+  localparam access_mode_e TXN_PROBE_EN_ACCESS = ACCESS_RW;
+  localparam access_mode_e TXN_THRESHOLD_0_ACCESS = ACCESS_RW;
+  localparam access_mode_e TXN_THRESHOLD_1_ACCESS = ACCESS_RW;
+  localparam access_mode_e TXN_THRESHOLD_2_ACCESS = ACCESS_RW;
+  localparam access_mode_e TXN_THRESHOLD_3_ACCESS = ACCESS_RW;
+  localparam access_mode_e TXN_BIN_0_COUNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e TXN_BIN_1_COUNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e TXN_BIN_2_COUNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e TXN_BIN_3_COUNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e TXN_BIN_4_COUNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e TXN_MIN_LATENCY_ACCESS = ACCESS_RO;
+  localparam access_mode_e TXN_MAX_LATENCY_ACCESS = ACCESS_RO;
+  localparam access_mode_e TXN_TOTAL_COUNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e ERR_STATUS_ACCESS = ACCESS_RW1C;
+  localparam access_mode_e ECC_UNCORR_ERR_CNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e LAST_ERR_INFO_ACCESS = ACCESS_RO;
+  localparam access_mode_e IRQ_ENABLE_ACCESS = ACCESS_RW;
+  localparam access_mode_e ECC_CORR_ERR_CNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e ROUTE_PAR_ERR_CNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e AXI_PARITY_ERR_CNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e PENDING_R_COUNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e PENDING_W_COUNT_ACCESS = ACCESS_RO;
+  localparam access_mode_e QUIESCE_CTRL_ACCESS = ACCESS_RW;
+  localparam access_mode_e QUIESCE_STATUS_ACCESS = ACCESS_RO;
+  localparam access_mode_e EXCLUSIVE_MONITOR_CTRL_ACCESS = ACCESS_WO;
+  localparam access_mode_e EXCLUSIVE_MONITOR_STATUS_ACCESS = ACCESS_RO;
 
   // --- per-register reset values ---
   localparam int unsigned PKT_PROBE_EN_RESET = 32'h0;

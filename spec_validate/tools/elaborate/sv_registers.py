@@ -46,6 +46,28 @@ def _emit_sv_per_reg_reset(spec) -> list[str]:
     return out
 
 
+def _emit_sv_access_mode(spec) -> list[str]:
+    """Emit access_mode_e typedef + per-register localparam <REG>_ACCESS.
+
+    First-time SV emission for access modes. WC is silently remapped to RW
+    because no current register uses WC; the typedef can grow when needed.
+    """
+    out: list[str] = []
+    out.append("  // --- access mode typedef + per-register localparam ---")
+    out.append("  typedef enum logic [1:0] { ACCESS_RO, ACCESS_RW, ACCESS_RW1C, ACCESS_WO } access_mode_e;")
+    out.append("")
+    for r in spec.get("registers", []):
+        if r.get("kind") == "reserved":
+            continue
+        name = r["name"].upper()
+        access = r.get("access", "RW")
+        if access == "WC":
+            access = "RW"
+        out.append(f"  localparam access_mode_e {name}_ACCESS = ACCESS_{access};")
+    out.append("")
+    return out
+
+
 def _emit_sv_all_offsets(spec) -> list[str]:
     """Emit ALL_OFFSETS[N] array enumerating every non-reserved register offset."""
     out: list[str] = []
@@ -104,6 +126,9 @@ def emit(registers_json: Path, spec_version: str) -> str:
     if not has_fields:
         out.append("  // (No field mask definitions in this spec.)")
     out.append("")
+
+    # Access mode typedef + per-register localparam (Phase X.3, first-time SV).
+    out.extend(_emit_sv_access_mode(spec))
 
     # Per-register reset values + ALL_OFFSETS array (Phase X.2).
     out.extend(_emit_sv_per_reg_reset(spec))

@@ -85,3 +85,18 @@ def test_all_offsets_array_elaborated():
     text = (Path(__file__).resolve().parent.parent / "include" / "ni_regs.h").read_text()
     assert "constexpr uint32_t ALL_OFFSETS[]" in text
     assert "constexpr std::size_t ALL_OFFSETS_COUNT" in text
+
+
+def test_access_mode_enum_class_emitted():
+    """ni_regs.h must expose enum class AccessMode { RO, RW, RW1C, WO } and
+    per-register <REG>_ACCESS constexpr instead of 30 single-value enum classes."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "include" / "ni_regs.h").read_text()
+    assert "enum class AccessMode { RO, RW, RW1C, WO };" in text, \
+        "missing single AccessMode enum class"
+    assert "constexpr AccessMode ERR_STATUS_ACCESS              = AccessMode::RW1C;" in text or \
+           "constexpr AccessMode ERR_STATUS_ACCESS = AccessMode::RW1C;" in text, \
+        "missing ERR_STATUS_ACCESS = RW1C"
+    assert "AccessMode::WO" in text, "missing WO usage (EXCLUSIVE_MONITOR_CTRL)"
+    assert "enum class ERR_STATUSAccess" not in text, \
+        "old per-reg single-value enum still present"

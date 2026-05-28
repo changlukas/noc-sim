@@ -300,3 +300,12 @@ class TestLintSv:
         assert "skip" in result.stderr.lower(), (
             f"Expected skip message.\nstderr: {result.stderr}"
         )
+
+
+def test_sv_access_mode_typedef_and_per_reg_emitted():
+    """ni_regs_pkg.sv must expose typedef access_mode_e + per-reg <REG>_ACCESS."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "rtl_pkg" / "ni_regs_pkg.sv").read_text()
+    assert "typedef enum logic [1:0] { ACCESS_RO, ACCESS_RW, ACCESS_RW1C, ACCESS_WO } access_mode_e;" in text, \
+        "missing access_mode_e typedef"
+    assert "localparam access_mode_e ERR_STATUS_ACCESS" in text and "ACCESS_RW1C" in text
