@@ -389,9 +389,8 @@ def flit_width_resolved(spec: dict) -> int:
 
 
 def link_width_resolved(spec: dict) -> int:
-    """Match current derived.LINK_WIDTH semantics.
-    Per packet_format.md, link_width includes ECC overhead."""
-    return flit_width_resolved(spec)
+    """LINK_WIDTH = FLIT_WIDTH + 1 (valid signal). Per spec/ni/doc/packet_format.md:112."""
+    return flit_width_resolved(spec) + 1
 
 
 def flit_data_width_resolved(spec: dict) -> int:

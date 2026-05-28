@@ -19,11 +19,13 @@ def _emit_padding_fields(spec) -> list[str]:
     out.append("struct PaddingFieldPos { const char* name; int lsb; int msb; };")
     entries = []
     for f in spec["flit"]["header_fields"]:
-        if f.get("enabled", True):
+        if C.header_field_enabled(spec, f["name"]):
             continue
-        if f.get("width", 1) == 0:
+        width = C.header_field_width(spec, f["name"])
+        if width == 0:
             continue
-        entries.append((f["name"], f.get("lsb"), f.get("msb")))
+        pos = C.header_field_position(spec, f["name"])
+        entries.append((f["name"], pos[0], pos[1]))
     out.append("constexpr PaddingFieldPos PADDING_FIELDS[] = {")
     if entries:
         out.append(",\n".join(
@@ -47,29 +49,33 @@ def emit(packet_json: Path, spec_version: str) -> str:
     out.append("")
 
     out.append("// --- top-level flit widths (from flit.derived) ---")
-    out.append(f"constexpr int FLIT_WIDTH        = {C.flit_width(spec)};")
-    out.append(f"constexpr int HEADER_WIDTH      = {C.header_width(spec)};")
-    out.append(f"constexpr int PAYLOAD_WIDTH     = {C.payload_width(spec)};")
-    out.append(f"constexpr int LINK_WIDTH        = {C.link_width(spec)};")
-    derived = spec["flit"]["derived"]
-    for k in ("FLIT_DATA_WIDTH", "HEADER_DATA_WIDTH", "WSTRB_WIDTH"):
-        if k in derived:
-            out.append(f"constexpr int {k:<15} = {derived[k]};")
+    out.append(f"constexpr int FLIT_WIDTH        = {C.flit_width_resolved(spec)};")
+    out.append(f"constexpr int HEADER_WIDTH      = {C.header_width_resolved(spec)};")
+    out.append(f"constexpr int PAYLOAD_WIDTH     = {C.payload_width_resolved(spec)};")
+    out.append(f"constexpr int LINK_WIDTH        = {C.link_width_resolved(spec)};")
+    for k, val in (
+        ("FLIT_DATA_WIDTH",   C.flit_data_width_resolved(spec)),
+        ("HEADER_DATA_WIDTH", C.header_data_width_resolved(spec)),
+        ("WSTRB_WIDTH",       C.wstrb_width_resolved(spec)),
+    ):
+        out.append(f"constexpr int {k:<15} = {val};")
     out.append("")
 
     out.append("// --- header field bit positions (from flit.header_fields) ---")
     out.append("namespace header {")
     for f in spec["flit"]["header_fields"]:
         n = f["name"].upper()
-        enabled_val = "true" if f.get("enabled", True) else "false"
-        if f.get("width", 1) == 0:
+        width = C.header_field_width(spec, f["name"])
+        enabled_val = "true" if C.header_field_enabled(spec, f["name"]) else "false"
+        if width == 0:
             # width=0 reserved placeholder: emit WIDTH=0 + ENABLED only; no LSB/MSB (field not bit-addressable)
             out.append(f"constexpr int  {n}_WIDTH   = 0;  // reserved placeholder (width=0 -- not in flit)")
             out.append(f"constexpr bool {n}_ENABLED = {enabled_val};")
         else:
-            out.append(f"constexpr int  {n}_LSB     = {f['lsb']};")
-            out.append(f"constexpr int  {n}_MSB     = {f['msb']};")
-            out.append(f"constexpr int  {n}_WIDTH   = {f['width']};")
+            pos = C.header_field_position(spec, f["name"])
+            out.append(f"constexpr int  {n}_LSB     = {pos[0]};")
+            out.append(f"constexpr int  {n}_MSB     = {pos[1]};")
+            out.append(f"constexpr int  {n}_WIDTH   = {width};")
             out.append(f"constexpr bool {n}_ENABLED = {enabled_val};")
     out.extend(_emit_padding_fields(spec))
     out.append("}  // namespace header")
@@ -78,7 +84,7 @@ def emit(packet_json: Path, spec_version: str) -> str:
     out.append("// --- payload widths per channel (from flit.payload_channels) ---")
     out.append("namespace payload {")
     for ch in spec["flit"]["payload_channels"]:
-        out.append(f"constexpr int {ch['name']}_WIDTH = {ch['payload_width']};")
+        out.append(f"constexpr int {ch['name']}_WIDTH = {C.payload_channel_width(spec, ch['name'])};")
     out.append("}  // namespace payload")
     out.append("")
 
@@ -101,12 +107,12 @@ def emit(packet_json: Path, spec_version: str) -> str:
     # SECDED bound: 2^parity_bits >= data_bits + parity_bits + 1
     # flit_ecc covers FLIT_DATA_WIDTH data bits.
     # We compute the literal check in Python and emit a compile-time boolean constant assertion.
-    flit_data = derived.get("FLIT_DATA_WIDTH")
+    flit_data = C.flit_data_width_resolved(spec)
     flit_ecc_w = None
-    for f in spec["flit"]["header_fields"]:
-        if f["name"] == "flit_ecc":
-            flit_ecc_w = f["width"]
-            break
+    try:
+        flit_ecc_w = C.header_field_width(spec, "flit_ecc")
+    except Exception:
+        flit_ecc_w = None
     if flit_data is not None and flit_ecc_w is not None:
         # Emit using header:: qualified name so the constant is in scope.
         out.append(

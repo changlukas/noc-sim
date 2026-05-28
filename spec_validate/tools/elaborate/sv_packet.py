@@ -27,34 +27,38 @@ def emit(packet_json: Path, spec_version: str) -> str:
     out.append("")
 
     out.append("  // --- top-level flit widths (from flit.derived) ---")
-    out.append(f"  localparam int unsigned FLIT_WIDTH        = {C.flit_width(spec)};")
-    out.append(f"  localparam int unsigned HEADER_WIDTH      = {C.header_width(spec)};")
-    out.append(f"  localparam int unsigned PAYLOAD_WIDTH     = {C.payload_width(spec)};")
-    out.append(f"  localparam int unsigned LINK_WIDTH        = {C.link_width(spec)};")
-    derived = spec["flit"]["derived"]
-    for k in ("FLIT_DATA_WIDTH", "HEADER_DATA_WIDTH", "WSTRB_WIDTH"):
-        if k in derived:
-            out.append(f"  localparam int unsigned {k:<15} = {derived[k]};")
+    out.append(f"  localparam int unsigned FLIT_WIDTH        = {C.flit_width_resolved(spec)};")
+    out.append(f"  localparam int unsigned HEADER_WIDTH      = {C.header_width_resolved(spec)};")
+    out.append(f"  localparam int unsigned PAYLOAD_WIDTH     = {C.payload_width_resolved(spec)};")
+    out.append(f"  localparam int unsigned LINK_WIDTH        = {C.link_width_resolved(spec)};")
+    for k, val in (
+        ("FLIT_DATA_WIDTH",   C.flit_data_width_resolved(spec)),
+        ("HEADER_DATA_WIDTH", C.header_data_width_resolved(spec)),
+        ("WSTRB_WIDTH",       C.wstrb_width_resolved(spec)),
+    ):
+        out.append(f"  localparam int unsigned {k:<15} = {val};")
     out.append("")
 
     out.append("  // --- header field bit positions (from flit.header_fields) ---")
     for f in spec["flit"]["header_fields"]:
         n = f["name"].upper()
-        enabled_val = "1'b1" if f.get("enabled", True) else "1'b0"
-        if f.get("width", 1) == 0:
+        width = C.header_field_width(spec, f["name"])
+        enabled_val = "1'b1" if C.header_field_enabled(spec, f["name"]) else "1'b0"
+        if width == 0:
             # width=0 reserved placeholder: emit WIDTH=0 + ENABLED only; no LSB/MSB (field not bit-addressable)
             out.append(f"  localparam int unsigned {n}_WIDTH   = 0;  // reserved placeholder (width=0 -- not in flit)")
             out.append(f"  localparam bit          {n}_ENABLED = {enabled_val};")
         else:
-            out.append(f"  localparam int unsigned {n}_LSB     = {f['lsb']};")
-            out.append(f"  localparam int unsigned {n}_MSB     = {f['msb']};")
-            out.append(f"  localparam int unsigned {n}_WIDTH   = {f['width']};")
+            pos = C.header_field_position(spec, f["name"])
+            out.append(f"  localparam int unsigned {n}_LSB     = {pos[0]};")
+            out.append(f"  localparam int unsigned {n}_MSB     = {pos[1]};")
+            out.append(f"  localparam int unsigned {n}_WIDTH   = {width};")
             out.append(f"  localparam bit          {n}_ENABLED = {enabled_val};")
     out.append("")
 
     out.append("  // --- payload widths per channel (from flit.payload_channels) ---")
     for ch in spec["flit"]["payload_channels"]:
-        out.append(f"  localparam int unsigned {ch['name']}_WIDTH = {ch['payload_width']};")
+        out.append(f"  localparam int unsigned {ch['name']}_WIDTH = {C.payload_channel_width(spec, ch['name'])};")
     out.append("")
 
     out.append("  // --- all field widths (from flit.field_widths) ---")
