@@ -25,6 +25,47 @@ def _to_identifier(name: str) -> str:
     return s.upper()
 
 
+def _emit_per_reg_reset(spec) -> list[str]:
+    """Emit per-register reset values as constexpr uint32_t <REG>_RESET = N;.
+
+    Reserved rows (kind == "reserved") and rows with reset_expr == None are skipped.
+    """
+    out: list[str] = []
+    out.append("// --- per-register reset values ---")
+    for r in spec.get("registers", []):
+        if r.get("kind") == "reserved":
+            continue
+        if r.get("reset_expr") is None:
+            continue
+        name = r["name"].upper()
+        rst = r["reset_expr"]
+        try:
+            int_val = int(rst, 0)
+            rst_lit = f"0x{int_val:X}"
+        except (TypeError, ValueError):
+            rst_lit = rst
+        out.append(f"constexpr uint32_t {name}_RESET = {rst_lit};")
+    out.append("")
+    return out
+
+
+def _emit_all_offsets(spec) -> list[str]:
+    """Emit ALL_OFFSETS[] array enumerating every non-reserved register offset."""
+    out: list[str] = []
+    out.append("// --- ALL_OFFSETS array (excludes reserved rows) ---")
+    offsets: list[str] = []
+    for r in spec.get("registers", []):
+        if r.get("kind") == "reserved":
+            continue
+        offsets.append(f"  {r['name'].upper()}_OFFSET")
+    out.append("constexpr uint32_t ALL_OFFSETS[] = {")
+    out.append(",\n".join(offsets))
+    out.append("};")
+    out.append(f"constexpr std::size_t ALL_OFFSETS_COUNT = {len(offsets)};")
+    out.append("")
+    return out
+
+
 def _emit_csr_policy(spec) -> list[str]:
     """Emit csr_policy values as constexpr constants in ni::regs::csr_policy.
 
@@ -57,6 +98,7 @@ def emit(registers_json: Path, spec_version: str) -> str:
     out: list[str] = []
     out.append("#pragma once")
     out.append("#include <cstdint>")
+    out.append("#include <cstddef>")
     out.append("")
     out.append("namespace ni {")
     out.append("namespace regs {")
@@ -147,6 +189,10 @@ def emit(registers_json: Path, spec_version: str) -> str:
     if not any_assert:
         out.append("// (No per-register field width assertions applicable in this spec.)")
     out.append("")
+
+    # Per-register reset values + ALL_OFFSETS array (Phase X.2).
+    out.extend(_emit_per_reg_reset(spec))
+    out.extend(_emit_all_offsets(spec))
 
     # csr_policy constants -- consumed by c_model RegisterFile to avoid hardcoding spec values.
     out.extend(_emit_csr_policy(spec))

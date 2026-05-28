@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_registers.json
 // Source SHA: 05cc59c20bff
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T06:13:02Z
+// Generated at: 2026-05-28T03:57:02Z
 // ----------------------------------------------------------------------------
 `ifndef NI_REGS_PKG_SVH
 `define NI_REGS_PKG_SVH
@@ -56,6 +56,75 @@ package ni_regs_pkg;
   localparam int unsigned QUIESCE_CTRL_QUIESCE_REQ_MASK = 0x1;
   localparam int unsigned QUIESCE_STATUS_QUIESCE_IDLE_MASK = 0x1;
   localparam int unsigned EXCLUSIVE_MONITOR_CTRL_CLEAR_ALL_MASK = 0x1;
+
+  // --- per-register reset values ---
+  localparam int unsigned PKT_PROBE_EN_RESET = 32'h0;
+  localparam int unsigned PKT_PROBE_MODE_RESET = 32'h0;
+  localparam int unsigned PKT_WINDOW_SIZE_RESET = 32'h0;
+  localparam int unsigned PKT_BYTE_COUNT_RESET = 32'h0;
+  localparam int unsigned PKT_BANDWIDTH_RESET = 32'h0;
+  localparam int unsigned TXN_PROBE_EN_RESET = 32'h0;
+  localparam int unsigned TXN_THRESHOLD_0_RESET = 32'h0;
+  localparam int unsigned TXN_THRESHOLD_1_RESET = 32'h0;
+  localparam int unsigned TXN_THRESHOLD_2_RESET = 32'h0;
+  localparam int unsigned TXN_THRESHOLD_3_RESET = 32'h0;
+  localparam int unsigned TXN_BIN_0_COUNT_RESET = 32'h0;
+  localparam int unsigned TXN_BIN_1_COUNT_RESET = 32'h0;
+  localparam int unsigned TXN_BIN_2_COUNT_RESET = 32'h0;
+  localparam int unsigned TXN_BIN_3_COUNT_RESET = 32'h0;
+  localparam int unsigned TXN_BIN_4_COUNT_RESET = 32'h0;
+  localparam int unsigned TXN_MIN_LATENCY_RESET = 32'hFFFF;
+  localparam int unsigned TXN_MAX_LATENCY_RESET = 32'h0;
+  localparam int unsigned TXN_TOTAL_COUNT_RESET = 32'h0;
+  localparam int unsigned ERR_STATUS_RESET = 32'h0;
+  localparam int unsigned ECC_UNCORR_ERR_CNT_RESET = 32'h0;
+  localparam int unsigned LAST_ERR_INFO_RESET = 32'h0;
+  localparam int unsigned IRQ_ENABLE_RESET = 32'h0;
+  localparam int unsigned ECC_CORR_ERR_CNT_RESET = 32'h0;
+  localparam int unsigned ROUTE_PAR_ERR_CNT_RESET = 32'h0;
+  localparam int unsigned AXI_PARITY_ERR_CNT_RESET = 32'h0;
+  localparam int unsigned PENDING_R_COUNT_RESET = 32'h0;
+  localparam int unsigned PENDING_W_COUNT_RESET = 32'h0;
+  localparam int unsigned QUIESCE_CTRL_RESET = 32'h0;
+  localparam int unsigned QUIESCE_STATUS_RESET = 32'h0;
+  localparam int unsigned EXCLUSIVE_MONITOR_CTRL_RESET = 32'h0;
+  localparam int unsigned EXCLUSIVE_MONITOR_STATUS_RESET = 32'h0;
+
+  // --- ALL_OFFSETS array (excludes reserved rows) ---
+  localparam int unsigned ALL_OFFSETS [31] = '{
+    PKT_PROBE_EN_OFFSET,
+    PKT_PROBE_MODE_OFFSET,
+    PKT_WINDOW_SIZE_OFFSET,
+    PKT_BYTE_COUNT_OFFSET,
+    PKT_BANDWIDTH_OFFSET,
+    TXN_PROBE_EN_OFFSET,
+    TXN_THRESHOLD_0_OFFSET,
+    TXN_THRESHOLD_1_OFFSET,
+    TXN_THRESHOLD_2_OFFSET,
+    TXN_THRESHOLD_3_OFFSET,
+    TXN_BIN_0_COUNT_OFFSET,
+    TXN_BIN_1_COUNT_OFFSET,
+    TXN_BIN_2_COUNT_OFFSET,
+    TXN_BIN_3_COUNT_OFFSET,
+    TXN_BIN_4_COUNT_OFFSET,
+    TXN_MIN_LATENCY_OFFSET,
+    TXN_MAX_LATENCY_OFFSET,
+    TXN_TOTAL_COUNT_OFFSET,
+    ERR_STATUS_OFFSET,
+    ECC_UNCORR_ERR_CNT_OFFSET,
+    LAST_ERR_INFO_OFFSET,
+    IRQ_ENABLE_OFFSET,
+    ECC_CORR_ERR_CNT_OFFSET,
+    ROUTE_PAR_ERR_CNT_OFFSET,
+    AXI_PARITY_ERR_CNT_OFFSET,
+    PENDING_R_COUNT_OFFSET,
+    PENDING_W_COUNT_OFFSET,
+    QUIESCE_CTRL_OFFSET,
+    QUIESCE_STATUS_OFFSET,
+    EXCLUSIVE_MONITOR_CTRL_OFFSET,
+    EXCLUSIVE_MONITOR_STATUS_OFFSET
+  };
+  localparam int unsigned ALL_OFFSETS_COUNT = 31;
 
 endpackage
 

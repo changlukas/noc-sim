@@ -24,6 +24,45 @@ def _to_identifier(name: str) -> str:
     return s.upper()
 
 
+def _emit_sv_per_reg_reset(spec) -> list[str]:
+    """Emit per-register reset values as localparam int unsigned <REG>_RESET = 32'hN;.
+
+    Reserved rows and rows with reset_expr == None are skipped.
+    """
+    out: list[str] = []
+    out.append("  // --- per-register reset values ---")
+    for r in spec.get("registers", []):
+        if r.get("kind") == "reserved" or r.get("reset_expr") is None:
+            continue
+        name = r["name"].upper()
+        rst = r["reset_expr"]
+        try:
+            int_val = int(rst, 0)
+            rst_lit = f"32'h{int_val:X}"
+        except (TypeError, ValueError):
+            rst_lit = rst
+        out.append(f"  localparam int unsigned {name}_RESET = {rst_lit};")
+    out.append("")
+    return out
+
+
+def _emit_sv_all_offsets(spec) -> list[str]:
+    """Emit ALL_OFFSETS[N] array enumerating every non-reserved register offset."""
+    out: list[str] = []
+    out.append("  // --- ALL_OFFSETS array (excludes reserved rows) ---")
+    offsets: list[str] = []
+    for r in spec.get("registers", []):
+        if r.get("kind") == "reserved":
+            continue
+        offsets.append(f"    {r['name'].upper()}_OFFSET")
+    out.append(f"  localparam int unsigned ALL_OFFSETS [{len(offsets)}] = '{{")
+    out.append(",\n".join(offsets))
+    out.append("  };")
+    out.append(f"  localparam int unsigned ALL_OFFSETS_COUNT = {len(offsets)};")
+    out.append("")
+    return out
+
+
 def emit(registers_json: Path, spec_version: str) -> str:
     """Return SV package body (no provenance banner -- caller prepends it)."""
     spec = load_doc(registers_json)
@@ -65,6 +104,10 @@ def emit(registers_json: Path, spec_version: str) -> str:
     if not has_fields:
         out.append("  // (No field mask definitions in this spec.)")
     out.append("")
+
+    # Per-register reset values + ALL_OFFSETS array (Phase X.2).
+    out.extend(_emit_sv_per_reg_reset(spec))
+    out.extend(_emit_sv_all_offsets(spec))
 
     out.append("endpackage")
     out.append("")

@@ -66,3 +66,22 @@ def test_csr_policy_elaborated_as_constexpr():
         body = body[:end_idx]
     for key in ("SUB_WORD_WRITE", "UNMAPPED_READ", "MISALIGNED", "WO_READ"):
         assert key in body, f"missing csr_policy elaboration: {key} (within namespace)"
+
+
+def test_per_register_reset_const_elaborated():
+    """ni_regs.h must expose <REG>_RESET constexpr per non-reserved register."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "include" / "ni_regs.h").read_text()
+    assert "constexpr uint32_t TXN_MIN_LATENCY_RESET = 0xFFFF" in text, \
+        "non-zero reset for TXN_MIN_LATENCY missing or wrong"
+    assert "constexpr uint32_t PKT_PROBE_EN_RESET = 0x0" in text or \
+           "constexpr uint32_t PKT_PROBE_EN_RESET = 0" in text, \
+        "zero reset for PKT_PROBE_EN missing"
+
+
+def test_all_offsets_array_elaborated():
+    """ni_regs.h must expose constexpr uint32_t ALL_OFFSETS[] and ALL_OFFSETS_COUNT."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "include" / "ni_regs.h").read_text()
+    assert "constexpr uint32_t ALL_OFFSETS[]" in text
+    assert "constexpr std::size_t ALL_OFFSETS_COUNT" in text

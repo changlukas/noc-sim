@@ -3,10 +3,11 @@
 // Source:    spec_validate/generated/ni_registers.json
 // Source SHA: 05cc59c20bff
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T11:49:05Z
+// Generated at: 2026-05-28T03:57:01Z
 // ----------------------------------------------------------------------------
 #pragma once
 #include <cstdint>
+#include <cstddef>
 
 namespace ni {
 namespace regs {
@@ -98,6 +99,75 @@ static_assert(3 <= 32, "IRQ_ENABLE: field width sum (3) must be <= data_width (3
 static_assert(1 <= 32, "QUIESCE_CTRL: field width sum (1) must be <= data_width (32)");
 static_assert(1 <= 32, "QUIESCE_STATUS: field width sum (1) must be <= data_width (32)");
 static_assert(1 <= 32, "EXCLUSIVE_MONITOR_CTRL: field width sum (1) must be <= data_width (32)");
+
+// --- per-register reset values ---
+constexpr uint32_t PKT_PROBE_EN_RESET = 0x0;
+constexpr uint32_t PKT_PROBE_MODE_RESET = 0x0;
+constexpr uint32_t PKT_WINDOW_SIZE_RESET = 0x0;
+constexpr uint32_t PKT_BYTE_COUNT_RESET = 0x0;
+constexpr uint32_t PKT_BANDWIDTH_RESET = 0x0;
+constexpr uint32_t TXN_PROBE_EN_RESET = 0x0;
+constexpr uint32_t TXN_THRESHOLD_0_RESET = 0x0;
+constexpr uint32_t TXN_THRESHOLD_1_RESET = 0x0;
+constexpr uint32_t TXN_THRESHOLD_2_RESET = 0x0;
+constexpr uint32_t TXN_THRESHOLD_3_RESET = 0x0;
+constexpr uint32_t TXN_BIN_0_COUNT_RESET = 0x0;
+constexpr uint32_t TXN_BIN_1_COUNT_RESET = 0x0;
+constexpr uint32_t TXN_BIN_2_COUNT_RESET = 0x0;
+constexpr uint32_t TXN_BIN_3_COUNT_RESET = 0x0;
+constexpr uint32_t TXN_BIN_4_COUNT_RESET = 0x0;
+constexpr uint32_t TXN_MIN_LATENCY_RESET = 0xFFFF;
+constexpr uint32_t TXN_MAX_LATENCY_RESET = 0x0;
+constexpr uint32_t TXN_TOTAL_COUNT_RESET = 0x0;
+constexpr uint32_t ERR_STATUS_RESET = 0x0;
+constexpr uint32_t ECC_UNCORR_ERR_CNT_RESET = 0x0;
+constexpr uint32_t LAST_ERR_INFO_RESET = 0x0;
+constexpr uint32_t IRQ_ENABLE_RESET = 0x0;
+constexpr uint32_t ECC_CORR_ERR_CNT_RESET = 0x0;
+constexpr uint32_t ROUTE_PAR_ERR_CNT_RESET = 0x0;
+constexpr uint32_t AXI_PARITY_ERR_CNT_RESET = 0x0;
+constexpr uint32_t PENDING_R_COUNT_RESET = 0x0;
+constexpr uint32_t PENDING_W_COUNT_RESET = 0x0;
+constexpr uint32_t QUIESCE_CTRL_RESET = 0x0;
+constexpr uint32_t QUIESCE_STATUS_RESET = 0x0;
+constexpr uint32_t EXCLUSIVE_MONITOR_CTRL_RESET = 0x0;
+constexpr uint32_t EXCLUSIVE_MONITOR_STATUS_RESET = 0x0;
+
+// --- ALL_OFFSETS array (excludes reserved rows) ---
+constexpr uint32_t ALL_OFFSETS[] = {
+  PKT_PROBE_EN_OFFSET,
+  PKT_PROBE_MODE_OFFSET,
+  PKT_WINDOW_SIZE_OFFSET,
+  PKT_BYTE_COUNT_OFFSET,
+  PKT_BANDWIDTH_OFFSET,
+  TXN_PROBE_EN_OFFSET,
+  TXN_THRESHOLD_0_OFFSET,
+  TXN_THRESHOLD_1_OFFSET,
+  TXN_THRESHOLD_2_OFFSET,
+  TXN_THRESHOLD_3_OFFSET,
+  TXN_BIN_0_COUNT_OFFSET,
+  TXN_BIN_1_COUNT_OFFSET,
+  TXN_BIN_2_COUNT_OFFSET,
+  TXN_BIN_3_COUNT_OFFSET,
+  TXN_BIN_4_COUNT_OFFSET,
+  TXN_MIN_LATENCY_OFFSET,
+  TXN_MAX_LATENCY_OFFSET,
+  TXN_TOTAL_COUNT_OFFSET,
+  ERR_STATUS_OFFSET,
+  ECC_UNCORR_ERR_CNT_OFFSET,
+  LAST_ERR_INFO_OFFSET,
+  IRQ_ENABLE_OFFSET,
+  ECC_CORR_ERR_CNT_OFFSET,
+  ROUTE_PAR_ERR_CNT_OFFSET,
+  AXI_PARITY_ERR_CNT_OFFSET,
+  PENDING_R_COUNT_OFFSET,
+  PENDING_W_COUNT_OFFSET,
+  QUIESCE_CTRL_OFFSET,
+  QUIESCE_STATUS_OFFSET,
+  EXCLUSIVE_MONITOR_CTRL_OFFSET,
+  EXCLUSIVE_MONITOR_STATUS_OFFSET
+};
+constexpr std::size_t ALL_OFFSETS_COUNT = 31;
 
 // --- csr_policy ---
 namespace csr_policy {
