@@ -38,6 +38,8 @@ Each phase MUST end with all three gates green before the next phase starts:
 
 Rationale: Phase X.1 deletes `ni_blocks.h` while `c_model/include/ni_spec.hpp:8` still `#include`s it. Running X.2/X.3/X.4 before X.1 completes breaks the build.
 
+Phase sequence: X.1 → X.1.5 → X.2 → X.3 → X.4 → X.5.
+
 ---
 
 ## Phase X.1 — Blocks domain removal
@@ -67,6 +69,32 @@ Cleanest path: delete all codegen-side blocks artifacts; keep JSON + validator +
 | `spec_validate/tools/README.md` | update dataflow (4 domains → 3); remove blocks row from per-domain table |
 
 **Phase X.1 gate**: all 3 green AND no `ni::blocks::` reference left in c_model or examples (`grep -r "ni::blocks" c_model/ spec_validate/examples/`).
+
+---
+
+## Phase X.1.5 — Feature inventory generator
+
+After deleting blocks-domain codegen, replace its role with a lighter-weight markdown inventory generator. Goals:
+- **Visibility**: NMU / NSU feature lists visible as readable markdown (slide-friendly, no JSON grep needed)
+- **Drift gate**: committed inventory MD must stay in sync with `ni_function_blocks.json` (pytest-enforced, mirrors `tools/codegen.py --check` pattern)
+- **Convention hint**: each feature row points to its expected c_model header path (informational; not enforced until Layer B starts)
+
+This does NOT generate any C++ / SV code. Class shape remains implementer-decided (Invariant 1).
+
+### Tool: `spec_validate/tools/gen_inventory.py` (new, standalone)
+
+- Reads `spec_validate/ni_function_blocks.json`.
+- Writes `c_model/FEATURE_INVENTORY.md` with two tables (NMU + NSU), columns: feature id / summary / modes / expected c_model header path.
+- Convention for expected header path: `FEAT-NMU-<X>` → `c_model/include/nmu/<x_lowercase>.hpp`; same for NSU.
+- Idempotent: re-running produces byte-identical output (modulo timestamp banner) so drift gate works.
+
+### Pytest gate: `spec_validate/tests/test_feature_inventory.py` (new)
+
+- `test_inventory_md_up_to_date`: regenerate to tempfile, diff vs committed `c_model/FEATURE_INVENTORY.md` (timestamp line excluded). Exit 1 on drift.
+
+The "implementation status per feature" check (header existence) is **NOT enforced** — most features won't have c_model headers until Layer B, and we don't want this round to flag false positives. Inventory MD shows the expected path as informational only.
+
+**Phase X.1.5 gate**: all 3 standard gates green; new `test_inventory_md_up_to_date` passes against the committed `FEATURE_INVENTORY.md`.
 
 ---
 
@@ -237,11 +265,12 @@ Belongs as an addition to the sufficiency findings template, not in this design 
 | Phase | Estimate |
 |---|---|
 | X.1 Blocks removal | 0.5 day |
+| X.1.5 Feature inventory generator + drift gate | 0.25 day |
 | X.2 F-004 + F-005 codegen + c_model consume | 0.5 day |
 | X.3 F-006 redesign + c_model consume + access tests | 0.75 day |
 | X.4 F-002 codegen + c_model consume + API quarantine | 0.5 day |
 | X.5 SUFFICIENCY_FINDINGS.md disposition edits | 0.1 day |
-| **Total** | **~2.5 工程日** |
+| **Total** | **~2.75 工程日** |
 
 ---
 
