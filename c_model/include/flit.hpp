@@ -4,7 +4,6 @@
 #include <cassert>
 #include <cstdint>
 #include <string_view>
-#include <vector>
 
 namespace ni::cmodel {
 
@@ -18,9 +17,6 @@ public:
 
   void     set_header_field(std::string_view name, uint64_t value);
   uint64_t get_header_field(std::string_view name) const;
-
-  void                  set_payload_channel(std::string_view ch, std::vector<uint8_t> data);
-  std::vector<uint8_t>  get_payload_channel(std::string_view ch) const;
 
   const std::array<uint8_t, WIDTH_BYTES>& raw() const noexcept { return raw_; }
   bool check_padding_is_zero() const;
@@ -86,19 +82,17 @@ inline uint64_t Flit::get_header_field(std::string_view name) const {
 }
 
 inline bool Flit::check_padding_is_zero() const {
-  // Padding fields: query codegen for field 'enabled' flag.
-  // First-round implementation: empty (no padding fields enumerated yet --
-  // recorded as sufficiency finding for codegen to expose padding list).
+  for (std::size_t i = 0; i < ni::header::PADDING_FIELDS_COUNT; ++i) {
+    int lsb = ni::header::PADDING_FIELDS[i].lsb;
+    int msb = ni::header::PADDING_FIELDS[i].msb;
+    for (int bit = lsb; bit <= msb; ++bit) {
+      int byte = bit / 8, off = bit % 8;
+      if ((raw_[byte] >> off) & 1u) {
+        return false;
+      }
+    }
+  }
   return true;
-}
-
-inline void Flit::set_payload_channel(std::string_view, std::vector<uint8_t>) {
-  // First-round stub: full payload channel mapping requires codegen exposing
-  // payload field positions per channel. Recorded as sufficiency finding.
-}
-
-inline std::vector<uint8_t> Flit::get_payload_channel(std::string_view) const {
-  return {};
 }
 
 } // namespace ni::cmodel

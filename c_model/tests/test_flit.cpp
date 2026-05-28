@@ -39,9 +39,19 @@ TEST(Flit, SilentTruncateOnOversizedValueInRelease) {
   EXPECT_EQ(f.get_header_field("dst_id"), max_dst);
 }
 
-TEST(Flit, PaddingFieldStaysZero) {
+TEST(Flit, PaddingBitSetCausesCheckToFail) {
+  std::array<uint8_t, Flit::WIDTH_BYTES> raw{};
+  ASSERT_GT(ni::header::PADDING_FIELDS_COUNT, 0u) << "no padding fields elaborated — codegen issue";
+  int lsb = ni::header::PADDING_FIELDS[0].lsb;
+  int byte = lsb / 8, off = lsb % 8;
+  raw[byte] |= (1u << off);
+  Flit f(raw);
+  EXPECT_FALSE(f.check_padding_is_zero())
+      << "padding bit at " << ni::header::PADDING_FIELDS[0].name << " was set, check should fail";
+}
+
+TEST(Flit, AllZeroRawPassesPaddingCheck) {
   Flit f;
-  // After default-construct, padding (and everything) is zero.
   EXPECT_TRUE(f.check_padding_is_zero());
 }
 
