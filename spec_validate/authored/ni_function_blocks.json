@@ -40,7 +40,7 @@
           "compile_time_params": {},
           "uses_packet_fields": ["AW", "W", "AR", "dst_id", "src_id", "last", "rob_idx"],
           "configured_by": [],
-          "related_features": ["FEAT-NMU-ADDR_TRANS", "FEAT-NMU-VC_MAPPING"]
+          "related_features": ["FEAT-NMU-AXI_SLAVE_PORT", "FEAT-NMU-ADDR_TRANS", "FEAT-NMU-VC_MAPPING"]
         },
         {
           "id": "FEAT-NMU-VC_MAPPING",
@@ -113,7 +113,7 @@
           "compile_time_params": {},
           "uses_packet_fields": ["rob_idx", "src_id", "AW", "AR"],
           "configured_by": [],
-          "related_features": ["FEAT-NSU-DEPACKETIZE", "FEAT-NSU-PACKETIZE"]
+          "related_features": ["FEAT-NSU-AXI_MASTER_PORT", "FEAT-NSU-DEPACKETIZE", "FEAT-NSU-PACKETIZE"]
         },
         {
           "id": "FEAT-NSU-PACKETIZE",
@@ -122,7 +122,7 @@
           "compile_time_params": {},
           "uses_packet_fields": ["B", "R", "dst_id", "rob_idx", "vc_id", "last"],
           "configured_by": [],
-          "related_features": ["FEAT-NSU-META_BUFFER", "FEAT-NSU-VC_ARB"]
+          "related_features": ["FEAT-NSU-AXI_MASTER_PORT", "FEAT-NSU-META_BUFFER", "FEAT-NSU-VC_ARB"]
         },
         {
           "id": "FEAT-NSU-VC_ARB",

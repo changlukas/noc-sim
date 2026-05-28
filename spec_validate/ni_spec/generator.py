@@ -322,6 +322,14 @@ def generate_ni_packet_json(md_dir: Union[str, Path]) -> dict:
     # ni_spec.constants.*_resolved helpers — JSON is purely symbolic.
     # parse_derived(md_text) is still used by signal namespace builder
     # (_build_params_namespace) to seed AXI parameter widths.
+    #
+    # Exception: WSTRB_WIDTH is a derived leaf (NOC_DATA_WIDTH/8) directly
+    # referenced as width_param by W-channel fields. Promote it into
+    # field_widths so packet_eval_expr resolves it in one namespace.
+    field_widths = parse_field_widths(md_text)
+    derived = parse_derived(md_text)
+    if "WSTRB_WIDTH" in derived:
+        field_widths["WSTRB_WIDTH"] = derived["WSTRB_WIDTH"]
     return {
         "$schema_version": "ni-spec/2.0",
         "meta": {
@@ -329,7 +337,7 @@ def generate_ni_packet_json(md_dir: Union[str, Path]) -> dict:
             "spec_version": "v0.4.0",
         },
         "flit": {
-            "field_widths": parse_field_widths(md_text),
+            "field_widths": field_widths,
             "header_fields": parse_header_fields(md_text),
             "payload_channels": parse_payload_channels(md_text),
             "route_par_coverage": ["dst_id", "last"],

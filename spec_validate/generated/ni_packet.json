@@ -31,7 +31,8 @@
       "AXI_REGION_WIDTH": 4,
       "AXI_RESP_WIDTH": 2,
       "AXI_LAST_WIDTH": 1,
-      "RSVD_MC_STATUS_WIDTH": 2
+      "RSVD_MC_STATUS_WIDTH": 2,
+      "WSTRB_WIDTH": 32
     },
     "header_fields": [
       {
