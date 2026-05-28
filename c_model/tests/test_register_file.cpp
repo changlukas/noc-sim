@@ -96,3 +96,40 @@ TEST(RegisterFile, KnownOffsetsMatchCodegenAllOffsets) {
   auto r = rf.read32(0xFFFC);
   EXPECT_EQ(r.status, AbiResult::DecErr);
 }
+
+TEST(RegisterFile, WriteOneToRW1CClearsBit) {
+  RegisterFile rf;
+  rf.write_field(ni::regs::ERR_STATUS_OFFSET, 0xFFFFFFFF, 0x7);  // bits 0, 1, 2 set
+  auto r = rf.write32(ni::regs::ERR_STATUS_OFFSET, 0x3);
+  EXPECT_EQ(r.status, AbiResult::Ok);
+  auto read = rf.read32(ni::regs::ERR_STATUS_OFFSET);
+  EXPECT_EQ(read.data & 0x7u, 0x4u);
+  EXPECT_TRUE(rf.last_write_cleared_rw1c_field());
+}
+
+TEST(RegisterFile, WriteToROIsSilentlyIgnored) {
+  RegisterFile rf;
+  uint32_t before = rf.read32(ni::regs::PKT_BYTE_COUNT_OFFSET).data;
+  auto r = rf.write32(ni::regs::PKT_BYTE_COUNT_OFFSET, 0xDEADBEEF);
+  EXPECT_EQ(r.status, AbiResult::Ok);
+  uint32_t after = rf.read32(ni::regs::PKT_BYTE_COUNT_OFFSET).data;
+  EXPECT_EQ(after, before);
+}
+
+TEST(RegisterFile, ReadFromWOReturnsZero) {
+  RegisterFile rf;
+  auto w = rf.write32(ni::regs::EXCLUSIVE_MONITOR_CTRL_OFFSET, 0x12345678);
+  EXPECT_EQ(w.status, AbiResult::Ok);
+  auto r = rf.read32(ni::regs::EXCLUSIVE_MONITOR_CTRL_OFFSET);
+  EXPECT_EQ(r.status, AbiResult::Ok);
+  EXPECT_EQ(r.data, 0u);
+}
+
+TEST(RegisterFile, LastWriteFlagResetOnEachWrite) {
+  RegisterFile rf;
+  rf.write32(ni::regs::PKT_PROBE_EN_OFFSET, 0x1);
+  EXPECT_FALSE(rf.last_write_cleared_rw1c_field());
+  rf.write_field(ni::regs::ERR_STATUS_OFFSET, 0xFFFFFFFF, 0x1);
+  rf.write32(ni::regs::ERR_STATUS_OFFSET, 0x1);
+  EXPECT_TRUE(rf.last_write_cleared_rw1c_field());
+}

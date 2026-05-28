@@ -11,6 +11,47 @@ namespace {
         ni::regs::ALL_OFFSETS + ni::regs::ALL_OFFSETS_COUNT};
     return s;
   }
+
+  // Offset -> AccessMode dispatch. Mirrors the per-register *_ACCESS
+  // constexpr emitted by codegen; a hand-written switch keeps the lookup
+  // header-only and avoids generating yet another table.
+  static ni::regs::AccessMode access_mode_of(uint32_t offset) {
+    using AM = ni::regs::AccessMode;
+    switch (offset) {
+      case ni::regs::PKT_PROBE_EN_OFFSET:             return ni::regs::PKT_PROBE_EN_ACCESS;
+      case ni::regs::PKT_PROBE_MODE_OFFSET:           return ni::regs::PKT_PROBE_MODE_ACCESS;
+      case ni::regs::PKT_WINDOW_SIZE_OFFSET:          return ni::regs::PKT_WINDOW_SIZE_ACCESS;
+      case ni::regs::PKT_BYTE_COUNT_OFFSET:           return ni::regs::PKT_BYTE_COUNT_ACCESS;
+      case ni::regs::PKT_BANDWIDTH_OFFSET:            return ni::regs::PKT_BANDWIDTH_ACCESS;
+      case ni::regs::TXN_PROBE_EN_OFFSET:             return ni::regs::TXN_PROBE_EN_ACCESS;
+      case ni::regs::TXN_THRESHOLD_0_OFFSET:          return ni::regs::TXN_THRESHOLD_0_ACCESS;
+      case ni::regs::TXN_THRESHOLD_1_OFFSET:          return ni::regs::TXN_THRESHOLD_1_ACCESS;
+      case ni::regs::TXN_THRESHOLD_2_OFFSET:          return ni::regs::TXN_THRESHOLD_2_ACCESS;
+      case ni::regs::TXN_THRESHOLD_3_OFFSET:          return ni::regs::TXN_THRESHOLD_3_ACCESS;
+      case ni::regs::TXN_BIN_0_COUNT_OFFSET:          return ni::regs::TXN_BIN_0_COUNT_ACCESS;
+      case ni::regs::TXN_BIN_1_COUNT_OFFSET:          return ni::regs::TXN_BIN_1_COUNT_ACCESS;
+      case ni::regs::TXN_BIN_2_COUNT_OFFSET:          return ni::regs::TXN_BIN_2_COUNT_ACCESS;
+      case ni::regs::TXN_BIN_3_COUNT_OFFSET:          return ni::regs::TXN_BIN_3_COUNT_ACCESS;
+      case ni::regs::TXN_BIN_4_COUNT_OFFSET:          return ni::regs::TXN_BIN_4_COUNT_ACCESS;
+      case ni::regs::TXN_MIN_LATENCY_OFFSET:          return ni::regs::TXN_MIN_LATENCY_ACCESS;
+      case ni::regs::TXN_MAX_LATENCY_OFFSET:          return ni::regs::TXN_MAX_LATENCY_ACCESS;
+      case ni::regs::TXN_TOTAL_COUNT_OFFSET:          return ni::regs::TXN_TOTAL_COUNT_ACCESS;
+      case ni::regs::ERR_STATUS_OFFSET:               return ni::regs::ERR_STATUS_ACCESS;
+      case ni::regs::ECC_UNCORR_ERR_CNT_OFFSET:       return ni::regs::ECC_UNCORR_ERR_CNT_ACCESS;
+      case ni::regs::LAST_ERR_INFO_OFFSET:            return ni::regs::LAST_ERR_INFO_ACCESS;
+      case ni::regs::IRQ_ENABLE_OFFSET:               return ni::regs::IRQ_ENABLE_ACCESS;
+      case ni::regs::ECC_CORR_ERR_CNT_OFFSET:         return ni::regs::ECC_CORR_ERR_CNT_ACCESS;
+      case ni::regs::ROUTE_PAR_ERR_CNT_OFFSET:        return ni::regs::ROUTE_PAR_ERR_CNT_ACCESS;
+      case ni::regs::AXI_PARITY_ERR_CNT_OFFSET:       return ni::regs::AXI_PARITY_ERR_CNT_ACCESS;
+      case ni::regs::PENDING_R_COUNT_OFFSET:          return ni::regs::PENDING_R_COUNT_ACCESS;
+      case ni::regs::PENDING_W_COUNT_OFFSET:          return ni::regs::PENDING_W_COUNT_ACCESS;
+      case ni::regs::QUIESCE_CTRL_OFFSET:             return ni::regs::QUIESCE_CTRL_ACCESS;
+      case ni::regs::QUIESCE_STATUS_OFFSET:           return ni::regs::QUIESCE_STATUS_ACCESS;
+      case ni::regs::EXCLUSIVE_MONITOR_CTRL_OFFSET:   return ni::regs::EXCLUSIVE_MONITOR_CTRL_ACCESS;
+      case ni::regs::EXCLUSIVE_MONITOR_STATUS_OFFSET: return ni::regs::EXCLUSIVE_MONITOR_STATUS_ACCESS;
+      default: return AM::RW;
+    }
+  }
 }
 
 RegisterFile::RegisterFile() {
@@ -60,11 +101,11 @@ void RegisterFile::reset() {
 bool RegisterFile::is_mapped_(uint32_t offset) const {
   return known_offsets().count(offset) != 0;
 }
-bool RegisterFile::is_wo_(uint32_t /*offset*/) const {
-  return false;  // F-006: codegen needs to elaborate access mode per offset
+bool RegisterFile::is_wo_(uint32_t offset) const {
+  return access_mode_of(offset) == ni::regs::AccessMode::WO;
 }
-bool RegisterFile::is_rw1c_(uint32_t /*offset*/) const {
-  return false;  // F-006 same
+bool RegisterFile::is_rw1c_(uint32_t offset) const {
+  return access_mode_of(offset) == ni::regs::AccessMode::RW1C;
 }
 
 AbiResponse RegisterFile::read32(uint32_t offset) {
@@ -86,6 +127,10 @@ AbiResponse RegisterFile::read32(uint32_t offset) {
     } else {
       return {AbiResult::Ok, 0};  // unmapped_read = zero (fallback)
     }
+  }
+  // WO registers always read as 0 regardless of underlying storage.
+  if (access_mode_of(offset) == ni::regs::AccessMode::WO) {
+    return {AbiResult::Ok, 0};
   }
   return {AbiResult::Ok, storage_[offset]};
 }
@@ -112,10 +157,33 @@ AbiResponse RegisterFile::write32(uint32_t offset, uint32_t value, uint8_t wstrb
     // sub_word_write = ignored: silently drop, return Ok
     return {AbiResult::Ok, 0};
   }
-  storage_[offset] = value;
-  last_irq_ = false;
-  last_rw1c_clear_ = false;
-  return {AbiResult::Ok, 0};
+  using AM = ni::regs::AccessMode;
+  switch (access_mode_of(offset)) {
+    case AM::RO:
+      // AXI4-Lite convention: writes to RO silently ignored, response Ok.
+      last_irq_         = false;
+      last_rw1c_clear_  = false;
+      return {AbiResult::Ok, 0};
+    case AM::RW1C: {
+      uint32_t before  = storage_[offset];
+      uint32_t after   = before & ~value;
+      storage_[offset] = after;
+      last_irq_        = false;
+      last_rw1c_clear_ = (before != after);
+      return {AbiResult::Ok, 0};
+    }
+    case AM::WO:
+      storage_[offset]  = value;
+      last_irq_         = false;
+      last_rw1c_clear_  = false;
+      return {AbiResult::Ok, 0};
+    case AM::RW:
+    default:
+      storage_[offset]  = value;
+      last_irq_         = false;
+      last_rw1c_clear_  = false;
+      return {AbiResult::Ok, 0};
+  }
 }
 
 uint32_t RegisterFile::read_field(uint32_t offset, uint32_t mask) const {
