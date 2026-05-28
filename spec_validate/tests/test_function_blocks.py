@@ -2,8 +2,7 @@
 from pathlib import Path
 import json
 import re
-import pytest
-from ni_spec import loader, invariants, constants
+from ni_spec import loader, invariants
 
 SPEC_VALIDATE = Path(__file__).resolve().parent.parent
 FB_JSON = SPEC_VALIDATE / "ni_function_blocks.json"
@@ -80,65 +79,3 @@ def test_compile_time_params_unique_across_features():
     issues = invariants.check_blocks_param_uniqueness(fb)
     err = [i for i in issues if i.severity == "ERROR"]
     assert not err, f"param uniqueness: {[i.message for i in err]}"
-
-
-def test_constants_blocks_function_block_names():
-    fb = loader.load_doc(FB_JSON)
-    names = constants.blocks_function_block_names(fb)
-    assert "NMU" in names and "NSU" in names
-
-
-def test_constants_blocks_compile_time_params():
-    fb = loader.load_doc(FB_JSON)
-    params = constants.blocks_compile_time_params(fb)
-    assert isinstance(params, dict)
-    # Don't hard-code keys; just ensure structure correct
-    for k, v in params.items():
-        assert isinstance(k, str)
-
-
-def test_constants_blocks_modes_of():
-    """blocks_modes_of returns (feature_id, mode) tuples for a given block."""
-    fb = loader.load_doc(FB_JSON)
-    nmu_modes = constants.blocks_modes_of(fb, "NMU")
-    assert isinstance(nmu_modes, list)
-    # Find ROB modes — they should appear in the list
-    rob_modes = [m for fid, m in nmu_modes if fid == "FEAT-NMU-ROB"]
-    assert set(rob_modes) >= {"NoRoB", "SimpleRoB", "NormalRoB"}, \
-        f"ROB modes incomplete: {rob_modes}"
-    # NSU should also work
-    nsu_modes = constants.blocks_modes_of(fb, "NSU")
-    assert isinstance(nsu_modes, list)
-
-
-def test_mode_enum_names_unique_after_block_prefix():
-    """Mode enum names must be unique across all blocks once block prefix applied."""
-    from ni_spec.loader import load_doc
-    spec = load_doc(FB_JSON)
-
-    names = []
-    for block in spec["blocks"]:
-        block_name = block["name"]  # "NMU" or "NSU"
-        for feat in block["features"]:
-            if not feat.get("modes"):
-                continue
-            # Derive enum name from feature id, then apply block prefix
-            # FEAT-NMU-VC_ARB -> NMU_VC_ARBMode
-            short = feat["id"].split("-")[-1]
-            names.append(f"{block_name}_{short}Mode")
-
-    assert len(names) == len(set(names)), \
-        f"duplicate mode enum: {[n for n in names if names.count(n) > 1]}"
-
-
-def test_l2_mode_enum_unique_check_fires_on_collision():
-    """Synthetic test: artificial collision triggers the L2 error."""
-    from ni_spec.invariants import check_mode_enum_name_unique
-    synthetic = {
-        "blocks": [
-            {"name": "NMU", "features": [{"id": "FEAT-NMU-VC_ARB", "modes": ["RR"]}]},
-            {"name": "NMU", "features": [{"id": "FEAT-NMU-VC_ARB", "modes": ["RR"]}]},
-        ]
-    }
-    errors = check_mode_enum_name_unique(synthetic)
-    assert any("collision" in e for e in errors)

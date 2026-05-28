@@ -1,6 +1,6 @@
 # Spec-as-Code Codegen — `tools/codegen.py`
 
-統一 codegen 工具：從 `generated/*.json` 與 `ni_function_blocks.json` 產出 C++ headers (`include/*.h`) 與 SystemVerilog packages (`rtl_pkg/*_pkg.sv`)，供 C model 與 RTL 共用同一份常數定義。
+統一 codegen 工具：從 `generated/*.json` 產出 C++ headers (`include/*.h`) 與 SystemVerilog packages (`rtl_pkg/*_pkg.sv`)，供 C model 與 RTL 共用同一份常數定義。Codegen 涵蓋三個 domain：packet、signals、registers — 對應「standard interface (signals + packet) + CSR (registers)」。`ni_function_blocks.json` 仍保留作為 feature inventory + cross-domain consistency check，但不再驅動 codegen（內部 unit modes / compile-time params 屬實作者決策，不是 codegen 輸出）。
 
 ## 系統 dataflow
 
@@ -8,7 +8,8 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │  Source layer (human-edited)                                      │
 │  - spec/ni/doc/*.md                                                │
-│  - spec_validate/ni_function_blocks.json (hand-written)            │
+│  - spec_validate/ni_function_blocks.json (feature inventory only;  │
+│    not consumed by codegen)                                        │
 └────────────────────────┬─────────────────────────────────────────┘
                          │ ni_spec.generator (Python; parse MD → JSON)
                          ▼
@@ -18,12 +19,11 @@
 │  - ni_signals.json                                                 │
 │  - ni_registers.json                                               │
 │  - ni_protocol_rule_index.json                                     │
-│  (plus ni_function_blocks.json above, lives outside generated/)    │
 └────────────────────────┬─────────────────────────────────────────┘
                          │ ni_spec.constants (stable API; firewall)
                          ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  tools/elaborate/cpp_*.py + tools/elaborate/sv_*.py  (4 + 4 elaborators)        │
+│  tools/elaborate/cpp_*.py + tools/elaborate/sv_*.py  (3 + 3 elaborators)        │
 │  → each returns a string of C++ or SystemVerilog code              │
 └────────────────────────┬─────────────────────────────────────────┘
                          │ tools/elaborate/common.py (provenance banner)
@@ -41,11 +41,10 @@
 │  include/*.h         │    │  rtl_pkg/*_pkg.sv     │
 │  (C++ consumers)     │    │  (SV consumers)       │
 │                      │    │                      │
-│  4 files:            │    │  4 files:            │
+│  3 files:            │    │  3 files:            │
 │  - ni_flit_constants │    │  - ni_flit_pkg.sv    │
 │  - ni_signals.h      │    │  - ni_signals_pkg.sv │
 │  - ni_regs.h         │    │  - ni_regs_pkg.sv    │
-│  - ni_blocks.h       │    │  - ni_blocks_pkg.sv  │
 └──────────────────────┘    └──────────────────────┘
         │                            │
         ▼                            ▼
@@ -54,14 +53,14 @@
     future c_model/)
 ```
 
-**核心理念**：source MD 為 single source of truth；generated JSON 是中間 artifact；codegen 透過 `ni_spec.constants` API（stable interface）把同樣常數投影到兩種語言。C++ 跟 SV 看到的命名一致、值一致 — 不靠人對齊。
+**核心理念**：source MD 為 single source of truth；generated JSON 是中間 artifact；codegen 透過 `ni_spec.constants` API（stable interface）把同樣常數投影到兩種語言。C++ 跟 SV 看到的命名一致、值一致 — 不靠人對齊。`ni_function_blocks.json` 保留作為 feature inventory + cross-domain consistency check；不再驅動 codegen。
 
 ## CLI usage — `tools/codegen.py`
 
 ### 產出一個 header / SV package
 
 ```
-py -3 tools/codegen.py --target {cpp|sv} --domain {packet|signals|registers|blocks} [--out PATH]
+py -3 tools/codegen.py --target {cpp|sv} --domain {packet|signals|registers} [--out PATH]
 ```
 
 `--out` 預設：
@@ -73,11 +72,9 @@ py -3 tools/codegen.py --target {cpp|sv} --domain {packet|signals|registers|bloc
 py -3 tools/codegen.py --target cpp --domain packet     # → include/ni_flit_constants.h
 py -3 tools/codegen.py --target cpp --domain signals    # → include/ni_signals.h
 py -3 tools/codegen.py --target cpp --domain registers  # → include/ni_regs.h
-py -3 tools/codegen.py --target cpp --domain blocks     # → include/ni_blocks.h
 py -3 tools/codegen.py --target sv  --domain packet     # → rtl_pkg/ni_flit_pkg.sv
 py -3 tools/codegen.py --target sv  --domain signals    # → rtl_pkg/ni_signals_pkg.sv
 py -3 tools/codegen.py --target sv  --domain registers  # → rtl_pkg/ni_regs_pkg.sv
-py -3 tools/codegen.py --target sv  --domain blocks     # → rtl_pkg/ni_blocks_pkg.sv
 ```
 
 ### `--check` mode — drift detection (CI / pre-commit)
@@ -86,7 +83,7 @@ py -3 tools/codegen.py --target sv  --domain blocks     # → rtl_pkg/ni_blocks_
 py -3 tools/codegen.py --check
 ```
 
-Regen 全部 8 個 output 到 temp dir、跟 committed 版本 diff（timestamp 那行剔除）。任何 drift → exit 1。CI / pre-commit hook 用這條。
+Regen 全部 6 個 output 到 temp dir、跟 committed 版本 diff（timestamp 那行剔除）。任何 drift → exit 1。CI / pre-commit hook 用這條。
 
 ### `--lint-sv` mode — verilator lint smoke test
 
@@ -103,7 +100,7 @@ py -3 tools/codegen.py --lint-sv
 
 CLI 統一入口、不寫 elaborate 邏輯、只做 routing。讀 `--target` / `--domain` → 找對應 elaborator → 呼叫 `emit()` → prepend banner → 寫檔 OR diff。`--check` / `--lint-sv` 兩個 sub-command 也在這裡。
 
-### Per-domain elaborators：`tools/elaborate/cpp_*.py` 與 `sv_*.py`（8 個檔）
+### Per-domain elaborators：`tools/elaborate/cpp_*.py` 與 `sv_*.py`（6 個檔）
 
 每個 elaborator 做一件事：讀對應 source（透過 `ni_spec.constants` API，**不直接 parse JSON**）→ return code string。Elaborator 自己不知道輸出 path、不寫檔。
 
@@ -112,13 +109,11 @@ CLI 統一入口、不寫 elaborate 邏輯、只做 routing。讀 `--target` / `
 | `cpp_packet.py` (60 LOC) | `generated/ni_packet.json` | `namespace ni::header::*` (bit positions) + `ni::payload::*` (channel widths) + `ni::width::*` (resolved widths) + 算術 `static_assert` |
 | `cpp_signals.py` (58 LOC) | `generated/ni_signals.json` | `namespace ni::signals::*` — output signals 的 reset 初值 const（external_driven inputs skip） |
 | `cpp_registers.py` (80 LOC) | `generated/ni_registers.json` | `namespace ni::regs::*` — offset const + field bit masks + per-register access enum + field width sum `static_assert` |
-| `cpp_blocks.py` (94 LOC) | `ni_function_blocks.json` (手寫 source) | `namespace ni::blocks::*` — `enum class FunctionBlock` + per-feature mode enums + `constexpr` for compile_time_params |
 | `sv_packet.py` (~70 LOC) | 同 cpp_packet | `package ni_flit_pkg` + `localparam int unsigned` 對應 cpp_packet 的 const |
 | `sv_signals.py` (~30 LOC) | 同 cpp_signals | `package ni_signals_pkg` + `localparam int unsigned` reset constants |
 | `sv_registers.py` (~60 LOC) | 同 cpp_registers | `package ni_regs_pkg` + `localparam int unsigned` offsets + masks |
-| `sv_blocks.py` (~70 LOC) | 同 cpp_blocks | `package ni_blocks_pkg` + `typedef enum logic [N-1:0]` for FunctionBlock + mode enums + `localparam int unsigned` params |
 
-**SV typing 注意**：integer constants 用 `localparam int unsigned`（不用 bare `parameter` — 會 silent truncate / signed-unsigned bug）。Enums 用 `typedef enum logic [N-1:0] { ... } foo_e;`（不用 bare parameter list — 等同 C++ `enum class` 的型別安全）。`N = $clog2(member_count)` 由 elaborator 算出來填。
+**SV typing 注意**：integer constants 用 `localparam int unsigned`（不用 bare `parameter` — 會 silent truncate / signed-unsigned bug）。Per-register access enums 用 `typedef enum logic [N-1:0] { ... } foo_e;`（不用 bare parameter list — 等同 C++ `enum class` 的型別安全）。`N = $clog2(member_count)` 由 elaborator 算出來填。
 
 ### 共用 helper：`tools/elaborate/common.py` (46 LOC)
 
@@ -172,40 +167,33 @@ static_assert(HEADER_WIDTH + PAYLOAD_WIDTH == FLIT_WIDTH,
 }
 ```
 
-### SystemVerilog（`rtl_pkg/ni_blocks_pkg.sv` 截錄）
+### SystemVerilog（`rtl_pkg/ni_regs_pkg.sv` 截錄）
 
 ```systemverilog
 // AUTO-GENERATED by tools/codegen.py — DO NOT EDIT
-// Source: noc-sim/spec_validate/ni_function_blocks.json
+// Source: noc-sim/spec_validate/generated/ni_registers.json
 // Source SHA: 9c2f7b1d4e8a
 // Generator version: v1.0.0
 // Generated at: 2026-05-27T11:10:33Z
 
-`ifndef NI_BLOCKS_PKG_SVH
-`define NI_BLOCKS_PKG_SVH
+`ifndef NI_REGS_PKG_SVH
+`define NI_REGS_PKG_SVH
 
-package ni_blocks_pkg;
+package ni_regs_pkg;
 
-  typedef enum logic [3:0] {
-    FUNCTION_BLOCK_ROB         = 4'd0,
-    FUNCTION_BLOCK_QOS         = 4'd1,
-    FUNCTION_BLOCK_ECC         = 4'd2,
-    // ...
-  } function_block_e;
+  localparam int unsigned CSR_CTRL_OFFSET   = 32'h00000000;
+  localparam int unsigned CSR_STATUS_OFFSET = 32'h00000004;
+  // ...
 
   typedef enum logic [1:0] {
-    ROB_MODE_NORMAL = 2'd0,
-    ROB_MODE_SIMPLE = 2'd1,
-    ROB_MODE_NOROB  = 2'd2
-  } rob_mode_e;
-
-  localparam int unsigned ROB_DEPTH       = 32;
-  localparam int unsigned ROB_ENTRY_WIDTH = 64;
-  // ... 22 compile-time params
+    CSR_CTRL_ACCESS_RO = 2'd0,
+    CSR_CTRL_ACCESS_RW = 2'd1
+    // ...
+  } csr_ctrl_access_e;
 
 endpackage
 
-`endif // NI_BLOCKS_PKG_SVH
+`endif // NI_REGS_PKG_SVH
 ```
 
 C++ 跟 SV 命名對應規則（per design doc §6.2）：
@@ -213,8 +201,8 @@ C++ 跟 SV 命名對應規則（per design doc §6.2）：
 | 概念 | C++ | SystemVerilog |
 |---|---|---|
 | 整數常數 | `constexpr int ni::header::ROB_IDX_LSB` | `localparam int unsigned ni_flit_pkg::ROB_IDX_LSB` |
-| enum class | `enum class ROBMode { Normal, Simple, NoRoB }` | `typedef enum logic [1:0] { ROB_MODE_NORMAL, ROB_MODE_SIMPLE, ROB_MODE_NOROB } rob_mode_e` |
-| Compile-time param | `constexpr int ni::blocks::ROB_DEPTH = 32` | `localparam int unsigned ni_blocks_pkg::ROB_DEPTH = 32` |
+| Per-register access enum | `enum class CsrCtrlAccess { Ro, Rw }` | `typedef enum logic [1:0] { CSR_CTRL_ACCESS_RO, CSR_CTRL_ACCESS_RW } csr_ctrl_access_e` |
+| Register offset | `constexpr int ni::regs::CSR_CTRL_OFFSET = 0x0` | `localparam int unsigned ni_regs_pkg::CSR_CTRL_OFFSET = 32'h0` |
 
 ## `static_assert` — compile-time invariant 檢查
 
@@ -235,9 +223,9 @@ cd noc-sim/spec_validate
 # 1. Spec validation (10 layers)
 py -3 -m ni_spec ../spec/ni/doc
 
-# 2. Codegen all 8 outputs
+# 2. Codegen all 6 outputs
 for target in cpp sv; do
-  for domain in packet signals registers blocks; do
+  for domain in packet signals registers; do
     py -3 tools/codegen.py --target $target --domain $domain
   done
 done
@@ -260,11 +248,9 @@ py -3 -m ni_spec ..\spec\ni\doc
 py -3 tools\codegen.py --target cpp --domain packet
 py -3 tools\codegen.py --target cpp --domain signals
 py -3 tools\codegen.py --target cpp --domain registers
-py -3 tools\codegen.py --target cpp --domain blocks
 py -3 tools\codegen.py --target sv  --domain packet
 py -3 tools\codegen.py --target sv  --domain signals
 py -3 tools\codegen.py --target sv  --domain registers
-py -3 tools\codegen.py --target sv  --domain blocks
 py -3 tools\codegen.py --check
 $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
 g++ -std=c++17 -I include examples\use_constants.cpp -o use_constants.exe
@@ -273,9 +259,9 @@ g++ -std=c++17 -I include examples\use_constants.cpp -o use_constants.exe
 
 ## 怎麼修 spec / 加新 domain
 
-### 改 spec 內容（packet field、signal、register、function block）
+### 改 spec 內容（packet field、signal、register）
 
-只改對應 `spec/ni/doc/*.md`（或 `ni_function_blocks.json`）→ 重跑一條龍指令、所有衍生品自動跟著刷新。
+只改對應 `spec/ni/doc/*.md` → 重跑一條龍指令、所有衍生品自動跟著刷新。`ni_function_blocks.json` 是 feature inventory，不在 codegen pipeline 內；改它只影響 cross-domain consistency check。
 
 **絕對不要手改**：
 - `generated/ni_*.json` ← 下次跑 generator 會洗掉

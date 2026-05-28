@@ -84,31 +84,6 @@ def test_registers_cpp_has_provenance_banner():
     assert "Source SHA:" in text
 
 
-def test_blocks_cpp_emits_function_block_enum():
-    r = run_codegen("--target", "cpp", "--domain", "blocks",
-                    "--out", str(INCLUDE_DIR))
-    assert r.returncode == 0, r.stderr
-    text = (INCLUDE_DIR / "ni_blocks.h").read_text(encoding="ascii")
-    assert "namespace blocks" in text
-    assert "enum class FunctionBlock" in text
-    assert "NMU" in text
-
-
-def test_blocks_cpp_emits_mode_enum():
-    text = (INCLUDE_DIR / "ni_blocks.h").read_text(encoding="ascii")
-    assert "ROBMode" in text
-
-
-def test_blocks_cpp_emits_compile_time_params():
-    text = (INCLUDE_DIR / "ni_blocks.h").read_text(encoding="ascii")
-    assert "constexpr int" in text
-
-
-def test_blocks_cpp_has_provenance_banner():
-    text = (INCLUDE_DIR / "ni_blocks.h").read_text(encoding="ascii")
-    assert "Source SHA:" in text
-
-
 # ---------------------------------------------------------------------------
 # --check mode tests
 # ---------------------------------------------------------------------------
@@ -116,7 +91,7 @@ def test_blocks_cpp_has_provenance_banner():
 def test_check_mode_exits_zero_when_clean():
     """--check must exit 0 when committed headers match fresh regen."""
     # First ensure headers are fresh
-    for domain in ("packet", "signals", "registers", "blocks"):
+    for domain in ("packet", "signals", "registers"):
         run_codegen("--target", "cpp", "--domain", domain, "--out", str(INCLUDE_DIR))
     r = run_codegen("--check")
     assert r.returncode == 0, (
@@ -128,7 +103,7 @@ def test_check_mode_exits_zero_when_clean():
 def test_check_mode_exits_one_on_drift(tmp_path):
     """--check must exit 1 when a committed header has been modified."""
     # First ensure headers are fresh
-    for domain in ("packet", "signals", "registers", "blocks"):
+    for domain in ("packet", "signals", "registers"):
         run_codegen("--target", "cpp", "--domain", domain, "--out", str(INCLUDE_DIR))
 
     target_header = INCLUDE_DIR / "ni_flit_constants.h"
