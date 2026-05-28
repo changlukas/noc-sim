@@ -1,40 +1,48 @@
-# c_model First-Round Sufficiency Findings
+# c_model First-Round Sufficiency Findings — Final Disposition
 
-Each finding: what gap exists, where surfaced, workaround used, fix-direction proposal.
+End-state: 0 PENDING, 5 RESOLVED, 2 DEFERRED with re-open triggers.
 
-## F-001 — codegen does not elaborate `ni::header::HeaderField` enum
-- Surfaced: `Flit::set_header_field` in Task 10
-- Workaround: hand-rolled string-name dispatch in `flit.hpp::detail::header_field_pos`
-- Fix-direction: add `enum class HeaderField` to `cpp_packet.py` elaborator, then
-  `header_field_pos()` becomes a table lookup.
+Each finding lists: gap, where surfaced, status, resolution evidence.
+
+## F-001 — codegen does not elaborate `HeaderField` enum
+- Surfaced: `Flit::set_header_field` in Task 10 (first round)
+- Status: **DEFERRED**
+- Re-open trigger: Layer B unit starts (any unit consuming Flit header field by name)
+- Current workaround: hand-rolled string dispatch in `flit.hpp::detail::header_field_pos` (covers 6 named fields)
 
 ## F-002 — codegen does not elaborate padding-field list
-- Surfaced: `Flit::check_padding_is_zero` in Task 10
-- Workaround: returns true unconditionally (stub).
-- Fix-direction: cpp_packet.py elaborate `constexpr int PADDING_FIELDS[]` listing fields
-  whose `enabled: false`.
+- Surfaced: `Flit::check_padding_is_zero` was stub in Task 10
+- Status: **RESOLVED** (Phase X.4)
+- Resolution: codegen elaborates `ni::header::PADDING_FIELDS[]` array of `{name, lsb, msb}` for each header field with `enabled: false` AND `width > 0`. c_model `check_padding_is_zero` iterates this array (no hand-listed names).
 
 ## F-003 — codegen does not elaborate per-channel payload field positions
-- Surfaced: `Flit::set_payload_channel` / `get_payload_channel` in Task 10
-- Workaround: returns empty / no-op stub.
-- Fix-direction: cpp_packet.py elaborate `ni::payload::<CH>::<FIELD>_LSB/_MSB` family.
+- Surfaced: `Flit::set_payload_channel` / `get_payload_channel` were stubs in Task 10
+- Status: **DEFERRED**
+- Re-open trigger: Layer B / Stage 2 payload pack/unpack work begins
+- Action taken: removed `set_payload_channel` / `get_payload_channel` from `Flit` public API (Phase X.4 quarantine). Re-introduce when this finding closes.
 
 ## F-004 — codegen does not elaborate per-register reset value
-- Surfaced: `RegisterFile::reset` in Task 12
-- Workaround: reset all registers to 0
-- Fix-direction: cpp_registers.py elaborate `constexpr int <REG>_RESET = N;`
+- Surfaced: `RegisterFile::reset` was all-zero in Task 12
+- Status: **RESOLVED** (Phase X.2)
+- Resolution: codegen elaborates `constexpr uint32_t <REG>_RESET = N;` per non-reserved register. c_model `reset()` writes per-register codegen value. Reserved rows (e.g. `0x110` with `reset_expr: null`) are skipped.
 
-## F-005 — codegen does not elaborate REGISTER_OFFSETS[] array
-- Surfaced: `RegisterFile::known_offsets_` in Task 12 (hand-maintained list)
-- Workaround: hardcode offset list in source file
-- Fix-direction: cpp_registers.py elaborate `constexpr uint32_t ALL_OFFSETS[] = {...};`
+## F-005 — codegen does not elaborate ALL_OFFSETS[] array
+- Surfaced: `RegisterFile::known_offsets_` was a 31-entry hand-maintained set in Task 12
+- Status: **RESOLVED** (Phase X.2)
+- Resolution: codegen elaborates `ni::regs::ALL_OFFSETS[]` + `ALL_OFFSETS_COUNT`. c_model builds `known_offsets` from these.
 
-## F-006 — codegen does not elaborate per-register access mode (RW1C / WO etc.)
-- Surfaced: `RegisterFile::is_wo_` / `is_rw1c_` in Task 12 (stubs returning false)
-- Workaround: no policy enforcement for now
-- Fix-direction: cpp_registers.py elaborate `constexpr ni::regs::AccessMode <REG>_ACCESS;`
+## F-006 — codegen access-mode emission was awkward (per-register single-value enum class)
+- Surfaced: `RegisterFile::is_wo_` / `is_rw1c_` were stubs returning false in Task 12. Codegen DID emit symbols but in an unusable shape.
+- Status: **RESOLVED** (Phase X.3)
+- Resolution: codegen redesigned to single `enum class AccessMode { RO, RW, RW1C, WO }` + per-register `constexpr <REG>_ACCESS`. c_model `access_mode_of(offset)` switch dispatches `read32` / `write32` per mode. RW1C clears bits, WO read-as-zero, RO silent-ignore writes.
 
-## F-007 — RegisterFile ABI dispatch consumes csr_policy boolean sentinels
-- Surfaced: ABI dispatch in `RegisterFile::read32` / `write32`
-- Status: RESOLVED in Task 12 fix — uses `if constexpr (ni::regs::csr_policy::*_IS_*)` to dispatch on codegen-elaborated policy values
-- Future enhancement: codegen could elaborate `enum class SubWordWritePolicy { Decerr, Ignored }` for type-safe dispatch instead of boolean sentinels (currently `WO_READ_IS_ZERO` / `UNMAPPED_READ_IS_DECERR` etc. are int sentinels)
+## F-007 — RegisterFile ABI dispatch did not consume csr_policy sentinels
+- Surfaced: `RegisterFile::read32` / `write32` had hardcoded DecErr for misaligned/sub-word
+- Status: **RESOLVED** (first round, Task 12 fix `f6e0222`)
+- Resolution: `if constexpr (ni::regs::csr_policy::*_IS_SLVERR)` dispatches on codegen-elaborated csr_policy sentinels.
+
+---
+
+## Process lesson recorded
+
+The first-round Phase 1 sufficiency-findings policy did not require the implementer to `grep` codegen output before classifying a gap as "codegen does not elaborate X". F-002 and F-006 were misclassified — the symbols existed but the implementer wrote stubs anyway. Future rounds must include a **consume audit**: for each apparent missing symbol, `grep` the existing elaborated headers first.
