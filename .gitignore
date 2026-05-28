@@ -26,3 +26,6 @@ Thumbs.db
 *.dll
 *.so
 *.a
+
+# git worktrees (per superpowers:using-git-worktrees)
+.worktrees/

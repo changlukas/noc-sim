@@ -3,10 +3,11 @@
 // Source:    spec_validate/generated/ni_registers.json
 // Source SHA: 05cc59c20bff
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T06:13:01Z
+// Generated at: 2026-05-28T04:05:42Z
 // ----------------------------------------------------------------------------
 #pragma once
 #include <cstdint>
+#include <cstddef>
 
 namespace ni {
 namespace regs {
@@ -58,38 +59,40 @@ constexpr int QUIESCE_CTRL_QUIESCE_REQ_MASK = 0x1;
 constexpr int QUIESCE_STATUS_QUIESCE_IDLE_MASK = 0x1;
 constexpr int EXCLUSIVE_MONITOR_CTRL_CLEAR_ALL_MASK = 0x1;
 
-// --- access mode enums (one per register) ---
-enum class PKT_PROBE_ENAccess { RW };
-enum class PKT_PROBE_MODEAccess { RW };
-enum class PKT_WINDOW_SIZEAccess { RW };
-enum class PKT_BYTE_COUNTAccess { RO };
-enum class PKT_BANDWIDTHAccess { RO };
-enum class TXN_PROBE_ENAccess { RW };
-enum class TXN_THRESHOLD_0Access { RW };
-enum class TXN_THRESHOLD_1Access { RW };
-enum class TXN_THRESHOLD_2Access { RW };
-enum class TXN_THRESHOLD_3Access { RW };
-enum class TXN_BIN_0_COUNTAccess { RO };
-enum class TXN_BIN_1_COUNTAccess { RO };
-enum class TXN_BIN_2_COUNTAccess { RO };
-enum class TXN_BIN_3_COUNTAccess { RO };
-enum class TXN_BIN_4_COUNTAccess { RO };
-enum class TXN_MIN_LATENCYAccess { RO };
-enum class TXN_MAX_LATENCYAccess { RO };
-enum class TXN_TOTAL_COUNTAccess { RO };
-enum class ERR_STATUSAccess { RW1C };
-enum class ECC_UNCORR_ERR_CNTAccess { RO };
-enum class LAST_ERR_INFOAccess { RO };
-enum class IRQ_ENABLEAccess { RW };
-enum class ECC_CORR_ERR_CNTAccess { RO };
-enum class ROUTE_PAR_ERR_CNTAccess { RO };
-enum class AXI_PARITY_ERR_CNTAccess { RO };
-enum class PENDING_R_COUNTAccess { RO };
-enum class PENDING_W_COUNTAccess { RO };
-enum class QUIESCE_CTRLAccess { RW };
-enum class QUIESCE_STATUSAccess { RO };
-enum class EXCLUSIVE_MONITOR_CTRLAccess { WO };
-enum class EXCLUSIVE_MONITOR_STATUSAccess { RO };
+// --- access mode enum + per-register constexpr ---
+enum class AccessMode { RO, RW, RW1C, WO };
+
+constexpr AccessMode PKT_PROBE_EN_ACCESS = AccessMode::RW;
+constexpr AccessMode PKT_PROBE_MODE_ACCESS = AccessMode::RW;
+constexpr AccessMode PKT_WINDOW_SIZE_ACCESS = AccessMode::RW;
+constexpr AccessMode PKT_BYTE_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode PKT_BANDWIDTH_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_PROBE_EN_ACCESS = AccessMode::RW;
+constexpr AccessMode TXN_THRESHOLD_0_ACCESS = AccessMode::RW;
+constexpr AccessMode TXN_THRESHOLD_1_ACCESS = AccessMode::RW;
+constexpr AccessMode TXN_THRESHOLD_2_ACCESS = AccessMode::RW;
+constexpr AccessMode TXN_THRESHOLD_3_ACCESS = AccessMode::RW;
+constexpr AccessMode TXN_BIN_0_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_BIN_1_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_BIN_2_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_BIN_3_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_BIN_4_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_MIN_LATENCY_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_MAX_LATENCY_ACCESS = AccessMode::RO;
+constexpr AccessMode TXN_TOTAL_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode ERR_STATUS_ACCESS = AccessMode::RW1C;
+constexpr AccessMode ECC_UNCORR_ERR_CNT_ACCESS = AccessMode::RO;
+constexpr AccessMode LAST_ERR_INFO_ACCESS = AccessMode::RO;
+constexpr AccessMode IRQ_ENABLE_ACCESS = AccessMode::RW;
+constexpr AccessMode ECC_CORR_ERR_CNT_ACCESS = AccessMode::RO;
+constexpr AccessMode ROUTE_PAR_ERR_CNT_ACCESS = AccessMode::RO;
+constexpr AccessMode AXI_PARITY_ERR_CNT_ACCESS = AccessMode::RO;
+constexpr AccessMode PENDING_R_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode PENDING_W_COUNT_ACCESS = AccessMode::RO;
+constexpr AccessMode QUIESCE_CTRL_ACCESS = AccessMode::RW;
+constexpr AccessMode QUIESCE_STATUS_ACCESS = AccessMode::RO;
+constexpr AccessMode EXCLUSIVE_MONITOR_CTRL_ACCESS = AccessMode::WO;
+constexpr AccessMode EXCLUSIVE_MONITOR_STATUS_ACCESS = AccessMode::RO;
 
 // --- static_assert: per-register field width sum <= data_width (design doc sec 6.4) ---
 static_assert(3 <= 32, "ERR_STATUS: field width sum (3) must be <= data_width (32)");
@@ -98,6 +101,87 @@ static_assert(3 <= 32, "IRQ_ENABLE: field width sum (3) must be <= data_width (3
 static_assert(1 <= 32, "QUIESCE_CTRL: field width sum (1) must be <= data_width (32)");
 static_assert(1 <= 32, "QUIESCE_STATUS: field width sum (1) must be <= data_width (32)");
 static_assert(1 <= 32, "EXCLUSIVE_MONITOR_CTRL: field width sum (1) must be <= data_width (32)");
+
+// --- per-register reset values ---
+constexpr uint32_t PKT_PROBE_EN_RESET = 0x0;
+constexpr uint32_t PKT_PROBE_MODE_RESET = 0x0;
+constexpr uint32_t PKT_WINDOW_SIZE_RESET = 0x0;
+constexpr uint32_t PKT_BYTE_COUNT_RESET = 0x0;
+constexpr uint32_t PKT_BANDWIDTH_RESET = 0x0;
+constexpr uint32_t TXN_PROBE_EN_RESET = 0x0;
+constexpr uint32_t TXN_THRESHOLD_0_RESET = 0x0;
+constexpr uint32_t TXN_THRESHOLD_1_RESET = 0x0;
+constexpr uint32_t TXN_THRESHOLD_2_RESET = 0x0;
+constexpr uint32_t TXN_THRESHOLD_3_RESET = 0x0;
+constexpr uint32_t TXN_BIN_0_COUNT_RESET = 0x0;
+constexpr uint32_t TXN_BIN_1_COUNT_RESET = 0x0;
+constexpr uint32_t TXN_BIN_2_COUNT_RESET = 0x0;
+constexpr uint32_t TXN_BIN_3_COUNT_RESET = 0x0;
+constexpr uint32_t TXN_BIN_4_COUNT_RESET = 0x0;
+constexpr uint32_t TXN_MIN_LATENCY_RESET = 0xFFFF;
+constexpr uint32_t TXN_MAX_LATENCY_RESET = 0x0;
+constexpr uint32_t TXN_TOTAL_COUNT_RESET = 0x0;
+constexpr uint32_t ERR_STATUS_RESET = 0x0;
+constexpr uint32_t ECC_UNCORR_ERR_CNT_RESET = 0x0;
+constexpr uint32_t LAST_ERR_INFO_RESET = 0x0;
+constexpr uint32_t IRQ_ENABLE_RESET = 0x0;
+constexpr uint32_t ECC_CORR_ERR_CNT_RESET = 0x0;
+constexpr uint32_t ROUTE_PAR_ERR_CNT_RESET = 0x0;
+constexpr uint32_t AXI_PARITY_ERR_CNT_RESET = 0x0;
+constexpr uint32_t PENDING_R_COUNT_RESET = 0x0;
+constexpr uint32_t PENDING_W_COUNT_RESET = 0x0;
+constexpr uint32_t QUIESCE_CTRL_RESET = 0x0;
+constexpr uint32_t QUIESCE_STATUS_RESET = 0x0;
+constexpr uint32_t EXCLUSIVE_MONITOR_CTRL_RESET = 0x0;
+constexpr uint32_t EXCLUSIVE_MONITOR_STATUS_RESET = 0x0;
+
+// --- ALL_OFFSETS array (excludes reserved rows) ---
+constexpr uint32_t ALL_OFFSETS[] = {
+  PKT_PROBE_EN_OFFSET,
+  PKT_PROBE_MODE_OFFSET,
+  PKT_WINDOW_SIZE_OFFSET,
+  PKT_BYTE_COUNT_OFFSET,
+  PKT_BANDWIDTH_OFFSET,
+  TXN_PROBE_EN_OFFSET,
+  TXN_THRESHOLD_0_OFFSET,
+  TXN_THRESHOLD_1_OFFSET,
+  TXN_THRESHOLD_2_OFFSET,
+  TXN_THRESHOLD_3_OFFSET,
+  TXN_BIN_0_COUNT_OFFSET,
+  TXN_BIN_1_COUNT_OFFSET,
+  TXN_BIN_2_COUNT_OFFSET,
+  TXN_BIN_3_COUNT_OFFSET,
+  TXN_BIN_4_COUNT_OFFSET,
+  TXN_MIN_LATENCY_OFFSET,
+  TXN_MAX_LATENCY_OFFSET,
+  TXN_TOTAL_COUNT_OFFSET,
+  ERR_STATUS_OFFSET,
+  ECC_UNCORR_ERR_CNT_OFFSET,
+  LAST_ERR_INFO_OFFSET,
+  IRQ_ENABLE_OFFSET,
+  ECC_CORR_ERR_CNT_OFFSET,
+  ROUTE_PAR_ERR_CNT_OFFSET,
+  AXI_PARITY_ERR_CNT_OFFSET,
+  PENDING_R_COUNT_OFFSET,
+  PENDING_W_COUNT_OFFSET,
+  QUIESCE_CTRL_OFFSET,
+  QUIESCE_STATUS_OFFSET,
+  EXCLUSIVE_MONITOR_CTRL_OFFSET,
+  EXCLUSIVE_MONITOR_STATUS_OFFSET
+};
+constexpr std::size_t ALL_OFFSETS_COUNT = 31;
+
+// --- csr_policy ---
+namespace csr_policy {
+constexpr const char* SUB_WORD_WRITE = "slverr";
+constexpr int         SUB_WORD_WRITE_IS_SLVERR = 1;
+constexpr const char* UNMAPPED_READ = "decerr";
+constexpr int         UNMAPPED_READ_IS_DECERR = 1;
+constexpr const char* MISALIGNED = "slverr";
+constexpr int         MISALIGNED_IS_SLVERR = 1;
+constexpr const char* WO_READ = "zero";
+constexpr int         WO_READ_IS_ZERO = 1;
+}  // namespace csr_policy
 
 }  // namespace regs
 }  // namespace ni

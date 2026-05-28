@@ -1,12 +1,11 @@
 """Codegen SV emitter tests -- Task 8.
 
 Tests cover:
-- --target sv --domain {packet|signals|registers|blocks} each produces a .sv file.
+- --target sv --domain {packet|signals|registers} each produces a .sv file.
 - Each .sv file has the correct package / endpackage structure.
-- typedef enum logic present in blocks output (design doc sec 6.2 strong typing).
-- localparam int unsigned present in all 4 files.
+- localparam int unsigned present in all 3 files.
 - Provenance banner (AUTO-GENERATED, Source SHA, Generator version, Generated at).
-- ifndef/define/endif include guard in all 4 files.
+- ifndef/define/endif include guard in all 3 files.
 - --check mode covers SV files (detects drift, passes when clean).
 - --lint-sv skips gracefully when verilator is not in PATH.
 """
@@ -187,57 +186,6 @@ class TestSvRegistersEmit:
         assert "Source SHA:" in text
 
 
-class TestSvBlocksEmit:
-    def setup_method(self):
-        r = run_codegen("--target", "sv", "--domain", "blocks",
-                        "--out", str(RTL_PKG_DIR))
-        assert r.returncode == 0, r.stderr
-
-    def test_exits_zero(self):
-        r = run_codegen("--target", "sv", "--domain", "blocks",
-                        "--out", str(RTL_PKG_DIR))
-        assert r.returncode == 0, r.stderr
-
-    def test_file_exists(self):
-        assert (RTL_PKG_DIR / "ni_blocks_pkg.sv").exists()
-
-    def test_package_structure(self):
-        text = _sv_text("ni_blocks_pkg.sv")
-        assert "package ni_blocks_pkg;" in text
-        assert "endpackage" in text
-
-    def test_typedef_enum_logic(self):
-        """SV enums must use typedef enum logic (design doc sec 6.2 strong typing)."""
-        text = _sv_text("ni_blocks_pkg.sv")
-        assert "typedef enum logic" in text
-
-    def test_function_block_enum(self):
-        text = _sv_text("ni_blocks_pkg.sv")
-        assert "function_block_e" in text
-        assert "NMU" in text
-        assert "NSU" in text
-
-    def test_rob_mode_enum(self):
-        """ROB mode enum should be present with NOROB variant."""
-        text = _sv_text("ni_blocks_pkg.sv")
-        assert "rob_mode_e" in text
-        assert "ROB_MODE_NOROB" in text
-
-    def test_localparam_int_unsigned_compile_params(self):
-        text = _sv_text("ni_blocks_pkg.sv")
-        assert "localparam int unsigned" in text
-
-    def test_ifndef_include_guard(self):
-        text = _sv_text("ni_blocks_pkg.sv")
-        assert "`ifndef NI_BLOCKS_PKG_SVH" in text
-        assert "`define NI_BLOCKS_PKG_SVH" in text
-        assert "`endif" in text
-
-    def test_provenance_banner(self):
-        text = _sv_text("ni_blocks_pkg.sv")
-        assert "Source SHA:" in text
-
-
 # ---------------------------------------------------------------------------
 # --check mode covers SV files
 # ---------------------------------------------------------------------------
@@ -245,11 +193,11 @@ class TestSvBlocksEmit:
 class TestCheckModeWithSv:
     def setup_method(self):
         """Ensure all SV files are freshly generated before each check test."""
-        for domain in ("packet", "signals", "registers", "blocks"):
+        for domain in ("packet", "signals", "registers"):
             run_codegen("--target", "sv", "--domain", domain, "--out", str(RTL_PKG_DIR))
         # Also ensure C++ headers are fresh.
         from tests.test_codegen import INCLUDE_DIR
-        for domain in ("packet", "signals", "registers", "blocks"):
+        for domain in ("packet", "signals", "registers"):
             run_codegen("--target", "cpp", "--domain", domain, "--out", str(INCLUDE_DIR))
 
     def test_check_exits_zero_when_sv_clean(self):
@@ -277,11 +225,43 @@ class TestCheckModeWithSv:
 # --lint-sv graceful skip
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Task 4: Pin-level SV interface per bundle
+# ---------------------------------------------------------------------------
+
+def test_sv_interface_per_bundle():
+    """ni_signals_pkg.sv must expose one SV interface per ni_signals.json bundle.
+
+    Interface ID convention: ``ni_<lowercase_source_name>_intf`` derived from
+    ``interfaces[].name`` (UPPERCASE_SNAKE) in ni_signals.json.
+    """
+    # Ensure the SV file is freshly regenerated before reading.
+    r = run_codegen("--target", "sv", "--domain", "signals", "--out", str(RTL_PKG_DIR))
+    assert r.returncode == 0, r.stderr
+
+    pkg = RTL_PKG_DIR / "ni_signals_pkg.sv"
+    text = pkg.read_text(encoding="ascii")
+    expected_ifaces = (
+        "ni_axi_slave_port_intf",
+        "ni_axi_master_port_intf",
+        "ni_noc_req_out_intf",
+        "ni_noc_req_in_intf",
+        "ni_noc_rsp_out_intf",
+        "ni_noc_rsp_in_intf",
+        "ni_csr_intf",
+    )
+    for iface in expected_ifaces:
+        assert f"interface {iface}" in text, f"missing SV interface: {iface}"
+        assert (
+            f"endinterface : {iface}" in text or "endinterface" in text
+        ), f"missing endinterface for {iface}"
+
+
 class TestLintSv:
     def test_lint_sv_graceful_skip_or_pass(self):
         """--lint-sv must exit 0 (either skip or lint pass; never crash)."""
         # First ensure SV files exist.
-        for domain in ("packet", "signals", "registers", "blocks"):
+        for domain in ("packet", "signals", "registers"):
             run_codegen("--target", "sv", "--domain", domain, "--out", str(RTL_PKG_DIR))
 
         r = run_codegen("--lint-sv")
@@ -320,3 +300,12 @@ class TestLintSv:
         assert "skip" in result.stderr.lower(), (
             f"Expected skip message.\nstderr: {result.stderr}"
         )
+
+
+def test_sv_access_mode_typedef_and_per_reg_emitted():
+    """ni_regs_pkg.sv must expose typedef access_mode_e + per-reg <REG>_ACCESS."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "rtl_pkg" / "ni_regs_pkg.sv").read_text()
+    assert "typedef enum logic [1:0] { ACCESS_RO, ACCESS_RW, ACCESS_RW1C, ACCESS_WO } access_mode_e;" in text, \
+        "missing access_mode_e typedef"
+    assert "localparam access_mode_e ERR_STATUS_ACCESS" in text and "ACCESS_RW1C" in text

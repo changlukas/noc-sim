@@ -84,31 +84,6 @@ def test_registers_cpp_has_provenance_banner():
     assert "Source SHA:" in text
 
 
-def test_blocks_cpp_emits_function_block_enum():
-    r = run_codegen("--target", "cpp", "--domain", "blocks",
-                    "--out", str(INCLUDE_DIR))
-    assert r.returncode == 0, r.stderr
-    text = (INCLUDE_DIR / "ni_blocks.h").read_text(encoding="ascii")
-    assert "namespace blocks" in text
-    assert "enum class FunctionBlock" in text
-    assert "NMU" in text
-
-
-def test_blocks_cpp_emits_mode_enum():
-    text = (INCLUDE_DIR / "ni_blocks.h").read_text(encoding="ascii")
-    assert "ROBMode" in text
-
-
-def test_blocks_cpp_emits_compile_time_params():
-    text = (INCLUDE_DIR / "ni_blocks.h").read_text(encoding="ascii")
-    assert "constexpr int" in text
-
-
-def test_blocks_cpp_has_provenance_banner():
-    text = (INCLUDE_DIR / "ni_blocks.h").read_text(encoding="ascii")
-    assert "Source SHA:" in text
-
-
 # ---------------------------------------------------------------------------
 # --check mode tests
 # ---------------------------------------------------------------------------
@@ -116,7 +91,7 @@ def test_blocks_cpp_has_provenance_banner():
 def test_check_mode_exits_zero_when_clean():
     """--check must exit 0 when committed headers match fresh regen."""
     # First ensure headers are fresh
-    for domain in ("packet", "signals", "registers", "blocks"):
+    for domain in ("packet", "signals", "registers"):
         run_codegen("--target", "cpp", "--domain", domain, "--out", str(INCLUDE_DIR))
     r = run_codegen("--check")
     assert r.returncode == 0, (
@@ -128,7 +103,7 @@ def test_check_mode_exits_zero_when_clean():
 def test_check_mode_exits_one_on_drift(tmp_path):
     """--check must exit 1 when a committed header has been modified."""
     # First ensure headers are fresh
-    for domain in ("packet", "signals", "registers", "blocks"):
+    for domain in ("packet", "signals", "registers"):
         run_codegen("--target", "cpp", "--domain", domain, "--out", str(INCLUDE_DIR))
 
     target_header = INCLUDE_DIR / "ni_flit_constants.h"
@@ -240,3 +215,45 @@ def test_packet_cpp_functional_fields_have_enabled_true():
         assert f"constexpr bool {field}_ENABLED = true;" in text, (
             f"Expected {field}_ENABLED = true; not found in ni_flit_constants.h"
         )
+
+
+# ---------------------------------------------------------------------------
+# Pin-bundle compile smoke test
+# ---------------------------------------------------------------------------
+
+def test_padding_fields_array_elaborated():
+    """ni_flit_constants.h must expose PaddingFieldPos struct + PADDING_FIELDS array."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "include" / "ni_flit_constants.h").read_text()
+    assert "struct PaddingFieldPos" in text, "missing PaddingFieldPos struct"
+    assert "constexpr PaddingFieldPos PADDING_FIELDS[]" in text, "missing PADDING_FIELDS array"
+    assert "constexpr std::size_t PADDING_FIELDS_COUNT" in text, "missing PADDING_FIELDS_COUNT"
+    assert "route_par" in text or "flit_ecc" in text, \
+        "expected at least one of route_par / flit_ecc in PADDING_FIELDS"
+
+
+# ---------------------------------------------------------------------------
+# Pin-bundle compile smoke test
+# ---------------------------------------------------------------------------
+
+def test_pins_bundle_compiles_with_gxx(tmp_path):
+    """Smoke-compile ni::pins::*Pins bundle structs against elaborated header."""
+    if not shutil.which("g++"):
+        pytest.skip("g++ not in PATH")
+
+    # Regenerate signals header so the test reflects the current spec.
+    run_codegen("--target", "cpp", "--domain", "signals", "--out", str(INCLUDE_DIR))
+
+    src = SPEC_VALIDATE / "tests" / "cpp_smoke" / "test_pins_compile.cpp"
+    exe = tmp_path / "test_pins_compile.exe"
+    r = subprocess.run(
+        ["g++", "-std=c++17",
+         "-I", str(INCLUDE_DIR),
+         str(src),
+         "-o", str(exe)],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, f"g++ failed:\n{r.stderr}"
+    # Also actually run the binary so reset_outputs() actually executes.
+    run_result = subprocess.run([str(exe)], capture_output=True, text=True)
+    assert run_result.returncode == 0, run_result.stderr

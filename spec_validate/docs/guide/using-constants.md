@@ -54,7 +54,7 @@ Build and run via [Quickstart § 3-4](quickstart.md#3-compile-the-sample).
 
 ## In Python
 
-For scripts that consume the spec directly (test stimulus generation, custom emitters, validation), use the firewall API instead of touching JSON shape:
+For scripts that consume the spec directly (test stimulus generation, custom elaborators, validation), use the firewall API instead of touching JSON shape:
 
 ```python
 from ni_spec.loader import load_doc
@@ -106,14 +106,8 @@ Each function takes the loaded spec as its first argument.
 | `regs_field_mask(spec, reg, field)` | `int` bitmask. Raises `KeyError`. |
 | `regs_access_mode(spec, reg)` | `"RO"` / `"RW"` / `"RW1C"` / `"WO"` / `"WC"`. Raises `KeyError`. |
 
-#### Function blocks (`ni_function_blocks.json`)
-
-| Function | Returns |
-|----------|---------|
-| `blocks_function_block_names(spec)` | `["NMU", "NSU", ...]` |
-| `blocks_modes_of(spec, block)` | `[(feature_id, mode), ...]` |
-| `blocks_compile_time_params(spec)` | `{param_name: default_value}` |
+`ni_function_blocks.json` is kept as feature inventory + cross-domain consistency check, but no longer exposes accessor functions through `ni_spec.constants` — it does not drive codegen.
 
 ## Stability contract
 
-`ni_spec.constants` is the public Python surface. Adding new accessors is non-breaking. Renaming or removing an existing accessor breaks every emitter and downstream consumer — treat it as a versioned API.
+`ni_spec.constants` is the public Python surface. Adding new accessors is non-breaking. Renaming or removing an existing accessor breaks every elaborator and downstream consumer — treat it as a versioned API.

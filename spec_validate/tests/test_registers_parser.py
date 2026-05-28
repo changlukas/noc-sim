@@ -52,3 +52,51 @@ def test_parse_register_fields_err_status():
     assert "ecc_uncorr_err" in field_names
     assert "route_par_err" in field_names
     assert "axi_parity_err" in field_names
+
+
+def test_csr_policy_elaborated_as_constexpr():
+    """ni_regs.h must expose csr_policy fields as constexpr in ni::regs::csr_policy."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "include" / "ni_regs.h").read_text()
+    ns_idx = text.find("namespace csr_policy")
+    assert ns_idx != -1, "missing namespace csr_policy"
+    body = text[ns_idx:]
+    end_idx = body.find("} // namespace csr_policy")
+    if end_idx != -1:
+        body = body[:end_idx]
+    for key in ("SUB_WORD_WRITE", "UNMAPPED_READ", "MISALIGNED", "WO_READ"):
+        assert key in body, f"missing csr_policy elaboration: {key} (within namespace)"
+
+
+def test_per_register_reset_const_elaborated():
+    """ni_regs.h must expose <REG>_RESET constexpr per non-reserved register."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "include" / "ni_regs.h").read_text()
+    assert "constexpr uint32_t TXN_MIN_LATENCY_RESET = 0xFFFF" in text, \
+        "non-zero reset for TXN_MIN_LATENCY missing or wrong"
+    assert "constexpr uint32_t PKT_PROBE_EN_RESET = 0x0" in text or \
+           "constexpr uint32_t PKT_PROBE_EN_RESET = 0" in text, \
+        "zero reset for PKT_PROBE_EN missing"
+
+
+def test_all_offsets_array_elaborated():
+    """ni_regs.h must expose constexpr uint32_t ALL_OFFSETS[] and ALL_OFFSETS_COUNT."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "include" / "ni_regs.h").read_text()
+    assert "constexpr uint32_t ALL_OFFSETS[]" in text
+    assert "constexpr std::size_t ALL_OFFSETS_COUNT" in text
+
+
+def test_access_mode_enum_class_emitted():
+    """ni_regs.h must expose enum class AccessMode { RO, RW, RW1C, WO } and
+    per-register <REG>_ACCESS constexpr instead of 30 single-value enum classes."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "include" / "ni_regs.h").read_text()
+    assert "enum class AccessMode { RO, RW, RW1C, WO };" in text, \
+        "missing single AccessMode enum class"
+    assert "constexpr AccessMode ERR_STATUS_ACCESS              = AccessMode::RW1C;" in text or \
+           "constexpr AccessMode ERR_STATUS_ACCESS = AccessMode::RW1C;" in text, \
+        "missing ERR_STATUS_ACCESS = RW1C"
+    assert "AccessMode::WO" in text, "missing WO usage (EXCLUSIVE_MONITOR_CTRL)"
+    assert "enum class ERR_STATUSAccess" not in text, \
+        "old per-reg single-value enum still present"

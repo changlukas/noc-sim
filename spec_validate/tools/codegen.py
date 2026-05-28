@@ -5,11 +5,9 @@ Usage:
     py -3 tools/codegen.py --target cpp --domain packet --out include/
     py -3 tools/codegen.py --target cpp --domain signals --out include/
     py -3 tools/codegen.py --target cpp --domain registers --out include/
-    py -3 tools/codegen.py --target cpp --domain blocks --out include/
     py -3 tools/codegen.py --target sv --domain packet --out rtl_pkg/
     py -3 tools/codegen.py --target sv --domain signals --out rtl_pkg/
     py -3 tools/codegen.py --target sv --domain registers --out rtl_pkg/
-    py -3 tools/codegen.py --target sv --domain blocks --out rtl_pkg/
     py -3 tools/codegen.py --check        # regen + diff vs committed; exit 1 on drift
     py -3 tools/codegen.py --lint-sv      # verilator lint smoke test (skips if not in PATH)
 """
@@ -25,14 +23,14 @@ from pathlib import Path
 # Ensure spec_validate/ is on the import path.
 SPEC_VALIDATE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SPEC_VALIDATE))
-# Ensure tools/ sub-packages are importable as "tools.emit.*".
+# Ensure tools/ sub-packages are importable as "tools.elaborate.*".
 TOOLS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS_DIR.parent))
 
 from ni_spec.loader import load_spec_version
-from tools.emit import common
-from tools.emit import cpp_packet, cpp_signals, cpp_registers, cpp_blocks
-from tools.emit import sv_packet, sv_signals, sv_registers, sv_blocks
+from tools.elaborate import common
+from tools.elaborate import cpp_packet, cpp_signals, cpp_registers
+from tools.elaborate import sv_packet, sv_signals, sv_registers
 
 
 # Maps (target, domain) -> (emitter_func, output_filename, source_json_rel)
@@ -41,11 +39,9 @@ DOMAIN_TO_EMITTER: dict[tuple[str, str], tuple] = {
     ("cpp", "packet"):    (cpp_packet.emit,    "ni_flit_constants.h", "generated/ni_packet.json"),
     ("cpp", "signals"):   (cpp_signals.emit,   "ni_signals.h",        "generated/ni_signals.json"),
     ("cpp", "registers"): (cpp_registers.emit, "ni_regs.h",           "generated/ni_registers.json"),
-    ("cpp", "blocks"):    (cpp_blocks.emit,    "ni_blocks.h",         "ni_function_blocks.json"),
     ("sv",  "packet"):    (sv_packet.emit,    "ni_flit_pkg.sv",       "generated/ni_packet.json"),
     ("sv",  "signals"):   (sv_signals.emit,   "ni_signals_pkg.sv",    "generated/ni_signals.json"),
     ("sv",  "registers"): (sv_registers.emit, "ni_regs_pkg.sv",       "generated/ni_registers.json"),
-    ("sv",  "blocks"):    (sv_blocks.emit,    "ni_blocks_pkg.sv",     "ni_function_blocks.json"),
 }
 
 # Default output directories per target.
@@ -88,6 +84,50 @@ def run_emit(target: str, domain: str, out_dir: Path) -> Path:
 def _strip_timestamp(lines: list[str]) -> list[str]:
     """Remove the '// Generated at:' line so timestamps don't cause false drift."""
     return [l for l in lines if not l.startswith("// Generated at:")]
+
+
+def _check_cpp_sv_paired(out_dir: Path) -> list[str]:
+    """Verify C++ struct field names match SV interface signal names per bundle.
+
+    Field NAMES are compared after stripping ``_i``/``_o`` from the C++ side
+    (SV interface signals already have the suffix stripped by sv_signals.py).
+    Field TYPES are not compared -- wide signals are ``std::array<uint8_t,N>``
+    in C++ but ``logic [W-1:0]`` in SV, and that asymmetry is intentional.
+    """
+    import re
+    errors: list[str] = []
+    cpp_text = (out_dir / "include" / "ni_signals.h").read_text(encoding="ascii")
+    sv_text  = (out_dir / "rtl_pkg" / "ni_signals_pkg.sv").read_text(encoding="ascii")
+
+    # C++: struct <Name>Pins { ... };   fields are either uint*-scalar or std::array<...> array.
+    cpp_bundles: dict[str, set[str]] = {}
+    for m in re.finditer(r"struct (\w+Pins)\s*\{([^}]*)\}", cpp_text, re.S):
+        bundle = m.group(1)
+        fields = re.findall(r"(?:uint\w+|std::array<[^>]+>)\s+(\w+);", m.group(2))
+        cpp_bundles[bundle] = set(fields)
+
+    # SV: interface ni_<lc_name>_intf; ... endinterface
+    # Re-map the SV interface ID back to PascalCase + "Pins" to align with C++ bundle name.
+    sv_bundles: dict[str, set[str]] = {}
+    for m in re.finditer(r"interface ni_(\w+)_intf;(.*?)endinterface", sv_text, re.S):
+        iface_lc = m.group(1)
+        pascal = "".join(p.capitalize() for p in iface_lc.split("_")) + "Pins"
+        sigs = re.findall(r"logic(?:\s*\[[^\]]*\])?\s+(\w+);", m.group(2))
+        sv_bundles[pascal] = set(sigs)
+
+    # Compare names (strip _i/_o from C++ fields).
+    all_bundles = set(cpp_bundles) | set(sv_bundles)
+    for bundle in sorted(all_bundles):
+        cpp_fields = cpp_bundles.get(bundle, set())
+        sv_fields  = sv_bundles.get(bundle, set())
+        cpp_stripped = {
+            f[:-2] if f.endswith(("_i", "_o")) else f
+            for f in cpp_fields
+        }
+        diff = cpp_stripped.symmetric_difference(sv_fields)
+        if diff:
+            errors.append(f"{bundle}: C++ <-> SV pin mismatch: {sorted(diff)}")
+    return errors
 
 
 def cmd_emit(args: argparse.Namespace) -> int:
@@ -154,6 +194,16 @@ def cmd_check(_args: argparse.Namespace) -> int:
                 print(f"[drift] {fresh_path.name}:")
                 print("\n".join(diff[:40]))
 
+    # Paired check: C++ pin-bundle struct fields must match SV interface
+    # signal names one-to-one. Operates on COMMITTED files -- drift in either
+    # the .h or .sv that breaks the pairing is a hard error.
+    paired_errors = _check_cpp_sv_paired(SPEC_VALIDATE)
+    if paired_errors:
+        all_ok = False
+        print("[paired-check] C++ ni_signals.h <-> SV ni_signals_pkg.sv mismatch:")
+        for err in paired_errors:
+            print(f"  {err}")
+
     return 0 if all_ok else 1
 
 
@@ -196,7 +246,7 @@ def main() -> int:
         help="output language target (default: cpp)",
     )
     parser.add_argument(
-        "--domain", choices=["packet", "signals", "registers", "blocks"],
+        "--domain", choices=["packet", "signals", "registers"],
         help="spec domain to emit",
     )
     parser.add_argument(

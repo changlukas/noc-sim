@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import hashlib
 from pathlib import Path
 
-# Repo root is two levels above this file: tools/emit/common.py -> spec_validate/ -> noc-sim/
+# Repo root is two levels above this file: tools/elaborate/common.py -> spec_validate/ -> noc-sim/
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 

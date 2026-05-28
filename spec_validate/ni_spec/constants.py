@@ -139,6 +139,39 @@ def signals_signal_by_pin(signals_spec, pin_name: str) -> dict:
     return None
 
 
+def signals_pins_by_interface(signals_spec) -> dict:
+    """Return {interface_name: [signal_dict, ...]} for pin-bundle elaboration.
+
+    Each entry exposes the fields a C++/SV emitter needs to materialise an
+    interface bundle struct: pin_name, direction, width (numeric default
+    or ``width_expr``), and reset_behavior. Direction for channeled
+    signals is inherited from the channel; interface-level (NoC link)
+    signals carry their own ``direction`` field.
+    """
+    out: dict = {}
+    for iface in signals_spec.get("interfaces", []):
+        name = iface["name"]
+        pins: list = []
+        for ch in iface.get("channels", []):
+            ch_dir = ch.get("direction")
+            for sig in ch.get("signals", []):
+                pins.append({
+                    "pin_name":       sig["pin_name"],
+                    "direction":      sig.get("direction") or ch_dir,
+                    "width_expr":     sig.get("width_expr") or sig.get("default") or "1",
+                    "reset_behavior": sig.get("reset_behavior"),
+                })
+        for sig in iface.get("signals", []):
+            pins.append({
+                "pin_name":       sig["pin_name"],
+                "direction":      sig.get("direction"),
+                "width_expr":     sig.get("width_expr") or sig.get("default") or "1",
+                "reset_behavior": sig.get("reset_behavior"),
+            })
+        out[name] = pins
+    return out
+
+
 # ---------- registers domain (Task 4 will implement) ----------
 
 def regs_offsets(regs_spec) -> dict:
@@ -170,29 +203,3 @@ def regs_access_mode(regs_spec, reg_name: str) -> str:
     raise KeyError(reg_name)
 
 
-# ---------- function blocks domain (Task 5 will implement) ----------
-
-def blocks_function_block_names(blocks_spec) -> list:
-    """Return list of block names (e.g. ['NMU', 'NSU'])."""
-    return [b["name"] for b in blocks_spec.get("blocks", [])]
-
-
-def blocks_modes_of(blocks_spec, block_name: str) -> list:
-    """Return list of (feature_id, mode) tuples for all features in the given block."""
-    out = []
-    for b in blocks_spec.get("blocks", []):
-        if b["name"] != block_name:
-            continue
-        for f in b.get("features", []):
-            for m in f.get("modes", []):
-                out.append((f["id"], m))
-    return out
-
-
-def blocks_compile_time_params(blocks_spec) -> dict:
-    """Return {param_name: default_value} merged across all features (all blocks)."""
-    out: dict = {}
-    for b in blocks_spec.get("blocks", []):
-        for f in b.get("features", []):
-            out.update(f.get("compile_time_params", {}))
-    return out
