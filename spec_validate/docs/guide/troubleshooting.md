@@ -23,7 +23,7 @@ py -3 tools/codegen.py --target cpp --domain packet
 
 ## `ERROR: source JSON not found: ...`
 
-The source JSON for the requested domain is missing. For `packet`, `signals`, `registers`, look under `generated/`. For `blocks`, look at `ni_function_blocks.json` at the `spec_validate/` root. Restore the file from git if it should exist.
+The source JSON for the requested domain is missing. For `packet`, `signals`, `registers`, look under `generated/`. Restore the file from git if it should exist.
 
 ## `ModuleNotFoundError: No module named 'ni_spec'`
 

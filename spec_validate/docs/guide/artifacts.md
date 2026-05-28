@@ -13,17 +13,15 @@ spec_validate/
     ni_registers.schema.json
     ni_protocol_rule_index.json
     ni_protocol_rule_index.schema.json
-  ni_function_blocks.json       <- blocks domain SSoT (hand-written)
+  ni_function_blocks.json       <- feature inventory (not consumed by codegen)
   include/                      <- C++ headers (gitignored, regen on demand)
     ni_flit_constants.h
     ni_signals.h
     ni_regs.h
-    ni_blocks.h
   rtl_pkg/                      <- SV packages (gitignored, regen on demand)
     ni_flit_pkg.sv
     ni_signals_pkg.sv
     ni_regs_pkg.sv
-    ni_blocks_pkg.sv
 ```
 
 `include/` and `rtl_pkg/` are listed in `spec_validate/.gitignore`. They are re-elaborated on demand and generally not tracked. One legacy header, `ni_flit_constants.h`, remains tracked for history.
@@ -72,12 +70,6 @@ Every elaborated file starts with five comment lines plus a horizontal rule abov
 - Per-field positions (`<REG>_<FIELD>_LSB` / `_MSB`).
 - `enum class` for access mode (`RO`, `RW`, `RW1C`, `WO`, `WC`).
 - `static_assert` checks that the per-register field-width sum matches the register width.
-
-### `ni_blocks.h` and `ni_blocks_pkg.sv`
-
-- `enum class FunctionBlock { NMU, NSU, ... }`.
-- Mode enums (e.g. `ROBMode`).
-- `constexpr int` for compile-time parameters declared in `ni_function_blocks.json`.
 
 ## Drift policy
 

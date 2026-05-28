@@ -4,7 +4,6 @@ Two artifact tiers, generated top-down:
 
 ```
 generated/*.json                <- validated JSON SSoT
-ni_function_blocks.json
         |  (tools/elaborate/*.py, dispatched by tools/codegen.py)
         v
 include/*.h                     <- C++ headers for the C-model
@@ -13,16 +12,15 @@ rtl_pkg/*.sv                    <- SystemVerilog packages for co-sim
 
 ## Domains
 
-Four spec domains, each with its own JSON SSoT and a pair of elaborators:
+Three spec domains, each with its own JSON SSoT and a pair of elaborators:
 
 | Domain | JSON SSoT | C++ header | SV package |
 |--------|-----------|------------|------------|
 | `packet` | `generated/ni_packet.json` | `ni_flit_constants.h` | `ni_flit_pkg.sv` |
 | `signals` | `generated/ni_signals.json` | `ni_signals.h` | `ni_signals_pkg.sv` |
 | `registers` | `generated/ni_registers.json` | `ni_regs.h` | `ni_regs_pkg.sv` |
-| `blocks` | `ni_function_blocks.json` | `ni_blocks.h` | `ni_blocks_pkg.sv` |
 
-The `blocks` SSoT is hand-written and lives at the `spec_validate/` root, not under `generated/`.
+`ni_function_blocks.json` is retained as a feature inventory and cross-domain consistency check, but no longer drives codegen.
 
 ## Layers
 
@@ -35,7 +33,7 @@ The `blocks` SSoT is hand-written and lives at the `spec_validate/` root, not un
 
 ## Why a firewall?
 
-If the JSON shape changes — say a field is renamed — only `ni_spec.constants` needs an update. All eight elaborators and any downstream Python consumer stay untouched.
+If the JSON shape changes — say a field is renamed — only `ni_spec.constants` needs an update. All six elaborators and any downstream Python consumer stay untouched.
 
 ## Source of truth
 
