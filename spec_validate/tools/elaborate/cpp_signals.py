@@ -21,13 +21,32 @@ from ni_spec import constants as C
 from ni_spec.loader import load_doc
 
 
-def _cpp_type_for_width(width_expr: str) -> str:
-    """Map a width expression to a C++ unsigned integer type."""
+def _resolve_pin_width(signals_spec, packet_spec, iface_name: str, pin: dict):
+    """Return the pin width as an int when resolvable, else the symbolic
+    fallback string ``pin["width_expr"]`` (already populated from
+    width_expr OR default OR "1" by ``signals_pins_by_interface``).
+
+    AXI_AWUSER/QOS/DATA/STRB/WUSER/ARUSER/BUSER/RUSER_WIDTH symbols are not
+    yet defined in the packet namespace or interface port_parameters
+    (PP-9 will close the gap with interface-local port_parameters).
+    Until then we preserve byte-identical codegen output by handing the
+    raw width_expr string back to the type/range mapper, which is the
+    same value the pre-PP-8 dict-read produced.
+    """
     try:
-        w = int(width_expr)
+        return C.signal_pin_width(signals_spec, packet_spec,
+                                  iface_name, pin["pin_name"])
+    except C.ExprNameError:
+        return pin["width_expr"]
+
+
+def _cpp_type_for_width(width) -> str:
+    """Map a width (int or symbolic string) to a C++ unsigned integer type."""
+    try:
+        w = int(width)
     except (TypeError, ValueError):
-        # symbolic width_expr (e.g. param name) -- defer with conservative uint64_t.
-        # Future: resolve symbol against parameters[] like _resolved_field_widths does.
+        # Unresolved symbolic width (AXI_*_WIDTH not in namespace yet).
+        # Conservative uint64_t covers all current AXI scalar widths.
         return "uint64_t"
     if w <= 8:
         return "uint8_t"
@@ -47,20 +66,21 @@ def _to_pascal(name: str) -> str:
     return "".join(part.capitalize() for part in name.split("_") if part)
 
 
-def _emit_pin_bundles(spec) -> list[str]:
+def _emit_pin_bundles(signals_spec, packet_spec) -> list[str]:
     """Emit ``ni::pins::*Pins`` structs from interfaces[].channels[].signals[]
     and interfaces[].signals[]."""
     out: list[str] = []
     out.append("namespace pins {")
     out.append("")
-    grouped = C.signals_pins_by_interface(spec)
+    grouped = C.signals_pins_by_interface(signals_spec)
     for iface_name, sigs in grouped.items():
         bundle = f"{_to_pascal(iface_name)}Pins"
         out.append(f"struct {bundle} {{")
         if not sigs:
             out.append("  // (no signals defined for this interface)")
         for s in sigs:
-            ctype = _cpp_type_for_width(s["width_expr"])
+            width = _resolve_pin_width(signals_spec, packet_spec, iface_name, s)
+            ctype = _cpp_type_for_width(width)
             out.append(f"  {ctype:<10s} {s['pin_name']};")
         out.append("")
         out.append("  void reset_outputs() {")
@@ -75,8 +95,9 @@ def _emit_pin_bundles(spec) -> list[str]:
             # since the RESET constant is ``int 0`` and won't assign to an
             # array. For scalars, still use the named RESET constant for
             # traceability.
+            width = _resolve_pin_width(signals_spec, packet_spec, iface_name, s)
             try:
-                is_wide = int(s["width_expr"]) > 64
+                is_wide = int(width) > 64
             except (TypeError, ValueError):
                 is_wide = False
             if is_wide:
@@ -98,8 +119,13 @@ def _emit_pin_bundles(spec) -> list[str]:
 
 
 def emit(signals_json: Path, spec_version: str) -> str:
-    """Return C++ header body (no provenance banner -- caller prepends it)."""
+    """Return C++ header body (no provenance banner -- caller prepends it).
+
+    Loads the sibling ``ni_packet.json`` to feed the cross-domain namespace
+    used by ``C.signal_pin_width`` (FLIT_WIDTH, AXI_*_WIDTH, ...).
+    """
     spec = load_doc(signals_json)
+    packet_spec = load_doc(signals_json.parent / "ni_packet.json")
 
     # Collect all signals with non-null, non-external_driven reset_behavior.
     # These are the output signals that have a defined reset value.
@@ -135,6 +161,6 @@ def emit(signals_json: Path, spec_version: str) -> str:
     out.append("")
     out.append("}  // namespace signals")
     out.append("")
-    out.extend(_emit_pin_bundles(spec))
+    out.extend(_emit_pin_bundles(spec, packet_spec))
     out.append("}  // namespace ni")
     return "\n".join(out) + "\n"

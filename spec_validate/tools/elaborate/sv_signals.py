@@ -17,13 +17,33 @@ from ni_spec import constants as C
 from ni_spec.loader import load_doc
 
 
-def _sv_width_for(width_expr: str) -> str:
-    """Return SV bit-vector range ``[W-1:0] `` or empty string for 1-bit signals."""
+def _resolve_pin_width(signals_spec, packet_spec, iface_name: str, pin: dict):
+    """Return the pin width as an int when resolvable, else the symbolic
+    fallback string ``pin["width_expr"]``.
+
+    AXI_AWUSER/QOS/DATA/STRB/WUSER/ARUSER/BUSER/RUSER_WIDTH symbols are not
+    yet defined in the packet namespace or interface port_parameters
+    (PP-9 will close the gap). Until then we preserve byte-identical
+    codegen output by returning the stored width_expr string, which the
+    SV range-mapper handles via the symbolic ``[<SYMBOL>-1:0]`` form.
+    """
     try:
-        w = int(width_expr)
+        return C.signal_pin_width(signals_spec, packet_spec,
+                                  iface_name, pin["pin_name"])
+    except C.ExprNameError:
+        return pin["width_expr"]
+
+
+def _sv_width_for(width) -> str:
+    """Return SV bit-vector range ``[W-1:0] `` or empty string for 1-bit signals.
+
+    Accepts either an int (resolved width) or a string (symbolic fallback).
+    """
+    try:
+        w = int(width)
         return "" if w == 1 else f"[{w - 1}:0] "
     except (TypeError, ValueError):
-        return f"[{width_expr}-1:0] "
+        return f"[{width}-1:0] "
 
 
 def _strip_dir_suffix(pin_name: str) -> str:
@@ -31,19 +51,21 @@ def _strip_dir_suffix(pin_name: str) -> str:
     return pin_name[:-2] if pin_name.endswith(("_i", "_o")) else pin_name
 
 
-def _emit_sv_interfaces(spec) -> list[str]:
+def _emit_sv_interfaces(signals_spec, packet_spec) -> list[str]:
     """Emit ``interface ni_<name>_intf;`` blocks from interfaces[].
 
     SV interfaces cannot be declared inside packages, so callers MUST place
     these lines after ``endpackage``.
     """
     out: list[str] = []
-    grouped = C.signals_pins_by_interface(spec)
+    grouped = C.signals_pins_by_interface(signals_spec)
     for iface_name, sigs in grouped.items():
         iface_id = f"ni_{iface_name.lower()}_intf"
         out.append(f"interface {iface_id};")
         for s in sigs:
-            width = _sv_width_for(s["width_expr"])
+            width = _sv_width_for(
+                _resolve_pin_width(signals_spec, packet_spec, iface_name, s)
+            )
             sig_name = _strip_dir_suffix(s["pin_name"])
             out.append(f"  logic {width}{sig_name};")
         out.append("")
@@ -68,8 +90,13 @@ def _emit_sv_interfaces(spec) -> list[str]:
 
 
 def emit(signals_json: Path, spec_version: str) -> str:
-    """Return SV package body (no provenance banner -- caller prepends it)."""
+    """Return SV package body (no provenance banner -- caller prepends it).
+
+    Loads the sibling ``ni_packet.json`` to feed the cross-domain namespace
+    used by ``C.signal_pin_width``.
+    """
     spec = load_doc(signals_json)
+    packet_spec = load_doc(signals_json.parent / "ni_packet.json")
 
     # Collect output signals with a defined (non-external_driven) reset value.
     reset_consts: list[tuple[str, str]] = []
@@ -104,6 +131,6 @@ def emit(signals_json: Path, spec_version: str) -> str:
     out.append("")
     # SV interface blocks live OUTSIDE the package (SV LRM: interface
     # declarations are top-level, not allowed inside packages).
-    out.extend(_emit_sv_interfaces(spec))
+    out.extend(_emit_sv_interfaces(spec, packet_spec))
     out.append("`endif // NI_SIGNALS_PKG_SVH")
     return "\n".join(out) + "\n"
