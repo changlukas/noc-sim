@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Repo-tracked pre-commit hook. Enable with:
+#   git config core.hooksPath scripts/git-hooks
+#
+# Runs the same drift gates as .github/workflows/spec-validate.yml
+# (minus the spec validator, which is informational during authoring).
+set -e
+
+# Resolve repo root regardless of where commit is invoked from.
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT/spec_validate"
+
+# Pick a Python launcher (Windows uses `py -3`; Linux/macOS use `python` or `python3`).
+if command -v py >/dev/null 2>&1; then
+  PY="py -3"
+elif command -v python3 >/dev/null 2>&1; then
+  PY="python3"
+else
+  PY="python"
+fi
+
+echo "[pre-commit] pytest"
+$PY -m pytest -q
+
+echo "[pre-commit] tools/codegen.py --check"
+$PY tools/codegen.py --check
+
+echo "[pre-commit] tools/gen_inventory.py --check"
+$PY tools/gen_inventory.py --check
+
+echo "[pre-commit] OK"

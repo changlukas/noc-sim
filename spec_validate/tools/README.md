@@ -290,9 +290,16 @@ g++ -std=c++17 -I include examples\use_constants.cpp -o use_constants.exe
 
 例外：`include/ni_flit_constants.h` 之前因歷史原因被 tracked、`-f` 加進 git。新加的 `.h` 跟 `.sv` 都不 track。
 
-### `--check` 跟 `--lint-sv` 是 advisory tools
+### Drift gates — CI + pre-commit
 
-CI 不強制（per `2026-05-26-spec-as-code-unified-design.md` §4.3）— 但 release 前建議手動跑一輪。
+- **GitHub Action** (`.github/workflows/spec-validate.yml`)：每個 push / PR to `master` 跑 pytest + `--check` + `gen_inventory.py --check` + `py -m ni_spec` (要求 0 error / 0 warning)。
+- **Local pre-commit hook** (`scripts/git-hooks/pre-commit`)：commit 前本機跑同樣三條 drift gate（不含 spec validator，避免擋 WIP）。啟用一次性指令：
+
+  ```
+  git config core.hooksPath scripts/git-hooks
+  ```
+
+`--lint-sv` 仍是 advisory（需要 verilator）— 沒在 CI 跑。
 
 ## 修改 codegen 時
 

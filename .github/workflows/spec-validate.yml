@@ -1,0 +1,39 @@
+name: spec-validate
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: pip install jsonschema pytest
+
+      - name: pytest
+        working-directory: spec_validate
+        run: python -m pytest -q
+
+      - name: drift gate (elaborated .h/.sv byte-identical)
+        working-directory: spec_validate
+        run: python tools/codegen.py --check
+
+      - name: drift gate (FEATURE_INVENTORY.md)
+        working-directory: spec_validate
+        run: python tools/gen_inventory.py --check
+
+      - name: spec validator (0 error / 0 warning)
+        working-directory: spec_validate
+        run: |
+          out=$(python -m ni_spec ../spec/ni/doc 2>&1)
+          echo "$out"
+          echo "$out" | grep -q "0 error, 0 warning" || { echo "spec validator produced errors or warnings"; exit 1; }
