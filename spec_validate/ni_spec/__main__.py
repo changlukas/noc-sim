@@ -42,8 +42,9 @@ SIGNALS_SCHEMA = GENERATED_DIR / "ni_signals.schema.json"
 REGISTERS_JSON = GENERATED_DIR / "ni_registers.json"
 REGISTERS_SCHEMA = GENERATED_DIR / "ni_registers.schema.json"
 
-FB_JSON = SPEC_VALIDATE / "ni_function_blocks.json"
-FB_SCHEMA = SPEC_VALIDATE / "ni_function_blocks.schema.json"
+AUTHORED_DIR = SPEC_VALIDATE / "authored"
+FB_JSON = AUTHORED_DIR / "ni_function_blocks.json"
+FB_SCHEMA = AUTHORED_DIR / "ni_function_blocks.schema.json"
 
 PROTO_JSON = GENERATED_DIR / "ni_protocol_rule_index.json"
 PROTO_SCHEMA = GENERATED_DIR / "ni_protocol_rule_index.schema.json"

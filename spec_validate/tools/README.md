@@ -8,8 +8,8 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │  Source layer (human-edited)                                      │
 │  - spec/ni/doc/*.md                                                │
-│  - spec_validate/ni_function_blocks.json (feature inventory only;  │
-│    not consumed by codegen)                                        │
+│  - spec_validate/authored/ni_function_blocks.json (feature         │
+│    inventory only; not consumed by codegen)                        │
 └────────────────────────┬─────────────────────────────────────────┘
                          │ ni_spec.generator (Python; parse MD → JSON)
                          ▼

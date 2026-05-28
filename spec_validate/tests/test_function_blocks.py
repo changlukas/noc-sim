@@ -5,8 +5,8 @@ import re
 from ni_spec import loader, invariants
 
 SPEC_VALIDATE = Path(__file__).resolve().parent.parent
-FB_JSON = SPEC_VALIDATE / "ni_function_blocks.json"
-FB_SCHEMA = SPEC_VALIDATE / "ni_function_blocks.schema.json"
+FB_JSON = SPEC_VALIDATE / "authored" / "ni_function_blocks.json"
+FB_SCHEMA = SPEC_VALIDATE / "authored" / "ni_function_blocks.schema.json"
 
 
 def test_function_blocks_json_exists():

@@ -13,7 +13,9 @@ spec_validate/
     ni_registers.schema.json
     ni_protocol_rule_index.json
     ni_protocol_rule_index.schema.json
-  ni_function_blocks.json       <- feature inventory (not consumed by codegen)
+  authored/
+    ni_function_blocks.json     <- feature inventory (not consumed by codegen)
+    ni_function_blocks.schema.json
   include/                      <- C++ headers (gitignored, regen on demand)
     ni_flit_constants.h
     ni_signals.h
