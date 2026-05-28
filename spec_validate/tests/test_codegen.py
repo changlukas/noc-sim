@@ -221,6 +221,21 @@ def test_packet_cpp_functional_fields_have_enabled_true():
 # Pin-bundle compile smoke test
 # ---------------------------------------------------------------------------
 
+def test_padding_fields_array_elaborated():
+    """ni_flit_constants.h must expose PaddingFieldPos struct + PADDING_FIELDS array."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parent.parent / "include" / "ni_flit_constants.h").read_text()
+    assert "struct PaddingFieldPos" in text, "missing PaddingFieldPos struct"
+    assert "constexpr PaddingFieldPos PADDING_FIELDS[]" in text, "missing PADDING_FIELDS array"
+    assert "constexpr std::size_t PADDING_FIELDS_COUNT" in text, "missing PADDING_FIELDS_COUNT"
+    assert "route_par" in text or "flit_ecc" in text, \
+        "expected at least one of route_par / flit_ecc in PADDING_FIELDS"
+
+
+# ---------------------------------------------------------------------------
+# Pin-bundle compile smoke test
+# ---------------------------------------------------------------------------
+
 def test_pins_bundle_compiles_with_gxx(tmp_path):
     """Smoke-compile ni::pins::*Pins bundle structs against elaborated header."""
     if not shutil.which("g++"):

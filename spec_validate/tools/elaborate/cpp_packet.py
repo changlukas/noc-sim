@@ -13,12 +13,34 @@ from ni_spec import constants as C
 from ni_spec.loader import load_doc
 
 
+def _emit_padding_fields(spec) -> list[str]:
+    out = []
+    out.append("// --- padding fields list (enabled: false, width > 0) ---")
+    out.append("struct PaddingFieldPos { const char* name; int lsb; int msb; };")
+    entries = []
+    for f in spec["flit"]["header_fields"]:
+        if f.get("enabled", True):
+            continue
+        if f.get("width", 1) == 0:
+            continue
+        entries.append((f["name"], f.get("lsb"), f.get("msb")))
+    out.append("constexpr PaddingFieldPos PADDING_FIELDS[] = {")
+    if entries:
+        out.append(",\n".join(
+            f"  {{ \"{n}\", {lsb}, {msb} }}" for n, lsb, msb in entries))
+    out.append("};")
+    out.append(f"constexpr std::size_t PADDING_FIELDS_COUNT = {len(entries)};")
+    out.append("")
+    return out
+
+
 def emit(packet_json: Path, spec_version: str) -> str:
     """Return C++ header body (no provenance banner -- caller prepends it)."""
     spec = load_doc(packet_json)
 
     out: list[str] = []
     out.append("#pragma once")
+    out.append("#include <cstddef>")
     out.append("#include <cstdint>")
     out.append("")
     out.append("namespace ni {")
@@ -49,6 +71,7 @@ def emit(packet_json: Path, spec_version: str) -> str:
             out.append(f"constexpr int  {n}_MSB     = {f['msb']};")
             out.append(f"constexpr int  {n}_WIDTH   = {f['width']};")
             out.append(f"constexpr bool {n}_ENABLED = {enabled_val};")
+    out.extend(_emit_padding_fields(spec))
     out.append("}  // namespace header")
     out.append("")
 

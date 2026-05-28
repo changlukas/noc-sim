@@ -3,9 +3,10 @@
 // Source:    spec_validate/generated/ni_packet.json
 // Source SHA: ea56f053b2a8
 // Generator version: v1.0.0
-// Generated at: 2026-05-27T06:13:01Z
+// Generated at: 2026-05-28T04:14:15Z
 // ----------------------------------------------------------------------------
 #pragma once
+#include <cstddef>
 #include <cstdint>
 
 namespace ni {
@@ -67,6 +68,16 @@ constexpr int  FLIT_ECC_LSB     = 40;
 constexpr int  FLIT_ECC_MSB     = 49;
 constexpr int  FLIT_ECC_WIDTH   = 10;
 constexpr bool FLIT_ECC_ENABLED = false;
+// --- padding fields list (enabled: false, width > 0) ---
+struct PaddingFieldPos { const char* name; int lsb; int msb; };
+constexpr PaddingFieldPos PADDING_FIELDS[] = {
+  { "route_par", 22, 22 },
+  { "rsvd_commtype", 30, 31 },
+  { "multicast", 32, 39 },
+  { "flit_ecc", 40, 49 }
+};
+constexpr std::size_t PADDING_FIELDS_COUNT = 4;
+
 }  // namespace header
 
 // --- payload widths per channel (from flit.payload_channels) ---
