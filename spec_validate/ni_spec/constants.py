@@ -411,3 +411,135 @@ def wstrb_width_resolved(spec: dict) -> int:
     fw = spec.get("flit", {}).get("field_widths", {})
     return int(fw.get("NOC_DATA_WIDTH", 0)) // 8
 
+
+# ---------- signals domain resolvers (PP-7) ----------
+#
+# Signals reference symbols from two namespaces:
+#   1) the interface's own port_parameters (e.g. NUM_VC, ENABLE_AXI_PARITY)
+#   2) packet-domain symbols (FLIT_WIDTH, HEADER_WIDTH, AXI_*_WIDTH, ...)
+# These resolvers therefore accept BOTH specs and merge namespaces in a
+# documented priority order.
+
+def _find_interface(signals_spec: dict, interface: str) -> dict:
+    for iface in signals_spec.get("interfaces", []):
+        if iface.get("name") == interface:
+            return iface
+    raise FieldNotFoundError(f"interface '{interface}' not found")
+
+
+def signal_interfaces(signals_spec: dict) -> list:
+    """Return interface name list in declaration order."""
+    return [iface["name"] for iface in signals_spec.get("interfaces", [])]
+
+
+def signal_interface_pins(signals_spec: dict, interface: str) -> list:
+    """Return flat list of signal dicts for an interface.
+
+    Handles both interface layouts in ni_signals.json:
+      - channeled interfaces (AXI_*, CSR): pins live under channels[].signals[]
+      - direct interfaces (NOC_*): pins live under signals[]
+    Each returned dict is the raw signal entry from the JSON.
+    """
+    iface = _find_interface(signals_spec, interface)
+    pins: list = []
+    for ch in iface.get("channels", []):
+        for sig in ch.get("signals", []):
+            pins.append(sig)
+    for sig in iface.get("signals", []):
+        pins.append(sig)
+    return pins
+
+
+def _signal_namespace(signals_spec: dict, packet_spec: dict, interface: str) -> dict:
+    """Merged namespace for a signals-domain expression.
+
+    Lookup order (later entries override earlier on key collision):
+      1) packet flit.field_widths (AXI_*_WIDTH, NOC_DATA_WIDTH, ...)
+      2) packet derived totals (FLIT_WIDTH, HEADER_WIDTH, PAYLOAD_WIDTH, LINK_WIDTH)
+      3) the interface's own port_parameters (NUM_VC, ENABLE_AXI_PARITY, ...)
+    Interface port_parameters win last because they are the most local scope.
+    """
+    iface = _find_interface(signals_spec, interface)
+    ns: dict = {}
+    # 1) packet field_widths (the broad cross-domain pool)
+    for k, v in packet_spec.get("flit", {}).get("field_widths", {}).items():
+        try:
+            ns[k] = int(v)
+        except (TypeError, ValueError):
+            # non-int entries (shouldn't exist but stay defensive) are skipped
+            pass
+    # 2) packet derived totals
+    ns["FLIT_WIDTH"]    = flit_width_resolved(packet_spec)
+    ns["HEADER_WIDTH"]  = header_width_resolved(packet_spec)
+    ns["PAYLOAD_WIDTH"] = payload_width_resolved(packet_spec)
+    ns["LINK_WIDTH"]    = link_width_resolved(packet_spec)
+    # 3) interface-local port_parameters (most specific scope; can shadow above)
+    for pp in iface.get("port_parameters", []):
+        name = pp.get("name")
+        if name is None:
+            continue
+        # Only int-valued port_parameters enter the integer namespace. Bool/string
+        # parameters (e.g. ENABLE_AXI_PARITY) are not numeric and are skipped;
+        # if a width_param ever references them, ExprNameError is the right
+        # signal that the spec is malformed.
+        ptype = pp.get("type")
+        if ptype == "int":
+            try:
+                ns[name] = int(pp.get("default"))
+            except (TypeError, ValueError):
+                pass
+        elif ptype == "derived":
+            # Derived port_parameters mirror packet domain (e.g. FLIT_WIDTH).
+            # Skip — packet domain entry above is the canonical source.
+            pass
+    return ns
+
+
+def signal_eval_expr(signals_spec: dict, packet_spec: dict,
+                     interface: str, expr) -> int:
+    """Evaluate a width_param/width_expr from the signals domain.
+
+    Uses the same safe AST machinery as packet_eval_expr but with a merged
+    namespace (see _signal_namespace).
+    """
+    if isinstance(expr, int):
+        return expr
+    if not isinstance(expr, str):
+        raise ExprSyntaxError(
+            f"width_param must be str or int, got {type(expr).__name__}"
+        )
+    try:
+        tree = _ast.parse(expr, mode="eval")
+    except SyntaxError as e:
+        raise ExprSyntaxError(f"cannot parse '{expr}': {e}") from e
+    ns = _signal_namespace(signals_spec, packet_spec, interface)
+    return _eval_ast(tree.body, ns)
+
+
+def signal_pin_width(signals_spec: dict, packet_spec: dict,
+                     interface: str, pin_name: str) -> int:
+    """Resolve a pin's width via the signals namespace.
+
+    Priority:
+      1) width_param (symbolic; resolved against merged namespace)
+      2) width_expr  (symbolic expression; resolved against merged namespace)
+      3) default     (legacy stored integer; tolerated during PP-7..PP-9)
+      4) 1           (fall-through for valid/strobe-style 1-bit pins)
+    """
+    for sig in signal_interface_pins(signals_spec, interface):
+        if sig.get("pin_name") != pin_name:
+            continue
+        wp = sig.get("width_param")
+        if wp:
+            return signal_eval_expr(signals_spec, packet_spec, interface, wp)
+        we = sig.get("width_expr")
+        if we:
+            return signal_eval_expr(signals_spec, packet_spec, interface, we)
+        d = sig.get("default")
+        if d is not None:
+            return int(d)
+        return 1
+    raise FieldNotFoundError(
+        f"pin '{pin_name}' not in interface '{interface}'"
+    )
+
