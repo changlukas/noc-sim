@@ -20,13 +20,12 @@
     },
     "signal": {
       "type": "object",
-      "description": "Signal entry. Identifier is always pin_name. AXI channel signals use pin_name derived from channel+suffix. NoC signals use pin_name derived from noc_<logical_name>.",
+      "description": "Signal entry. Identifier is always pin_name. AXI channel signals use pin_name derived from channel+suffix. NoC signals use pin_name derived from noc_<logical_name>. PP-9: per-pin width is purely symbolic — width_param + width_expr only; resolution against the merged namespace (packet field_widths + interface port_parameters) is the consumer's responsibility.",
       "required": ["width_param", "pin_name"],
       "additionalProperties": false,
       "properties": {
         "width_param": {"type": ["string", "null"], "description": "Parameter name that controls this signal's width. Null for fixed 1-bit signals (no parameter reference)."},
         "direction":   {"enum": ["input", "output"]},
-        "default":     {"type": "string"},
         "pin_name": {
           "type": ["string", "null"],
           "description": "RTL-level concrete pin name (e.g. axi_awvalid_i)"

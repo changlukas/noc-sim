@@ -17,33 +17,22 @@ from ni_spec import constants as C
 from ni_spec.loader import load_doc
 
 
-def _resolve_pin_width(signals_spec, packet_spec, iface_name: str, pin: dict):
-    """Return the pin width as an int when resolvable, else the symbolic
-    fallback string ``pin["width_expr"]``.
+def _resolve_pin_width(signals_spec, packet_spec, iface_name: str, pin: dict) -> int:
+    """Return the pin width as an int.
 
-    AXI_AWUSER/QOS/DATA/STRB/WUSER/ARUSER/BUSER/RUSER_WIDTH symbols are not
-    yet defined in the packet namespace or interface port_parameters
-    (PP-9 will close the gap). Until then we preserve byte-identical
-    codegen output by returning the stored width_expr string, which the
-    SV range-mapper handles via the symbolic ``[<SYMBOL>-1:0]`` form.
+    PP-9: every AXI/CSR/NoC pin resolves to an int through ``signal_pin_width``
+    (the AXI_*_WIDTH symbol gap is closed by per-port ``port_parameters``).
+    No symbolic-string fallback remains; an ``ExprNameError`` here is a
+    real spec bug and propagates to the caller.
     """
-    try:
-        return C.signal_pin_width(signals_spec, packet_spec,
-                                  iface_name, pin["pin_name"])
-    except C.ExprNameError:
-        return pin["width_expr"]
+    return C.signal_pin_width(signals_spec, packet_spec,
+                              iface_name, pin["pin_name"])
 
 
-def _sv_width_for(width) -> str:
-    """Return SV bit-vector range ``[W-1:0] `` or empty string for 1-bit signals.
-
-    Accepts either an int (resolved width) or a string (symbolic fallback).
-    """
-    try:
-        w = int(width)
-        return "" if w == 1 else f"[{w - 1}:0] "
-    except (TypeError, ValueError):
-        return f"[{width}-1:0] "
+def _sv_width_for(width: int) -> str:
+    """Return SV bit-vector range ``[W-1:0] `` or empty string for 1-bit signals."""
+    w = int(width)
+    return "" if w == 1 else f"[{w - 1}:0] "
 
 
 def _strip_dir_suffix(pin_name: str) -> str:

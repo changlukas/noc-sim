@@ -463,6 +463,10 @@ def _build_axi_channels(port_type: str, ns: Dict[str, dict],
 
     port_type: 'slave' 或 'master'。AXI_ID_WIDTH 在所有 port 共用；per-port 預設值
     在 interface port_parameters[] 裡，不在 signal entry 裡。
+
+    PP-9: pins are purely symbolic — only ``width_param`` is stored. Default
+    values come from the interface's ``port_parameters`` (resolver namespace),
+    not from per-pin storage.
     """
     template = _AXI_CHANNELS_SLAVE if port_type == "slave" else _AXI_CHANNELS_MASTER
     channels = []
@@ -471,12 +475,9 @@ def _build_axi_channels(port_type: str, ns: Dict[str, dict],
         if with_signals:
             ch["signals"] = []
             for sig_suffix, src_param in _AXI_CHANNEL_SIGNALS[ch_name]:
-                p = ns.get(src_param)
                 # _sig_suffix is a build-time helper consumed by _derive_pin_name;
                 # it is stripped by write_generated_signals_json before writing.
                 sig_entry = {"width_param": src_param, "_sig_suffix": sig_suffix}
-                if p and "default" in p:
-                    sig_entry["default"] = p["default"]
                 ch["signals"].append(sig_entry)
         channels.append(ch)
     return channels
@@ -576,15 +577,35 @@ _INTERFACE_PARAMS = {
     "CSR":          [],  # AXI4-Lite，width 寫死 32/12
 }
 
-# AXI port 層級 parameter（不屬任一 channel，是整個 port 的 toggle）
-_AXI_PORT_PARAMS = ["ENABLE_AXI_PARITY"]
+# AXI port 層級 parameter（不屬任一 channel，是整個 port 的 toggle 或 width 設定）。
+# PP-9: closes the AXI_*_WIDTH symbolic gap — the resolver now finds these widths
+# in interface port_parameters instead of relying on per-pin stored defaults.
+# Width parameters follow AXI4 convention (AMBA IHI 0022): each width is an
+# instance-level knob on the AXI port.
+_AXI_PORT_PARAMS = [
+    "ENABLE_AXI_PARITY",
+    # AXI scalar widths (AMBA IHI 0022 §A1)
+    "AXI_DATA_WIDTH",
+    "AXI_STRB_WIDTH",
+    "AXI_QOS_WIDTH",
+    "AXI_AWUSER_WIDTH",
+    "AXI_WUSER_WIDTH",
+    "AXI_BUSER_WIDTH",
+    "AXI_ARUSER_WIDTH",
+    "AXI_RUSER_WIDTH",
+]
 
 
 def _build_noc_signals(interface_name: str, ns: Dict[str, dict]) -> List[dict]:
     """組 NoC link interface 的 signals list。
 
     pin_name 在 write_generated_signals_json 後處理時填入（透過 _derive_pin_name）。
-    width_param: "1" 是 literal width，不是 parameter name → 轉為 None。
+    width_param: "1" 是 literal width，不是 parameter name → ``width_expr`` 存原值，
+    ``width_param`` 設為 None（讓 resolver 從 width_expr 拿到 literal int）。
+
+    PP-9: pins are purely symbolic — no ``default`` is stored. Width resolution
+    is handled by ``signal_pin_width`` via the merged namespace (packet domain
+    + interface port_parameters).
     """
     sigs = _NOC_INTERFACE_SIGNALS.get(interface_name, [])
     out = []
@@ -592,27 +613,22 @@ def _build_noc_signals(interface_name: str, ns: Dict[str, dict]) -> List[dict]:
         # Determine whether raw_width_param is a real parameter reference or a literal.
         # Numeric strings (e.g. "1") are literal widths — width_param should be null.
         try:
-            literal_width = str(int(raw_width_param))
-            width_param_val = None  # literal — no parameter name to reference
+            int(raw_width_param)
+            width_param_val: Optional[str] = None
+            width_expr_val: Optional[str] = raw_width_param
         except ValueError:
-            literal_width = None
             width_param_val = raw_width_param
+            width_expr_val = None
 
         entry = {
             "width_param": width_param_val,
             "direction": direction,
         }
+        if width_expr_val is not None:
+            entry["width_expr"] = width_expr_val
         # _sig_name is a build-time helper consumed by _derive_pin_name for NoC signals;
         # it mirrors the logical signal name (e.g. "req_valid_o") used to form noc_<name>.
         entry["_sig_name"] = sig_name
-
-        # Resolve default: literal int if width_param was numeric; else lookup param table
-        if literal_width is not None:
-            entry["default"] = literal_width
-        else:
-            p = ns.get(raw_width_param)
-            if p and "default" in p:
-                entry["default"] = p["default"]
         out.append(entry)
     return out
 
@@ -664,6 +680,7 @@ def _build_params_namespace(md_dir: Union[str, Path],
         if name not in by_name:
             by_name[name] = {
                 "name": name,
+                "type": "int",
                 "default": str(val),
                 "source": "packet_format.md §1.2",
             }
@@ -694,6 +711,7 @@ def _build_params_namespace(md_dir: Union[str, Path],
     if "AXI_QOS_WIDTH" not in by_name:
         by_name["AXI_QOS_WIDTH"] = {
             "name": "AXI_QOS_WIDTH",
+            "type": "int",
             "default": "4",
             "source": "AMBA IHI 0022 fixed (independent of NOC_QOS_WIDTH)",
         }
@@ -854,6 +872,9 @@ def write_generated_signals_json(md_dir: Union[str, Path], out_path: Union[str, 
                 sig["pin_name"] = pin_name
                 sig["reset_behavior"] = reset_map.get(pin_name) or _default_reset_for(sig, iface, pin_name)
                 sig.setdefault("presence", None)
+                # PP-9: width_expr stays None for AXI/CSR pins (width comes from
+                # port_parameters via width_param); only NoC literal-width pins
+                # set it explicitly in _build_noc_signals.
                 sig.setdefault("width_expr", None)
                 sig.pop("_sig_suffix", None)  # build-time helper; not part of schema
         for sig in iface.get("signals", []):

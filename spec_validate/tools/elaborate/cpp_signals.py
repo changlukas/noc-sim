@@ -21,33 +21,21 @@ from ni_spec import constants as C
 from ni_spec.loader import load_doc
 
 
-def _resolve_pin_width(signals_spec, packet_spec, iface_name: str, pin: dict):
-    """Return the pin width as an int when resolvable, else the symbolic
-    fallback string ``pin["width_expr"]`` (already populated from
-    width_expr OR default OR "1" by ``signals_pins_by_interface``).
+def _resolve_pin_width(signals_spec, packet_spec, iface_name: str, pin: dict) -> int:
+    """Return the pin width as an int.
 
-    AXI_AWUSER/QOS/DATA/STRB/WUSER/ARUSER/BUSER/RUSER_WIDTH symbols are not
-    yet defined in the packet namespace or interface port_parameters
-    (PP-9 will close the gap with interface-local port_parameters).
-    Until then we preserve byte-identical codegen output by handing the
-    raw width_expr string back to the type/range mapper, which is the
-    same value the pre-PP-8 dict-read produced.
+    PP-9: every AXI/CSR/NoC pin in the spec now resolves to an int through
+    ``signal_pin_width`` (the AXI_*_WIDTH symbol gap is closed by per-port
+    ``port_parameters``). No string fallback path remains; any
+    ``ExprNameError`` here is a real spec bug and propagates to the caller.
     """
-    try:
-        return C.signal_pin_width(signals_spec, packet_spec,
-                                  iface_name, pin["pin_name"])
-    except C.ExprNameError:
-        return pin["width_expr"]
+    return C.signal_pin_width(signals_spec, packet_spec,
+                              iface_name, pin["pin_name"])
 
 
-def _cpp_type_for_width(width) -> str:
-    """Map a width (int or symbolic string) to a C++ unsigned integer type."""
-    try:
-        w = int(width)
-    except (TypeError, ValueError):
-        # Unresolved symbolic width (AXI_*_WIDTH not in namespace yet).
-        # Conservative uint64_t covers all current AXI scalar widths.
-        return "uint64_t"
+def _cpp_type_for_width(width: int) -> str:
+    """Map a resolved int width to a C++ unsigned integer type."""
+    w = int(width)
     if w <= 8:
         return "uint8_t"
     if w <= 16:
@@ -96,10 +84,7 @@ def _emit_pin_bundles(signals_spec, packet_spec) -> list[str]:
             # array. For scalars, still use the named RESET constant for
             # traceability.
             width = _resolve_pin_width(signals_spec, packet_spec, iface_name, s)
-            try:
-                is_wide = int(width) > 64
-            except (TypeError, ValueError):
-                is_wide = False
+            is_wide = int(width) > 64
             if is_wide:
                 out.append(f"    {s['pin_name']} = {{}};  // wide signal, zero-initialized")
             else:

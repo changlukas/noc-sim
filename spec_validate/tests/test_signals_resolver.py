@@ -1,11 +1,13 @@
-"""Unit tests for signals-domain resolvers (PP-7).
+"""Unit tests for signals-domain resolvers (PP-7 + PP-9).
 
 Signals reference symbols from two namespaces:
-  - the interface's port_parameters (local: NUM_VC, ENABLE_AXI_PARITY)
-  - packet domain (cross-domain: FLIT_WIDTH, AXI_*_WIDTH, ...)
+  - the interface's port_parameters (local: NUM_VC, ENABLE_AXI_PARITY,
+    AXI_DATA_WIDTH, AXI_STRB_WIDTH, AXI_QOS_WIDTH, AXI_*USER_WIDTH)
+  - packet domain (cross-domain: FLIT_WIDTH, AXI_ID_WIDTH, AXI_ADDR_WIDTH, ...)
 
 Tests pull real interface/pin names from generated/ni_signals.json to
-keep the suite aligned with the authored spec.
+keep the suite aligned with the authored spec. PP-9 closed the AXI_*_WIDTH
+namespace gap, so every pin in the spec must resolve to an int.
 """
 from __future__ import annotations
 import pytest
@@ -97,8 +99,9 @@ def test_pin_width_from_interface_port_parameter(signals_spec, packet_spec):
     assert actual == 1  # NUM_VC default = 1
 
 
-def test_pin_width_no_width_param_falls_back_to_default(signals_spec, packet_spec):
-    """noc_req_valid_o has width_param=null; resolver returns stored default."""
+def test_pin_width_no_width_param_falls_back_to_width_expr(signals_spec, packet_spec):
+    """noc_req_valid_o has width_param=null and width_expr='1' (literal);
+    resolver returns the literal int from width_expr."""
     actual = C.signal_pin_width(signals_spec, packet_spec,
                                 "NOC_REQ_OUT", "noc_req_valid_o")
     assert actual == 1
@@ -126,42 +129,94 @@ def test_signal_eval_expr_arithmetic(signals_spec, packet_spec):
     assert actual == expected
 
 
-# -- transition guard: stored defaults still consistent ------------
+# -- AXI_*_WIDTH resolution via per-interface port_parameters (PP-9) -
 
-def test_resolved_widths_match_stored_defaults_where_resolvable(
-        signals_spec, packet_spec):
-    """Transition guard: whenever the resolver succeeds, it must agree with
-    the stored default.
+# Expected widths for every AXI scalar symbol. These match the defaults
+# carried by the merged namespace (signal_interface.md §Parameters +
+# packet_format.md §1.2 Group 3 + AMBA IHI 0022 fixed AXI_QOS_WIDTH).
+_EXPECTED_AXI_WIDTHS = {
+    "AXI_DATA_WIDTH":    256,
+    "AXI_STRB_WIDTH":    32,
+    "AXI_QOS_WIDTH":     4,
+    "AXI_AWUSER_WIDTH":  8,
+    "AXI_WUSER_WIDTH":   8,
+    "AXI_BUSER_WIDTH":   8,
+    "AXI_ARUSER_WIDTH":  8,
+    "AXI_RUSER_WIDTH":   8,
+}
 
-    Some AXI symbols (AXI_QOS_WIDTH, AXI_DATA_WIDTH, AXI_*USER_WIDTH, ...)
-    are referenced by signals but not yet defined in packet field_widths;
-    those pins raise ExprNameError, which is the correct behaviour. PP-9
-    will close that gap (either by adding the symbols to packet spec or
-    by introducing interface-local parameters). For now we assert
-    consistency only on the subset the namespace can answer.
+# (interface, pin) -> AXI_*_WIDTH symbol exercised. Picks representative pins
+# from both AXI_SLAVE_PORT (host-facing inputs) and AXI_MASTER_PORT (outputs).
+_AXI_WIDTH_PIN_SAMPLES = [
+    # AXI_DATA_WIDTH
+    ("AXI_SLAVE_PORT",  "axi_wdata_i",  "AXI_DATA_WIDTH"),
+    ("AXI_MASTER_PORT", "axi_rdata_i",  "AXI_DATA_WIDTH"),
+    # AXI_STRB_WIDTH
+    ("AXI_SLAVE_PORT",  "axi_wstrb_i",  "AXI_STRB_WIDTH"),
+    ("AXI_MASTER_PORT", "axi_wstrb_o",  "AXI_STRB_WIDTH"),
+    # AXI_QOS_WIDTH (per-channel: AW/AR carry awqos/arqos)
+    ("AXI_SLAVE_PORT",  "axi_awqos_i",  "AXI_QOS_WIDTH"),
+    ("AXI_SLAVE_PORT",  "axi_arqos_i",  "AXI_QOS_WIDTH"),
+    # AXI_*USER_WIDTH (per-channel per AMBA IHI 0022)
+    ("AXI_SLAVE_PORT",  "axi_awuser_i", "AXI_AWUSER_WIDTH"),
+    ("AXI_SLAVE_PORT",  "axi_wuser_i",  "AXI_WUSER_WIDTH"),
+    ("AXI_SLAVE_PORT",  "axi_buser_o",  "AXI_BUSER_WIDTH"),
+    ("AXI_SLAVE_PORT",  "axi_aruser_i", "AXI_ARUSER_WIDTH"),
+    ("AXI_SLAVE_PORT",  "axi_ruser_o",  "AXI_RUSER_WIDTH"),
+]
+
+
+@pytest.mark.parametrize("iface,pin,symbol", _AXI_WIDTH_PIN_SAMPLES,
+                         ids=[f"{i}/{p}::{s}" for i, p, s in _AXI_WIDTH_PIN_SAMPLES])
+def test_axi_width_pin_resolves(signals_spec, packet_spec, iface, pin, symbol):
+    """Each AXI scalar-width symbol resolves via the interface's port_parameters.
+
+    PP-9 closed the namespace gap by adding AXI_DATA_WIDTH / AXI_STRB_WIDTH /
+    AXI_QOS_WIDTH / AXI_*USER_WIDTH (8 symbols) as port_parameters on both
+    AXI_SLAVE_PORT and AXI_MASTER_PORT. The resolver must answer with the
+    expected width without falling through to any legacy stored default.
     """
-    mismatches = []
-    skipped_for_unknown_symbol = 0
+    assert symbol in _EXPECTED_AXI_WIDTHS, f"missing expected width for {symbol}"
+    actual = C.signal_pin_width(signals_spec, packet_spec, iface, pin)
+    assert actual == _EXPECTED_AXI_WIDTHS[symbol]
+
+
+@pytest.mark.parametrize("iface_name", ["AXI_SLAVE_PORT", "AXI_MASTER_PORT"])
+def test_axi_interface_carries_eight_width_port_parameters(signals_spec, iface_name):
+    """Both AXI ports MUST declare the 8 AXI_*_WIDTH symbols as port_parameters.
+
+    Convention is per-AMBA: each width is an instance-level knob of the AXI
+    port, not a global NoC parameter (which would conflate two distinct
+    width domains — see _build_params_namespace docstring).
+    """
+    iface = next(i for i in signals_spec["interfaces"] if i["name"] == iface_name)
+    pp_names = {p["name"] for p in iface.get("port_parameters", [])}
+    for sym in _EXPECTED_AXI_WIDTHS:
+        assert sym in pp_names, (
+            f"{iface_name} is missing AXI scalar-width port_parameter {sym}"
+        )
+
+
+def test_every_pin_resolves_to_int(signals_spec, packet_spec):
+    """PP-9 hard invariant: every pin in ni_signals.json MUST resolve to an int.
+
+    The transition-guard skip that tolerated ExprNameError on AXI_*_WIDTH
+    symbols is removed — the resolver now answers every pin via the merged
+    namespace. Any ExprNameError here is a real spec bug.
+    """
+    failures: list[str] = []
     checked = 0
     for iface_name in C.signal_interfaces(signals_spec):
         for sig in C.signal_interface_pins(signals_spec, iface_name):
             pin = sig.get("pin_name")
             if not pin:
                 continue
-            stored = sig.get("default")
-            if stored is None:
-                continue
             try:
-                resolved = C.signal_pin_width(signals_spec, packet_spec,
-                                              iface_name, pin)
-            except ExprNameError:
-                skipped_for_unknown_symbol += 1
-                continue
-            checked += 1
-            if resolved != int(stored):
-                mismatches.append(
-                    f"{iface_name}/{pin}: stored={stored} resolved={resolved}"
-                )
-    assert not mismatches, "stored/resolved drift:\n  " + "\n  ".join(mismatches)
-    # Sanity: we actually verified non-trivially many pins.
-    assert checked >= 20, f"transition guard only checked {checked} pins"
+                w = C.signal_pin_width(signals_spec, packet_spec, iface_name, pin)
+                assert isinstance(w, int) and w >= 1, f"{iface_name}/{pin} -> {w!r}"
+                checked += 1
+            except ExprNameError as e:  # noqa: PERF203
+                failures.append(f"{iface_name}/{pin}: ExprNameError({e})")
+    assert not failures, "pins failed to resolve:\n  " + "\n  ".join(failures)
+    # All 5 channels x ~7-11 sigs x 2 AXI ports + NoC + CSR.
+    assert checked >= 100, f"only checked {checked} pins; expected ≥ 100"

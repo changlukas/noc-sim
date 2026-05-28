@@ -38,7 +38,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "axi_awid_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -48,7 +47,6 @@
             },
             {
               "width_param": "AXI_ADDR_WIDTH",
-              "default": "64",
               "pin_name": "axi_awaddr_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -58,7 +56,6 @@
             },
             {
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8",
               "pin_name": "axi_awlen_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -68,7 +65,6 @@
             },
             {
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3",
               "pin_name": "axi_awsize_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -78,7 +74,6 @@
             },
             {
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2",
               "pin_name": "axi_awburst_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -88,7 +83,6 @@
             },
             {
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4",
               "pin_name": "axi_awcache_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -98,7 +92,6 @@
             },
             {
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1",
               "pin_name": "axi_awlock_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -108,7 +101,6 @@
             },
             {
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3",
               "pin_name": "axi_awprot_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -118,7 +110,6 @@
             },
             {
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4",
               "pin_name": "axi_awregion_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -128,7 +119,6 @@
             },
             {
               "width_param": "AXI_AWUSER_WIDTH",
-              "default": "8",
               "pin_name": "axi_awuser_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -138,7 +128,6 @@
             },
             {
               "width_param": "AXI_QOS_WIDTH",
-              "default": "4",
               "pin_name": "axi_awqos_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -155,7 +144,6 @@
           "signals": [
             {
               "width_param": "AXI_DATA_WIDTH",
-              "default": "256",
               "pin_name": "axi_wdata_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -165,7 +153,6 @@
             },
             {
               "width_param": "AXI_STRB_WIDTH",
-              "default": "32",
               "pin_name": "axi_wstrb_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -175,7 +162,6 @@
             },
             {
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1",
               "pin_name": "axi_wlast_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -185,7 +171,6 @@
             },
             {
               "width_param": "AXI_WUSER_WIDTH",
-              "default": "8",
               "pin_name": "axi_wuser_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -202,7 +187,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "axi_arid_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -212,7 +196,6 @@
             },
             {
               "width_param": "AXI_ADDR_WIDTH",
-              "default": "64",
               "pin_name": "axi_araddr_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -222,7 +205,6 @@
             },
             {
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8",
               "pin_name": "axi_arlen_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -232,7 +214,6 @@
             },
             {
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3",
               "pin_name": "axi_arsize_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -242,7 +223,6 @@
             },
             {
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2",
               "pin_name": "axi_arburst_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -252,7 +232,6 @@
             },
             {
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4",
               "pin_name": "axi_arcache_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -262,7 +241,6 @@
             },
             {
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1",
               "pin_name": "axi_arlock_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -272,7 +250,6 @@
             },
             {
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3",
               "pin_name": "axi_arprot_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -282,7 +259,6 @@
             },
             {
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4",
               "pin_name": "axi_arregion_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -292,7 +268,6 @@
             },
             {
               "width_param": "AXI_ARUSER_WIDTH",
-              "default": "8",
               "pin_name": "axi_aruser_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -302,7 +277,6 @@
             },
             {
               "width_param": "AXI_QOS_WIDTH",
-              "default": "4",
               "pin_name": "axi_arqos_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -319,7 +293,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "axi_bid_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -331,7 +304,6 @@
             },
             {
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2",
               "pin_name": "axi_bresp_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -343,7 +315,6 @@
             },
             {
               "width_param": "AXI_BUSER_WIDTH",
-              "default": "8",
               "pin_name": "axi_buser_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -362,7 +333,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "axi_rid_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -374,7 +344,6 @@
             },
             {
               "width_param": "AXI_DATA_WIDTH",
-              "default": "256",
               "pin_name": "axi_rdata_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -386,7 +355,6 @@
             },
             {
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2",
               "pin_name": "axi_rresp_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -398,7 +366,6 @@
             },
             {
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1",
               "pin_name": "axi_rlast_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -410,7 +377,6 @@
             },
             {
               "width_param": "AXI_RUSER_WIDTH",
-              "default": "8",
               "pin_name": "axi_ruser_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -429,6 +395,54 @@
           "type": "bool",
           "default": "true",
           "constraint_text": "—"
+        },
+        {
+          "name": "AXI_DATA_WIDTH",
+          "type": "int",
+          "default": "256",
+          "constraint_text": "32 / 64 / 128 / 256 / 512"
+        },
+        {
+          "name": "AXI_STRB_WIDTH",
+          "type": "int",
+          "default": "32",
+          "source": "packet_format.md §1.2"
+        },
+        {
+          "name": "AXI_QOS_WIDTH",
+          "type": "int",
+          "default": "4",
+          "source": "AMBA IHI 0022 fixed (independent of NOC_QOS_WIDTH)"
+        },
+        {
+          "name": "AXI_AWUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_WUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_BUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_ARUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_RUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
         }
       ]
     },
@@ -443,20 +457,18 @@
         {
           "width_param": null,
           "direction": "output",
-          "default": "1",
+          "width_expr": "1",
           "pin_name": "noc_req_valid_o",
           "reset_behavior": {
             "kind": "async-active-low",
             "value": "0",
             "domain": "noc_rst_ni"
           },
-          "presence": null,
-          "width_expr": null
+          "presence": null
         },
         {
           "width_param": "FLIT_WIDTH",
           "direction": "output",
-          "default": "402",
           "pin_name": "noc_req_flit_o",
           "reset_behavior": {
             "kind": "async-active-low",
@@ -469,7 +481,6 @@
         {
           "width_param": "NUM_VC",
           "direction": "input",
-          "default": "1",
           "pin_name": "noc_req_credit_i",
           "reset_behavior": {
             "kind": "external_driven"
@@ -504,18 +515,16 @@
         {
           "width_param": null,
           "direction": "input",
-          "default": "1",
+          "width_expr": "1",
           "pin_name": "noc_rsp_valid_i",
           "reset_behavior": {
             "kind": "external_driven"
           },
-          "presence": null,
-          "width_expr": null
+          "presence": null
         },
         {
           "width_param": "FLIT_WIDTH",
           "direction": "input",
-          "default": "402",
           "pin_name": "noc_rsp_flit_i",
           "reset_behavior": {
             "kind": "external_driven"
@@ -526,7 +535,6 @@
         {
           "width_param": "NUM_VC",
           "direction": "output",
-          "default": "1",
           "pin_name": "noc_rsp_credit_o",
           "reset_behavior": {
             "kind": "async-active-low",
@@ -567,7 +575,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "csr_awid_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -577,7 +584,6 @@
             },
             {
               "width_param": "AXI_ADDR_WIDTH",
-              "default": "64",
               "pin_name": "csr_awaddr_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -587,7 +593,6 @@
             },
             {
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8",
               "pin_name": "csr_awlen_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -597,7 +602,6 @@
             },
             {
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3",
               "pin_name": "csr_awsize_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -607,7 +611,6 @@
             },
             {
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2",
               "pin_name": "csr_awburst_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -617,7 +620,6 @@
             },
             {
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4",
               "pin_name": "csr_awcache_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -627,7 +629,6 @@
             },
             {
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1",
               "pin_name": "csr_awlock_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -637,7 +638,6 @@
             },
             {
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3",
               "pin_name": "csr_awprot_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -647,7 +647,6 @@
             },
             {
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4",
               "pin_name": "csr_awregion_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -657,7 +656,6 @@
             },
             {
               "width_param": "AXI_AWUSER_WIDTH",
-              "default": "8",
               "pin_name": "csr_awuser_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -667,7 +665,6 @@
             },
             {
               "width_param": "AXI_QOS_WIDTH",
-              "default": "4",
               "pin_name": "csr_awqos_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -684,7 +681,6 @@
           "signals": [
             {
               "width_param": "AXI_DATA_WIDTH",
-              "default": "256",
               "pin_name": "csr_wdata_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -694,7 +690,6 @@
             },
             {
               "width_param": "AXI_STRB_WIDTH",
-              "default": "32",
               "pin_name": "csr_wstrb_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -704,7 +699,6 @@
             },
             {
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1",
               "pin_name": "csr_wlast_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -714,7 +708,6 @@
             },
             {
               "width_param": "AXI_WUSER_WIDTH",
-              "default": "8",
               "pin_name": "csr_wuser_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -731,7 +724,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "csr_arid_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -741,7 +733,6 @@
             },
             {
               "width_param": "AXI_ADDR_WIDTH",
-              "default": "64",
               "pin_name": "csr_araddr_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -751,7 +742,6 @@
             },
             {
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8",
               "pin_name": "csr_arlen_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -761,7 +751,6 @@
             },
             {
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3",
               "pin_name": "csr_arsize_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -771,7 +760,6 @@
             },
             {
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2",
               "pin_name": "csr_arburst_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -781,7 +769,6 @@
             },
             {
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4",
               "pin_name": "csr_arcache_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -791,7 +778,6 @@
             },
             {
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1",
               "pin_name": "csr_arlock_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -801,7 +787,6 @@
             },
             {
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3",
               "pin_name": "csr_arprot_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -811,7 +796,6 @@
             },
             {
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4",
               "pin_name": "csr_arregion_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -821,7 +805,6 @@
             },
             {
               "width_param": "AXI_ARUSER_WIDTH",
-              "default": "8",
               "pin_name": "csr_aruser_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -831,7 +814,6 @@
             },
             {
               "width_param": "AXI_QOS_WIDTH",
-              "default": "4",
               "pin_name": "csr_arqos_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -848,7 +830,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "csr_bid_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -860,7 +841,6 @@
             },
             {
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2",
               "pin_name": "csr_bresp_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -872,7 +852,6 @@
             },
             {
               "width_param": "AXI_BUSER_WIDTH",
-              "default": "8",
               "pin_name": "csr_buser_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -891,7 +870,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "csr_rid_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -903,7 +881,6 @@
             },
             {
               "width_param": "AXI_DATA_WIDTH",
-              "default": "256",
               "pin_name": "csr_rdata_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -915,7 +892,6 @@
             },
             {
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2",
               "pin_name": "csr_rresp_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -927,7 +903,6 @@
             },
             {
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1",
               "pin_name": "csr_rlast_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -939,7 +914,6 @@
             },
             {
               "width_param": "AXI_RUSER_WIDTH",
-              "default": "8",
               "pin_name": "csr_ruser_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -958,6 +932,54 @@
           "type": "bool",
           "default": "true",
           "constraint_text": "—"
+        },
+        {
+          "name": "AXI_DATA_WIDTH",
+          "type": "int",
+          "default": "256",
+          "constraint_text": "32 / 64 / 128 / 256 / 512"
+        },
+        {
+          "name": "AXI_STRB_WIDTH",
+          "type": "int",
+          "default": "32",
+          "source": "packet_format.md §1.2"
+        },
+        {
+          "name": "AXI_QOS_WIDTH",
+          "type": "int",
+          "default": "4",
+          "source": "AMBA IHI 0022 fixed (independent of NOC_QOS_WIDTH)"
+        },
+        {
+          "name": "AXI_AWUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_WUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_BUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_ARUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_RUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
         }
       ]
     },
@@ -972,18 +994,16 @@
         {
           "width_param": null,
           "direction": "input",
-          "default": "1",
+          "width_expr": "1",
           "pin_name": "noc_req_valid_i",
           "reset_behavior": {
             "kind": "external_driven"
           },
-          "presence": null,
-          "width_expr": null
+          "presence": null
         },
         {
           "width_param": "FLIT_WIDTH",
           "direction": "input",
-          "default": "402",
           "pin_name": "noc_req_flit_i",
           "reset_behavior": {
             "kind": "external_driven"
@@ -994,7 +1014,6 @@
         {
           "width_param": "NUM_VC",
           "direction": "output",
-          "default": "1",
           "pin_name": "noc_req_credit_o",
           "reset_behavior": {
             "kind": "async-active-low",
@@ -1035,7 +1054,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "axi_awid_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1047,7 +1065,6 @@
             },
             {
               "width_param": "AXI_ADDR_WIDTH",
-              "default": "64",
               "pin_name": "axi_awaddr_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1059,7 +1076,6 @@
             },
             {
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8",
               "pin_name": "axi_awlen_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1071,7 +1087,6 @@
             },
             {
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3",
               "pin_name": "axi_awsize_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1083,7 +1098,6 @@
             },
             {
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2",
               "pin_name": "axi_awburst_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1095,7 +1109,6 @@
             },
             {
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4",
               "pin_name": "axi_awcache_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1107,7 +1120,6 @@
             },
             {
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1",
               "pin_name": "axi_awlock_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1119,7 +1131,6 @@
             },
             {
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3",
               "pin_name": "axi_awprot_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1131,7 +1142,6 @@
             },
             {
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4",
               "pin_name": "axi_awregion_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1143,7 +1153,6 @@
             },
             {
               "width_param": "AXI_AWUSER_WIDTH",
-              "default": "8",
               "pin_name": "axi_awuser_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1155,7 +1164,6 @@
             },
             {
               "width_param": "AXI_QOS_WIDTH",
-              "default": "4",
               "pin_name": "axi_awqos_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1174,7 +1182,6 @@
           "signals": [
             {
               "width_param": "AXI_DATA_WIDTH",
-              "default": "256",
               "pin_name": "axi_wdata_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1186,7 +1193,6 @@
             },
             {
               "width_param": "AXI_STRB_WIDTH",
-              "default": "32",
               "pin_name": "axi_wstrb_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1198,7 +1204,6 @@
             },
             {
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1",
               "pin_name": "axi_wlast_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1210,7 +1215,6 @@
             },
             {
               "width_param": "AXI_WUSER_WIDTH",
-              "default": "8",
               "pin_name": "axi_wuser_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1229,7 +1233,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "axi_arid_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1241,7 +1244,6 @@
             },
             {
               "width_param": "AXI_ADDR_WIDTH",
-              "default": "64",
               "pin_name": "axi_araddr_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1253,7 +1255,6 @@
             },
             {
               "width_param": "AXI_LEN_WIDTH",
-              "default": "8",
               "pin_name": "axi_arlen_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1265,7 +1266,6 @@
             },
             {
               "width_param": "AXI_SIZE_WIDTH",
-              "default": "3",
               "pin_name": "axi_arsize_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1277,7 +1277,6 @@
             },
             {
               "width_param": "AXI_BURST_WIDTH",
-              "default": "2",
               "pin_name": "axi_arburst_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1289,7 +1288,6 @@
             },
             {
               "width_param": "AXI_CACHE_WIDTH",
-              "default": "4",
               "pin_name": "axi_arcache_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1301,7 +1299,6 @@
             },
             {
               "width_param": "AXI_LOCK_WIDTH",
-              "default": "1",
               "pin_name": "axi_arlock_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1313,7 +1310,6 @@
             },
             {
               "width_param": "AXI_PROT_WIDTH",
-              "default": "3",
               "pin_name": "axi_arprot_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1325,7 +1321,6 @@
             },
             {
               "width_param": "AXI_REGION_WIDTH",
-              "default": "4",
               "pin_name": "axi_arregion_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1337,7 +1332,6 @@
             },
             {
               "width_param": "AXI_ARUSER_WIDTH",
-              "default": "8",
               "pin_name": "axi_aruser_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1349,7 +1343,6 @@
             },
             {
               "width_param": "AXI_QOS_WIDTH",
-              "default": "4",
               "pin_name": "axi_arqos_o",
               "reset_behavior": {
                 "kind": "async-active-low",
@@ -1368,7 +1361,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "axi_bid_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -1378,7 +1370,6 @@
             },
             {
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2",
               "pin_name": "axi_bresp_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -1388,7 +1379,6 @@
             },
             {
               "width_param": "AXI_BUSER_WIDTH",
-              "default": "8",
               "pin_name": "axi_buser_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -1405,7 +1395,6 @@
           "signals": [
             {
               "width_param": "AXI_ID_WIDTH",
-              "default": "8",
               "pin_name": "axi_rid_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -1415,7 +1404,6 @@
             },
             {
               "width_param": "AXI_DATA_WIDTH",
-              "default": "256",
               "pin_name": "axi_rdata_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -1425,7 +1413,6 @@
             },
             {
               "width_param": "AXI_RESP_WIDTH",
-              "default": "2",
               "pin_name": "axi_rresp_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -1435,7 +1422,6 @@
             },
             {
               "width_param": "AXI_LAST_WIDTH",
-              "default": "1",
               "pin_name": "axi_rlast_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -1445,7 +1431,6 @@
             },
             {
               "width_param": "AXI_RUSER_WIDTH",
-              "default": "8",
               "pin_name": "axi_ruser_i",
               "reset_behavior": {
                 "kind": "external_driven"
@@ -1462,6 +1447,54 @@
           "type": "bool",
           "default": "true",
           "constraint_text": "—"
+        },
+        {
+          "name": "AXI_DATA_WIDTH",
+          "type": "int",
+          "default": "256",
+          "constraint_text": "32 / 64 / 128 / 256 / 512"
+        },
+        {
+          "name": "AXI_STRB_WIDTH",
+          "type": "int",
+          "default": "32",
+          "source": "packet_format.md §1.2"
+        },
+        {
+          "name": "AXI_QOS_WIDTH",
+          "type": "int",
+          "default": "4",
+          "source": "AMBA IHI 0022 fixed (independent of NOC_QOS_WIDTH)"
+        },
+        {
+          "name": "AXI_AWUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_WUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_BUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_ARUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
+        },
+        {
+          "name": "AXI_RUSER_WIDTH",
+          "type": "int",
+          "default": "8",
+          "constraint_text": "1 ≤ x ≤ 32"
         }
       ]
     },
@@ -1476,20 +1509,18 @@
         {
           "width_param": null,
           "direction": "output",
-          "default": "1",
+          "width_expr": "1",
           "pin_name": "noc_rsp_valid_o",
           "reset_behavior": {
             "kind": "async-active-low",
             "value": "0",
             "domain": "noc_rst_ni"
           },
-          "presence": null,
-          "width_expr": null
+          "presence": null
         },
         {
           "width_param": "FLIT_WIDTH",
           "direction": "output",
-          "default": "402",
           "pin_name": "noc_rsp_flit_o",
           "reset_behavior": {
             "kind": "async-active-low",
@@ -1502,7 +1533,6 @@
         {
           "width_param": "NUM_VC",
           "direction": "input",
-          "default": "1",
           "pin_name": "noc_rsp_credit_i",
           "reset_behavior": {
             "kind": "external_driven"
