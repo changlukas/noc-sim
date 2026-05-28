@@ -5,43 +5,10 @@
 namespace ni::cmodel {
 
 namespace {
-  // Build a set of all elaborated register offsets at startup.
-  // Sufficiency finding F-005: codegen should elaborate ALL_OFFSETS[] array
-  // so this list isn't hand-maintained.
   const std::unordered_set<uint32_t>& known_offsets() {
-    static const std::unordered_set<uint32_t> s = {
-      ni::regs::PKT_PROBE_EN_OFFSET,
-      ni::regs::PKT_PROBE_MODE_OFFSET,
-      ni::regs::PKT_WINDOW_SIZE_OFFSET,
-      ni::regs::PKT_BYTE_COUNT_OFFSET,
-      ni::regs::PKT_BANDWIDTH_OFFSET,
-      ni::regs::TXN_PROBE_EN_OFFSET,
-      ni::regs::TXN_THRESHOLD_0_OFFSET,
-      ni::regs::TXN_THRESHOLD_1_OFFSET,
-      ni::regs::TXN_THRESHOLD_2_OFFSET,
-      ni::regs::TXN_THRESHOLD_3_OFFSET,
-      ni::regs::TXN_BIN_0_COUNT_OFFSET,
-      ni::regs::TXN_BIN_1_COUNT_OFFSET,
-      ni::regs::TXN_BIN_2_COUNT_OFFSET,
-      ni::regs::TXN_BIN_3_COUNT_OFFSET,
-      ni::regs::TXN_BIN_4_COUNT_OFFSET,
-      ni::regs::TXN_MIN_LATENCY_OFFSET,
-      ni::regs::TXN_MAX_LATENCY_OFFSET,
-      ni::regs::TXN_TOTAL_COUNT_OFFSET,
-      ni::regs::ERR_STATUS_OFFSET,
-      ni::regs::ECC_UNCORR_ERR_CNT_OFFSET,
-      ni::regs::LAST_ERR_INFO_OFFSET,
-      ni::regs::IRQ_ENABLE_OFFSET,
-      ni::regs::ECC_CORR_ERR_CNT_OFFSET,
-      ni::regs::ROUTE_PAR_ERR_CNT_OFFSET,
-      ni::regs::AXI_PARITY_ERR_CNT_OFFSET,
-      ni::regs::PENDING_R_COUNT_OFFSET,
-      ni::regs::PENDING_W_COUNT_OFFSET,
-      ni::regs::QUIESCE_CTRL_OFFSET,
-      ni::regs::QUIESCE_STATUS_OFFSET,
-      ni::regs::EXCLUSIVE_MONITOR_CTRL_OFFSET,
-      ni::regs::EXCLUSIVE_MONITOR_STATUS_OFFSET,
-    };
+    static const std::unordered_set<uint32_t> s{
+        ni::regs::ALL_OFFSETS,
+        ni::regs::ALL_OFFSETS + ni::regs::ALL_OFFSETS_COUNT};
     return s;
   }
 }
@@ -52,11 +19,42 @@ RegisterFile::RegisterFile() {
 
 void RegisterFile::reset() {
   storage_.clear();
-  // sufficiency finding F-004: codegen does not elaborate per-register
-  // reset values — for now reset to 0 universally.
-  for (auto off : known_offsets()) storage_[off] = 0;
-  last_irq_ = false;
-  last_rw1c_clear_ = false;
+  // Reset values from codegen <REG>_RESET constants — hand-list of
+  // (offset, RESET_const) pairs. Each entry references a codegen symbol;
+  // no spec value is hardcoded.
+  storage_[ni::regs::PKT_PROBE_EN_OFFSET]            = ni::regs::PKT_PROBE_EN_RESET;
+  storage_[ni::regs::PKT_PROBE_MODE_OFFSET]          = ni::regs::PKT_PROBE_MODE_RESET;
+  storage_[ni::regs::PKT_WINDOW_SIZE_OFFSET]         = ni::regs::PKT_WINDOW_SIZE_RESET;
+  storage_[ni::regs::PKT_BYTE_COUNT_OFFSET]          = ni::regs::PKT_BYTE_COUNT_RESET;
+  storage_[ni::regs::PKT_BANDWIDTH_OFFSET]           = ni::regs::PKT_BANDWIDTH_RESET;
+  storage_[ni::regs::TXN_PROBE_EN_OFFSET]            = ni::regs::TXN_PROBE_EN_RESET;
+  storage_[ni::regs::TXN_THRESHOLD_0_OFFSET]         = ni::regs::TXN_THRESHOLD_0_RESET;
+  storage_[ni::regs::TXN_THRESHOLD_1_OFFSET]         = ni::regs::TXN_THRESHOLD_1_RESET;
+  storage_[ni::regs::TXN_THRESHOLD_2_OFFSET]         = ni::regs::TXN_THRESHOLD_2_RESET;
+  storage_[ni::regs::TXN_THRESHOLD_3_OFFSET]         = ni::regs::TXN_THRESHOLD_3_RESET;
+  storage_[ni::regs::TXN_BIN_0_COUNT_OFFSET]         = ni::regs::TXN_BIN_0_COUNT_RESET;
+  storage_[ni::regs::TXN_BIN_1_COUNT_OFFSET]         = ni::regs::TXN_BIN_1_COUNT_RESET;
+  storage_[ni::regs::TXN_BIN_2_COUNT_OFFSET]         = ni::regs::TXN_BIN_2_COUNT_RESET;
+  storage_[ni::regs::TXN_BIN_3_COUNT_OFFSET]         = ni::regs::TXN_BIN_3_COUNT_RESET;
+  storage_[ni::regs::TXN_BIN_4_COUNT_OFFSET]         = ni::regs::TXN_BIN_4_COUNT_RESET;
+  storage_[ni::regs::TXN_MIN_LATENCY_OFFSET]         = ni::regs::TXN_MIN_LATENCY_RESET;
+  storage_[ni::regs::TXN_MAX_LATENCY_OFFSET]         = ni::regs::TXN_MAX_LATENCY_RESET;
+  storage_[ni::regs::TXN_TOTAL_COUNT_OFFSET]         = ni::regs::TXN_TOTAL_COUNT_RESET;
+  storage_[ni::regs::ERR_STATUS_OFFSET]              = ni::regs::ERR_STATUS_RESET;
+  storage_[ni::regs::ECC_UNCORR_ERR_CNT_OFFSET]      = ni::regs::ECC_UNCORR_ERR_CNT_RESET;
+  storage_[ni::regs::LAST_ERR_INFO_OFFSET]           = ni::regs::LAST_ERR_INFO_RESET;
+  storage_[ni::regs::IRQ_ENABLE_OFFSET]              = ni::regs::IRQ_ENABLE_RESET;
+  storage_[ni::regs::ECC_CORR_ERR_CNT_OFFSET]        = ni::regs::ECC_CORR_ERR_CNT_RESET;
+  storage_[ni::regs::ROUTE_PAR_ERR_CNT_OFFSET]       = ni::regs::ROUTE_PAR_ERR_CNT_RESET;
+  storage_[ni::regs::AXI_PARITY_ERR_CNT_OFFSET]      = ni::regs::AXI_PARITY_ERR_CNT_RESET;
+  storage_[ni::regs::PENDING_R_COUNT_OFFSET]         = ni::regs::PENDING_R_COUNT_RESET;
+  storage_[ni::regs::PENDING_W_COUNT_OFFSET]         = ni::regs::PENDING_W_COUNT_RESET;
+  storage_[ni::regs::QUIESCE_CTRL_OFFSET]            = ni::regs::QUIESCE_CTRL_RESET;
+  storage_[ni::regs::QUIESCE_STATUS_OFFSET]          = ni::regs::QUIESCE_STATUS_RESET;
+  storage_[ni::regs::EXCLUSIVE_MONITOR_CTRL_OFFSET]  = ni::regs::EXCLUSIVE_MONITOR_CTRL_RESET;
+  storage_[ni::regs::EXCLUSIVE_MONITOR_STATUS_OFFSET]= ni::regs::EXCLUSIVE_MONITOR_STATUS_RESET;
+  last_irq_         = false;
+  last_rw1c_clear_  = false;
 }
 
 bool RegisterFile::is_mapped_(uint32_t offset) const {

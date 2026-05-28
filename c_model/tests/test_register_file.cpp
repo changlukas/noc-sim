@@ -11,13 +11,6 @@ TEST(RegisterFile, ReadUnmappedReturnsDecErr) {
   EXPECT_EQ(r.data,   0u);
 }
 
-TEST(RegisterFile, ResetValuesAreZeroForNow) {
-  RegisterFile rf;
-  auto r = rf.read32(ni::regs::PKT_PROBE_EN_OFFSET);
-  EXPECT_EQ(r.status, AbiResult::Ok);
-  EXPECT_EQ(r.data,   0u);
-}
-
 TEST(RegisterFile, WriteMisalignedReturnsSlvErr) {
   RegisterFile rf;
   auto r = rf.write32(ni::regs::PKT_PROBE_EN_OFFSET + 1, 0xDEADBEEF);
@@ -83,4 +76,23 @@ TEST(RegisterFile, ResetClearsAllStorage) {
   rf.write32(ni::regs::PKT_PROBE_EN_OFFSET, 0xDEAD);
   rf.reset();
   EXPECT_EQ(rf.read32(ni::regs::PKT_PROBE_EN_OFFSET).data, 0u);
+}
+
+TEST(RegisterFile, TxnMinLatencyResetIsNonZeroFromCodegen) {
+  RegisterFile rf;
+  auto r = rf.read32(ni::regs::TXN_MIN_LATENCY_OFFSET);
+  EXPECT_EQ(r.status, AbiResult::Ok);
+  EXPECT_EQ(r.data,   ni::regs::TXN_MIN_LATENCY_RESET);  // codegen says 0xFFFF
+  EXPECT_EQ(r.data,   0xFFFFu);
+}
+
+TEST(RegisterFile, KnownOffsetsMatchCodegenAllOffsets) {
+  RegisterFile rf;
+  for (std::size_t i = 0; i < ni::regs::ALL_OFFSETS_COUNT; ++i) {
+    auto r = rf.read32(ni::regs::ALL_OFFSETS[i]);
+    EXPECT_EQ(r.status, AbiResult::Ok)
+        << "offset " << std::hex << ni::regs::ALL_OFFSETS[i] << " not mapped";
+  }
+  auto r = rf.read32(0xFFFC);
+  EXPECT_EQ(r.status, AbiResult::DecErr);
 }
