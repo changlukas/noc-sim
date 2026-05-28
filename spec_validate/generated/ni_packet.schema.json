@@ -39,7 +39,7 @@
 
     "flit": {
       "type": "object",
-      "required": ["header_fields", "payload_channels", "derived"],
+      "required": ["header_fields", "payload_channels"],
       "additionalProperties": true,
       "properties": {
         "field_widths": {
@@ -51,7 +51,7 @@
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["name", "width_param", "width", "lsb", "msb"],
+            "required": ["name", "width_param"],
             "additionalProperties": true,
             "properties": {
               "name":            {"$ref": "#/$defs/identifier"},
@@ -91,7 +91,7 @@
                 "minItems": 1,
                 "items": {
                   "type": "object",
-                  "required": ["name", "width", "lsb", "msb"],
+                  "required": ["name"],
                   "additionalProperties": true,
                   "properties": {
                     "name":        {"$ref": "#/$defs/identifier"},
