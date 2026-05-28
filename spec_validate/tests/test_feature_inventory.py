@@ -26,8 +26,8 @@ def test_inventory_md_up_to_date():
 
 
 def test_inventory_covers_all_features_in_json():
-    spec = json.loads((SPEC_VALIDATE / "ni_function_blocks.json").read_text())
-    md   = INVENTORY_MD.read_text()
+    spec = json.loads((SPEC_VALIDATE / "ni_function_blocks.json").read_text(encoding="utf-8"))
+    md   = INVENTORY_MD.read_text(encoding="utf-8")
     for block in spec["blocks"]:
         for feat in block["features"]:
             assert feat["id"] in md, f"feature {feat['id']} missing from inventory MD"

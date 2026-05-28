@@ -78,14 +78,14 @@ def main():
     ap.add_argument("--check", action="store_true",
                     help="Verify committed MD matches regen (timestamp excluded). Exit 1 on drift.")
     args = ap.parse_args()
-    spec = json.loads(JSON_PATH.read_text())
-    when = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    spec = json.loads(JSON_PATH.read_text(encoding="utf-8"))
+    when = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     body = render(spec, when)
     if args.check:
         if not args.out.exists():
             print(f"FAIL: committed inventory missing at {args.out}", file=sys.stderr)
             sys.exit(1)
-        existing = args.out.read_text()
+        existing = args.out.read_text(encoding="utf-8")
         strip = lambda t: "\n".join(
             l for l in t.splitlines() if not l.startswith("<!-- Generated at:"))
         if strip(body) != strip(existing):
@@ -93,7 +93,7 @@ def main():
             sys.exit(1)
         sys.exit(0)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(body)
+    args.out.write_text(body, encoding="utf-8")
     print(f"Wrote {args.out}")
 
 
