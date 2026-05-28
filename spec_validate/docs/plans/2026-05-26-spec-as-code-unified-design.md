@@ -524,7 +524,7 @@ spec_validate/ni_spec/
 
 - **資料** = `generated/*.json`
 - **邏輯** = 上述六個 .py
-- **`constants.py` 是 firewall**：任何「想知道 ROB_IDX bit range」的消費端 —— Python invariants / codegen / 未來 Python prototype —— **全部呼叫 `constants.header_field_pos(spec, "rob_idx")`，不直接讀 JSON**
+- **`constants.py` 是 firewall**：任何「想知道 ROB_IDX bit range」的消費端 —— Python invariants / codegen / 未來 Python prototype —— **全部呼叫 `constants.header_field_position(spec, "rob_idx")`，不直接讀 JSON**
 
 JSON 結構未來改了，constants API 不變 → 消費端不受影響。
 

@@ -5,7 +5,7 @@ C-model 直接 import 這個模組即可取得所有 packet 寬度／bit 位置�
 """
 
 from __future__ import annotations
-from typing import Tuple, Dict, Optional
+from typing import Dict
 
 
 def _int_params(packet_spec) -> dict:
@@ -20,50 +20,10 @@ def _resolved_field_widths(packet_spec) -> dict:
     return {**_int_params(packet_spec), **packet_spec["flit"].get("field_widths", {})}
 
 
-def flit_width(packet_spec) -> int:
-    return packet_spec["flit"]["derived"]["FLIT_WIDTH"]
-
-
-def header_width(packet_spec) -> int:
-    return packet_spec["flit"]["derived"]["HEADER_WIDTH"]
-
-
-def payload_width(packet_spec) -> int:
-    return packet_spec["flit"]["derived"]["PAYLOAD_WIDTH"]
-
-
-def link_width(packet_spec) -> int:
-    return packet_spec["flit"]["derived"]["LINK_WIDTH"]
-
-
-def header_field_pos(packet_spec, name: str) -> Tuple[Optional[int], Optional[int]]:
-    """回 (lsb, msb)。找不到 raise KeyError。
-
-    For width=0 reserved placeholder fields, returns (None, None) to signal
-    the field is not bit-addressable in the current flit layout.
-    """
-    for f in packet_spec["flit"]["header_fields"]:
-        if f["name"] == name:
-            return (f["lsb"], f["msb"])
-    raise KeyError(f"header field {name!r} 不存在")
-
-
-def payload_field_pos(packet_spec, channel: str, name: str) -> Tuple[int, int]:
-    for ch in packet_spec["flit"]["payload_channels"]:
-        if ch["name"] == channel:
-            for f in ch["fields"]:
-                if f["name"] == name:
-                    return (f["lsb"], f["msb"])
-            raise KeyError(f"payload field {channel}/{name} 不存在")
-    raise KeyError(f"payload channel {channel!r} 不存在")
-
-
-def all_header_fields(packet_spec) -> Dict[str, Tuple[Optional[int], Optional[int]]]:
-    """Return {name: (lsb, msb)} for all header fields.
-
-    Width=0 reserved placeholder fields have (None, None) as lsb/msb.
-    """
-    return {f["name"]: (f["lsb"], f["msb"]) for f in packet_spec["flit"]["header_fields"]}
+# PP-10: legacy thin getters (flit_width/header_width/payload_width/link_width/
+# header_field_pos/payload_field_pos/all_header_fields) were removed.
+# They read flit.derived[...] / lsb / msb which PP-6 dropped from JSON. Use the
+# *_resolved variants and header_field_position / payload_field_position below.
 
 
 def all_field_widths(packet_spec) -> Dict[str, int]:
@@ -369,13 +329,10 @@ def payload_field_position(spec: dict, channel: str, name: str):
 
 # ---------- derived totals (computed from helpers above) ----------
 #
-# These intentionally use distinct names (`*_resolved`) from the legacy thin
-# getters at the top of this file so that PP-2 does NOT change current
-# generator output. The legacy `flit_width` / `header_width` /
-# `payload_width` / `link_width` still read from `flit.derived`. PP-3
-# switches the generators to call these resolved variants and re-baselines
-# goldens; PP-6 drops the legacy getters once the JSON resolved fields are
-# removed.
+# All consumers (codegen, invariants, tests) use these resolved helpers.
+# PP-6 dropped flit.derived from JSON; PP-10 removed the legacy thin
+# getters that read it. The `_resolved` suffix is kept for explicit
+# "computed on demand" semantics.
 
 def header_width_resolved(spec: dict) -> int:
     """Sum of all header field widths (regardless of enabled)."""

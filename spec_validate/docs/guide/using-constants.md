@@ -62,11 +62,11 @@ from ni_spec import constants as C
 
 packet = load_doc("generated/ni_packet.json")
 
-C.flit_width(packet)                    # int -- total bits per flit
-C.header_field_pos(packet, "dst_id")    # (lsb, msb) -- or (None, None) if width=0
-C.payload_field_pos(packet, "AW", "addr")
+C.flit_width_resolved(packet)                  # int -- total bits per flit
+C.header_field_position(packet, "dst_id")      # (lsb, msb) -- or None if width=0
+C.payload_field_position(packet, "AW", "addr")
 C.header_field_enabled(packet, "axi_ch")
-C.axi_channel_encoding(packet)          # {"AW": 0, "W": 1, "AR": 2, ...}
+C.axi_channel_encoding(packet)                 # {"AW": 0, "W": 1, "AR": 2, ...}
 ```
 
 ### Full API surface
@@ -75,20 +75,30 @@ Each function takes the loaded spec as its first argument.
 
 #### Packet (`generated/ni_packet.json`)
 
+All width/position accessors are pure functions of `field_widths` + `width_param`
+(pure-parameterization refactor). The JSON no longer stores resolved
+`lsb`/`msb`/`width`/`derived` — the helpers below recompute them on each call.
+
 | Function | Returns |
 |----------|---------|
-| `flit_width(spec)` | `int` |
-| `header_width(spec)` | `int` |
-| `payload_width(spec)` | `int` |
-| `link_width(spec)` | `int` |
-| `header_field_pos(spec, name)` | `(lsb, msb)`; `(None, None)` for width-0 placeholders. Raises `KeyError`. |
-| `payload_field_pos(spec, channel, name)` | `(lsb, msb)`. Raises `KeyError`. |
-| `all_header_fields(spec)` | `{name: (lsb, msb)}` |
+| `flit_width_resolved(spec)` | `int` |
+| `header_width_resolved(spec)` | `int` |
+| `payload_width_resolved(spec)` | `int` (max across channels) |
+| `payload_channel_width(spec, channel)` | `int` (authored per-channel width) |
+| `link_width_resolved(spec)` | `int` (= `flit_width_resolved + 1`) |
+| `flit_data_width_resolved(spec)` | `int` (= header + payload − ECC) |
+| `header_data_width_resolved(spec)` | `int` (= header − ECC) |
+| `wstrb_width_resolved(spec)` | `int` (= `NOC_DATA_WIDTH / 8`) |
+| `header_field_width(spec, name)` | `int`; resolves `width_param`. Raises `FieldNotFoundError`. |
+| `header_field_position(spec, name)` | `(lsb, msb)`; `None` for width-0 placeholders. |
+| `payload_field_width(spec, channel, name)` | `int`; handles `width_param='derived'`. |
+| `payload_field_position(spec, channel, name)` | `(lsb, msb)`; `None` for width-0 placeholders. |
 | `all_field_widths(spec)` | `{name: width}` |
 | `header_field_enabled(spec, name)` | `bool` — `False` means padding. Raises `KeyError`. |
 | `header_fields_padding(spec)` | `list[str]` of padding field names. |
 | `axi_channel_encoding(spec)` | `{channel: int}` |
 | `field_encoding(spec, name)` | `{value: int}` for any field with an `encoding` table. |
+| `packet_eval_expr(spec, expr)` | `int`; safe AST evaluator over `field_widths`. |
 
 #### Signals (`generated/ni_signals.json`)
 
