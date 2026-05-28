@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_packet.json
 // Source SHA: fae371771860
 // Generator version: v1.0.0
-// Generated at: 2026-05-28T07:11:25Z
+// Generated at: 2026-05-28T07:56:59Z
 // ----------------------------------------------------------------------------
 `ifndef NI_FLIT_PKG_SVH
 `define NI_FLIT_PKG_SVH
@@ -77,16 +77,6 @@ package ni_flit_pkg;
   // --- all field widths (from flit.field_widths) ---
   localparam int unsigned X_WIDTH                = 4;
   localparam int unsigned Y_WIDTH                = 4;
-  localparam int unsigned NOC_QOS_WIDTH          = 0;
-  localparam int unsigned AXI_CH_WIDTH           = 3;
-  localparam int unsigned LAST_WIDTH             = 1;
-  localparam int unsigned ROB_REQ_WIDTH          = 1;
-  localparam int unsigned ROB_IDX_WIDTH          = 5;
-  localparam int unsigned RSVD_COMMTYPE_WIDTH    = 2;
-  localparam int unsigned MULTICAST_WIDTH        = 8;
-  localparam int unsigned VC_ID_WIDTH            = 3;
-  localparam int unsigned ROUTE_PAR_WIDTH        = 1;
-  localparam int unsigned FLIT_ECC_WIDTH         = 10;
   localparam int unsigned AXI_ADDR_WIDTH         = 64;
   localparam int unsigned AXI_ID_WIDTH           = 8;
   localparam int unsigned NOC_DATA_WIDTH         = 256;
