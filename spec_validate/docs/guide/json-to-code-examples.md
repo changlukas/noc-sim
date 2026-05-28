@@ -8,7 +8,7 @@
 docs/design/*.md            (authored)
         │  ni_spec.generator
         ▼
-generated/ni_*.json         (純 symbolic; 不含 resolved widths/lsb/msb)
+generated/ni_*.json
         │  ni_spec.constants  helpers   (header_field_width / signal_pin_width / ...)
         │  tools/codegen.py
         ▼
@@ -21,9 +21,8 @@ Drift gate: `tools/codegen.py --check` 比對 working tree 與 elaborate 結果�
 
 ## Pipeline overview
 
-- **Generator** (`ni_spec/generator.py`) 將 authored MD lower 成 JSON。
-  JSON 只保留 symbolic 形式 (`width_param` / `width_expr` 字串、parameter 預設值)，
-  pure-parameterization 後不存任何 resolved 數值。
+- **Generator** (`ni_spec/generator.py`) 將 authored MD lower 成 JSON
+  (`width_param` / `width_expr` 字串、parameter 預設值)。
 - **`ni_spec.constants`** 為 firewall：所有 consumer (codegen / invariants / tests) 透過它讀 JSON，
   不直接 reach into JSON shape；寬度與 bit-position 在此 lazy evaluate。
 - **Elaborator** (`tools/codegen.py` + `tools/elaborate/*`) 呼叫 helper 將 symbolic 值
@@ -55,8 +54,7 @@ Drift gate: `tools/codegen.py --check` 比對 working tree 與 elaborate 結果�
 }
 ```
 
-JSON 不存 `width` / `lsb` / `msb`。Elaborator 透過
-`C.header_field_width(spec, "<FIELD_NAME>")` evaluate width，
+Elaborator 透過 `C.header_field_width(spec, "<FIELD_NAME>")` evaluate width，
 `C.header_field_position(spec, "<FIELD_NAME>")` 依宣告順序累加得 `(lsb, msb)`。
 
 **Elaborated `include/ni_*_constants.h`**:
@@ -206,8 +204,6 @@ Signals 可以 reference packet domain symbol，常見於 NoC link：
 
 `generated/ni_*.schema.json` 是 JSON Schema Draft 2020-12 validation gate，
 loader (`ni_spec.loader.load_doc`) 啟動時跑 jsonschema validation；不參與 codegen。
-PP-9 後已 relax — schema 不再 require 已 drop 的 resolved field
-(`width` / `lsb` / `msb` / `default` 等)。
 
 `ni_function_blocks.json` 為 spec-validation 元資料 (feature inventory + cross-domain
 consistency checks)，不 emit C/SV，不在本文範圍。
