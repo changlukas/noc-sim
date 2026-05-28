@@ -8,6 +8,9 @@ cmake-build-*/
 *.swp
 *.swo
 
+# Office / Visio lock files
+~$*
+
 # Reference documents (large binaries)
 docs/ref/
 
