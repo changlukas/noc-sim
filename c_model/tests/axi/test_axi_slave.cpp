@@ -122,3 +122,72 @@ TEST(AxiSlave, WriteBurstAtomicOob_PushesDecerrSkipsMemory) {
   EXPECT_EQ(b->resp, axi::Resp::DECERR);
   EXPECT_EQ(slave.w_q_size(), 0u);
 }
+
+TEST(AxiSlave, ReadBurstSingleBeatInBoundsOkay) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  axi::ArBeat ar{};
+  ar.id = 2; ar.addr = 0x1080; ar.len = 0; ar.size = 5; ar.burst = axi::Burst::INCR;
+  slave.push_ar(ar);
+  slave.tick();
+  ASSERT_EQ(mem.captured_reads.size(), 1u);
+  EXPECT_EQ(mem.captured_reads.front().addr, 0x1080u);
+
+  axi::MemReadResp rresp{};
+  rresp.id = 2; rresp.data.fill(0x77); rresp.resp = axi::Resp::OKAY;
+  rresp.last = true; rresp.tag = mem.captured_reads.front().tag;
+  mem.queued_read_resps.push_back(rresp);
+  slave.tick();
+
+  auto r = slave.pop_r();
+  ASSERT_TRUE(r.has_value());
+  EXPECT_EQ(r->id, 2); EXPECT_EQ(r->resp, axi::Resp::OKAY);
+  EXPECT_EQ(r->last, true);
+  EXPECT_EQ(r->data[0], 0x77);
+}
+
+TEST(AxiSlave, ReadBurstIncr4Beat_InBounds) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  axi::ArBeat ar{};
+  ar.id = 6; ar.addr = 0x1000; ar.len = 3; ar.size = 5; ar.burst = axi::Burst::INCR;
+  slave.push_ar(ar);
+  for (int t = 0; t < 4; ++t) slave.tick();
+  ASSERT_EQ(mem.captured_reads.size(), 4u);
+
+  for (uint8_t i = 0; i < 4; ++i) {
+    axi::MemReadResp rresp{};
+    rresp.id = 6; rresp.data.fill(0xB0 + i); rresp.resp = axi::Resp::OKAY;
+    rresp.last = (i == 3); rresp.tag = mem.captured_reads[i].tag;
+    mem.queued_read_resps.push_back(rresp);
+  }
+  for (int t = 0; t < 4; ++t) slave.tick();
+
+  for (uint8_t i = 0; i < 4; ++i) {
+    auto r = slave.pop_r();
+    ASSERT_TRUE(r.has_value()) << "beat " << int(i);
+    EXPECT_EQ(r->data[0], 0xB0 + i);
+    EXPECT_EQ(r->last, i == 3);
+  }
+}
+
+TEST(AxiSlave, ReadBurstAtomicOob_AllBeatsDecerr) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x100);
+  axi::ArBeat ar{};
+  ar.id = 4; ar.addr = 0x10F0; ar.len = 1; ar.size = 5; ar.burst = axi::Burst::INCR;
+  slave.push_ar(ar);
+  slave.tick();
+  EXPECT_EQ(mem.captured_reads.size(), 0u);
+  for (uint8_t i = 0; i < 2; ++i) {
+    auto r = slave.pop_r();
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->resp, axi::Resp::DECERR);
+    EXPECT_EQ(r->last, i == 1);
+  }
+}
