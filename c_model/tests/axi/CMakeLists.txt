@@ -1,1 +1,2 @@
 add_cmodel_test(test_scaffold)
+add_cmodel_test(test_memory)
