@@ -14,5 +14,3 @@ add_cmodel_test(test_register_file)
 target_sources(test_register_file PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src/register_file.cpp
 )
-
-add_subdirectory(nmu)

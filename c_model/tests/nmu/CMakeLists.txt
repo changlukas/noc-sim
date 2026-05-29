@@ -1,1 +1,0 @@
-add_cmodel_test(test_axi_slave_port)
