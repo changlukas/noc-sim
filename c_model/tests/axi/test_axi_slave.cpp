@@ -100,3 +100,25 @@ TEST(AxiSlave, AwWIndependence_WBeforeAw) {
   EXPECT_EQ(mem.captured_writes[0].data[0], 0xAA);
   EXPECT_EQ(mem.captured_writes[1].data[0], 0xAB);
 }
+
+TEST(AxiSlave, WriteBurstAtomicOob_PushesDecerrSkipsMemory) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x100);  // 256 bytes
+
+  axi::AwBeat aw{};
+  aw.id = 9; aw.addr = 0x10E0; aw.len = 3; aw.size = 5; aw.burst = axi::Burst::INCR;
+  // 4 beats * 32 bytes = 128 -> 0x10E0 + 128 = 0x1160 > 0x1100 -> OOB
+  slave.push_aw(aw);
+  for (uint8_t i = 0; i < 4; ++i) {
+    axi::WBeat w{}; w.data.fill(0); w.strb = 0xFFFF'FFFFu; w.last = (i==3);
+    slave.push_w(w);
+  }
+  slave.tick();
+
+  EXPECT_EQ(mem.captured_writes.size(), 0u);
+  auto b = slave.pop_b();
+  ASSERT_TRUE(b.has_value());
+  EXPECT_EQ(b->resp, axi::Resp::DECERR);
+  EXPECT_EQ(slave.w_q_size(), 0u);
+}
