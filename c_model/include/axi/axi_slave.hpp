@@ -65,6 +65,118 @@ private:
   bool bounds_set_ = false;
 };
 
-inline void AxiSlave::tick() {}  // stub; real impl in Task 3.2+
+inline void AxiSlave::tick() {
+  // 1. Drain memory write responses → match by id
+  while (auto resp = memory_port_.pop_write_resp()) {
+    auto it = active_writes_.find(resp->id);
+    if (it == active_writes_.end()) continue;
+    auto& st = it->second;
+    ++st.beats_completed;
+    if (resp->resp != Resp::OKAY) st.worst_resp = resp->resp;
+    if (st.beats_completed == static_cast<std::size_t>(st.aw.len) + 1) {
+      b_q_.push_back(BBeat{st.aw.id, st.worst_resp, 0});
+      active_writes_.erase(it);
+      for (auto i = aw_issue_order_.begin(); i != aw_issue_order_.end(); ++i) {
+        if (*i == st.aw.id) { aw_issue_order_.erase(i); break; }
+      }
+    }
+  }
+
+  // 2. Drain memory read responses → push R beats
+  while (auto rresp = memory_port_.pop_read_resp()) {
+    auto it = active_reads_.find(rresp->id);
+    if (it == active_reads_.end()) continue;
+    auto& st = it->second;
+    RBeat rb{};
+    rb.id = st.ar.id; rb.data = rresp->data; rb.resp = rresp->resp;
+    rb.last = (st.beats_returned + 1 == static_cast<std::size_t>(st.ar.len) + 1);
+    rb.user = 0;
+    r_q_.push_back(rb);
+    ++st.beats_returned;
+    if (rb.last) active_reads_.erase(it);
+  }
+
+  // 3. Start new AW (with burst-atomic OOB pre-check)
+  while (!aw_q_.empty()) {
+    auto& aw = aw_q_.front();
+    if (active_writes_.count(aw.id)) break;  // wait for same-ID to finish
+    if (bounds_set_) {
+      std::size_t bpb = 1ull << aw.size;
+      std::size_t total = bpb * (static_cast<std::size_t>(aw.len) + 1);
+      bool oob = (aw.addr < bounds_base_) ||
+                 (aw.addr + total > bounds_base_ + bounds_size_);
+      if (oob) {
+        b_q_.push_back(BBeat{aw.id, Resp::DECERR, 0});
+        // Discard the W beats corresponding to this burst
+        for (std::size_t i = 0; i < static_cast<std::size_t>(aw.len) + 1; ++i) {
+          if (w_q_.empty()) break;
+          w_q_.pop_front();
+        }
+        aw_q_.pop_front();
+        continue;
+      }
+    }
+    active_writes_[aw.id] = WriteBurstState{aw, 0, 0, Resp::OKAY};
+    aw_issue_order_.push_back(aw.id);
+    aw_q_.pop_front();
+  }
+
+  // 4. Submit W beats for oldest-issued active write
+  while (!w_q_.empty() && !aw_issue_order_.empty()) {
+    uint8_t front_id = aw_issue_order_.front();
+    auto& st = active_writes_[front_id];
+    std::size_t beat_idx = st.beats_submitted;
+    MemWriteReq req{};
+    req.addr = st.aw.addr + beat_idx * (1ull << st.aw.size);
+    req.data = w_q_.front().data;
+    req.strb = w_q_.front().strb;
+    req.id   = st.aw.id;
+    req.last = w_q_.front().last;
+    req.tag  = (static_cast<uint64_t>(front_id) << 32) | beat_idx;
+    if (!memory_port_.submit_write(req)) break;  // retry next tick
+    ++st.beats_submitted;
+    w_q_.pop_front();
+    if (st.beats_submitted == static_cast<std::size_t>(st.aw.len) + 1) {
+      break;  // burst's W beats done; W consumption stops for this id
+    }
+  }
+
+  // 5. Start new AR (with burst-atomic OOB pre-check)
+  while (!ar_q_.empty()) {
+    auto& ar = ar_q_.front();
+    if (active_reads_.count(ar.id)) break;
+    if (bounds_set_) {
+      std::size_t bpb = 1ull << ar.size;
+      std::size_t total = bpb * (static_cast<std::size_t>(ar.len) + 1);
+      bool oob = (ar.addr < bounds_base_) ||
+                 (ar.addr + total > bounds_base_ + bounds_size_);
+      if (oob) {
+        for (uint8_t i = 0; i < ar.len + 1; ++i) {
+          RBeat rb{}; rb.id = ar.id;
+          rb.data.fill(0); rb.resp = Resp::DECERR;
+          rb.last = (i == ar.len); rb.user = 0;
+          r_q_.push_back(rb);
+        }
+        ar_q_.pop_front();
+        continue;
+      }
+    }
+    active_reads_[ar.id] = ReadBurstState{ar, 0, 0};
+    ar_q_.pop_front();
+  }
+
+  // 6. Submit AR beats to memory
+  for (auto& [id, st] : active_reads_) {
+    while (st.beats_submitted < static_cast<std::size_t>(st.ar.len) + 1) {
+      MemReadReq req{};
+      req.addr = st.ar.addr + st.beats_submitted * (1ull << st.ar.size);
+      req.size = st.ar.size; req.id = st.ar.id;
+      req.last = (st.beats_submitted == static_cast<std::size_t>(st.ar.len));
+      req.tag  = (static_cast<uint64_t>(id) << 32) | st.beats_submitted;
+      if (!memory_port_.submit_read(req)) break;
+      ++st.beats_submitted;
+    }
+  }
+}
 
 }  // namespace ni::cmodel::axi
