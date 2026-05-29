@@ -79,6 +79,7 @@ public:
           }
           read_dump_ << '\n';
         }
+        read_dump_.flush();
         if (rcb_) rcb_(ReadResult{rs.txn.addr, rs.accumulator,
                                     r->resp, r->id, rs.txn.scenario_line});
         active_reads_.erase(it);

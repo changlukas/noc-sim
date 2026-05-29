@@ -165,3 +165,31 @@ transactions:
   EXPECT_TRUE(fired);
   EXPECT_TRUE(master.done());
 }
+
+TEST_F(AxiMasterTest, SingleReadTransactionDumpsToFile) {
+  auto dumpPath = std::string(::testing::TempDir()) + "/r_single.txt";
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: read
+    addr: 0x0
+    id: 0x9
+    len: 0
+    size: 5
+    burst: INCR
+    dump_file: )YAML") + dumpPath + "\n");
+
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(yaml, mock, dumpPath);
+
+  master.tick();
+  EXPECT_EQ(mock.captured_ar.size(), 1u);
+
+  axi::RBeat r{}; r.id = 9; r.data.fill(0xAB);
+  r.resp = axi::Resp::OKAY; r.last = true; r.user = 0;
+  mock.queued_r.push_back(r);
+  master.tick();
+  EXPECT_TRUE(master.done());
+
+  std::ifstream f(dumpPath); std::string line; std::getline(f, line);
+  EXPECT_EQ(line.substr(0, 5), "AB AB");
+}
