@@ -427,10 +427,17 @@ py -3 tools/gen_inventory.py --check
 
 ### Phase B（純新 logic，不動 Phase A 結構）
 
+**Slave-side**：
 - WRAP / FIXED burst support（AxiSlave 算 addr 公式擴展）
 - Unaligned start address（first beat WSTRB 標部分有效 byte）
 - Sparse WSTRB byte-merge（Memory 已支援、AxiMaster 從 strb_file 讀 WSTRB pattern）
-- YAML schema extend：optional `strb_file` field
+
+**Master-side**（per cocotbext-axi port audit, 2026-05-29 加入）：
+- **4KB cross detection + auto-segmentation**：YAML 允許 user 給跨 4KB 的單一 transaction；AxiMaster 自動 split 成多個合法 sub-burst，scoreboard / file diff 在 byte level 仍正確（~80 行 port from cocotbext-axi `axi_master.py`）
+- **Narrow transfer support**（AxSIZE < log2(DATA_BYTES)）：master 正確算每 beat 的 WSTRB byte-lane 與 data 對齊位置；slave 對應解 interpret（~40 行 master + ~30 行 slave port from cocotbext-axi）
+- **Runtime protocol validation**：master/slave 內部 `assert` 抓 WLAST timing / B_ID match / R_ID order 等 invariant（~100-150 行 port from cocotbext-axi master+slave validation 段）
+
+**YAML schema extend**：optional `strb_file` field；parser 對 4KB cross 不再 reject（master 處理）
 
 ### Phase C（純新 logic）
 
