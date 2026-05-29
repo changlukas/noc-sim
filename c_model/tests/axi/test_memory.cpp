@@ -84,3 +84,18 @@ TEST(Memory, OobWriteDoesNotMutateStorage) {
   EXPECT_EQ(mem.peek(0x10F8), 0xFF);
   EXPECT_EQ(mem.peek(0x10FE), 0xFF);
 }
+
+TEST(Memory, WstrbByteMaskMergeWithFill) {
+  axi::Memory mem(0x1000, 0x100, 0, 0, 32, 0xFF);
+  axi::MemWriteReq req{};
+  req.addr = 0x1000;
+  req.data.fill(0x00);
+  req.strb = 0b1010;
+  req.id = 1; req.last = true;
+  mem.submit_write(req); mem.tick(); (void)mem.pop_write_resp();
+  EXPECT_EQ(mem.peek(0x1000), 0xFF);
+  EXPECT_EQ(mem.peek(0x1001), 0x00);
+  EXPECT_EQ(mem.peek(0x1002), 0xFF);
+  EXPECT_EQ(mem.peek(0x1003), 0x00);
+  EXPECT_EQ(mem.peek(0x1004), 0xFF);
+}
