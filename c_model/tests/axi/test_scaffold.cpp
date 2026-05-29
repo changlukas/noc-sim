@@ -1,4 +1,5 @@
 #include "axi/types.hpp"
+#include "axi/memory_port.hpp"
 #include <gtest/gtest.h>
 
 namespace axi = ni::cmodel::axi;
@@ -35,4 +36,13 @@ TEST(AxiScaffold, BeatStructsAreConstructible) {
 TEST(AxiScaffold, WBeatDataArrayMatchesDataBytes) {
   axi::WBeat w{};
   EXPECT_EQ(w.data.size(), static_cast<std::size_t>(axi::DATA_BYTES));
+}
+
+TEST(AxiScaffold, MemoryPortStructsAreConstructible) {
+  axi::MemWriteReq  wr{};
+  axi::MemWriteResp wresp{};
+  axi::MemReadReq   rr{};
+  axi::MemReadResp  rresp{};
+  (void)wr; (void)wresp; (void)rr; (void)rresp;
+  SUCCEED();
 }
