@@ -29,3 +29,103 @@ TEST(AxiSlavePort_Scaffold, QueueDepthsDefault) {
   EXPECT_EQ(d.b,  16u);
   EXPECT_EQ(d.r,  16u);
 }
+
+TEST(AxiSlavePort_Inbound, AwRoundTripPreservesAllFields) {
+  nmu::AxiSlavePort port;
+  ni::pins::AxiSlavePortPins p{};
+  p.axi_awid_i     = 0x5A;
+  p.axi_awaddr_i   = 0x1234'5678'9ABC'DEF0ULL;
+  p.axi_awlen_i    = 7;
+  p.axi_awsize_i   = 3;
+  p.axi_awburst_i  = 1;
+  p.axi_awcache_i  = 0xF;
+  p.axi_awlock_i   = 0;
+  p.axi_awprot_i   = 0x2;
+  p.axi_awregion_i = 0x3;
+  p.axi_awuser_i   = 0x42;
+  p.axi_awqos_i    = 0xC;
+
+  EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::Aw));
+  auto out = port.pop_aw();
+  ASSERT_TRUE(out.has_value());
+  EXPECT_EQ(out->id,     0x5A);
+  EXPECT_EQ(out->addr,   0x1234'5678'9ABC'DEF0ULL);
+  EXPECT_EQ(out->len,    7);
+  EXPECT_EQ(out->size,   3);
+  EXPECT_EQ(out->burst,  1);
+  EXPECT_EQ(out->cache,  0xF);
+  EXPECT_EQ(out->lock,   0);
+  EXPECT_EQ(out->prot,   0x2);
+  EXPECT_EQ(out->region, 0x3);
+  EXPECT_EQ(out->user,   0x42);
+  EXPECT_EQ(out->qos,    0xC);
+}
+
+TEST(AxiSlavePort_Inbound, WRoundTripPreservesData) {
+  nmu::AxiSlavePort port;
+  ni::pins::AxiSlavePortPins p{};
+  for (std::size_t i = 0; i < ni::WSTRB_WIDTH; ++i) p.axi_wdata_i[i] = static_cast<uint8_t>(i ^ 0xA5);
+  p.axi_wstrb_i = 0xDEADBEEF;
+  p.axi_wlast_i = 1;
+  p.axi_wuser_i = 0x33;
+  EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::W));
+  auto out = port.pop_w();
+  ASSERT_TRUE(out.has_value());
+  for (std::size_t i = 0; i < ni::WSTRB_WIDTH; ++i) EXPECT_EQ(out->data[i], static_cast<uint8_t>(i ^ 0xA5));
+  EXPECT_EQ(out->strb, 0xDEADBEEF);
+  EXPECT_EQ(out->last, 1);
+  EXPECT_EQ(out->user, 0x33);
+}
+
+TEST(AxiSlavePort_Inbound, ArRoundTripPreservesAllFields) {
+  nmu::AxiSlavePort port;
+  ni::pins::AxiSlavePortPins p{};
+  p.axi_arid_i     = 0x71;
+  p.axi_araddr_i   = 0xCAFE'BABE'F00D'5AA5ULL;
+  p.axi_arlen_i    = 15;
+  p.axi_arsize_i   = 2;
+  p.axi_arburst_i  = 1;
+  p.axi_arcache_i  = 0x6;
+  p.axi_arlock_i   = 0;
+  p.axi_arprot_i   = 0x1;
+  p.axi_arregion_i = 0x5;
+  p.axi_aruser_i   = 0x88;
+  p.axi_arqos_i    = 0x9;
+  EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::Ar));
+  auto out = port.pop_ar();
+  ASSERT_TRUE(out.has_value());
+  EXPECT_EQ(out->id,     0x71);
+  EXPECT_EQ(out->addr,   0xCAFE'BABE'F00D'5AA5ULL);
+  EXPECT_EQ(out->len,    15);
+  EXPECT_EQ(out->size,   2);
+  EXPECT_EQ(out->burst,  1);
+  EXPECT_EQ(out->cache,  0x6);
+  EXPECT_EQ(out->lock,   0);
+  EXPECT_EQ(out->prot,   0x1);
+  EXPECT_EQ(out->region, 0x5);
+  EXPECT_EQ(out->user,   0x88);
+  EXPECT_EQ(out->qos,    0x9);
+}
+
+TEST(AxiSlavePort_Inbound, AllOrNothingRollback) {
+  nmu::AxiSlavePort port(nmu::QueueDepths{.aw=1, .w=16});
+  ni::pins::AxiSlavePortPins p{};
+  EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::Aw));
+  EXPECT_EQ(port.aw_q_size(), 1u);
+  EXPECT_EQ(port.w_q_size(),  0u);
+
+  EXPECT_FALSE(port.push_inbound_pins(p, nmu::ChannelMask::Aw | nmu::ChannelMask::W));
+  EXPECT_EQ(port.aw_q_size(), 1u);
+  EXPECT_EQ(port.w_q_size(),  0u) << "W should not be enqueued when AW path rejected";
+}
+
+TEST(AxiSlavePort_Inbound, IndependentDepthsPerChannel) {
+  nmu::AxiSlavePort port(nmu::QueueDepths{.aw=2, .w=8, .ar=1, .b=1, .r=1});
+  ni::pins::AxiSlavePortPins p{};
+  EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::Aw));
+  EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::Aw));
+  EXPECT_FALSE(port.push_inbound_pins(p, nmu::ChannelMask::Aw)) << "aw_q full";
+  for (int i = 0; i < 8; ++i)
+    EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::W)) << "w_q i=" << i;
+  EXPECT_FALSE(port.push_inbound_pins(p, nmu::ChannelMask::W)) << "w_q full at depth 8";
+}
