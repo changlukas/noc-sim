@@ -223,3 +223,32 @@ TEST(AxiSlave, BackpressureRetry_NoBeatDropped) {
 
   EXPECT_EQ(slave.w_q_size(), 0u);
 }
+
+TEST(AxiSlave, SequentialBurstsDifferentIds) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  axi::AwBeat aw1{}; aw1.id = 1; aw1.addr = 0x1000; aw1.len = 0; aw1.size = 5;
+  aw1.burst = axi::Burst::INCR;
+  slave.push_aw(aw1);
+  axi::WBeat w1{}; w1.data.fill(0x11); w1.strb = 0xFFFF'FFFFu; w1.last = true;
+  slave.push_w(w1);
+  slave.tick();
+  ASSERT_EQ(mem.captured_writes.size(), 1u);
+  EXPECT_EQ(mem.captured_writes[0].id, 1);
+  mem.queued_write_resps.push_back(
+      axi::MemWriteResp{1, axi::Resp::OKAY, mem.captured_writes[0].tag});
+  slave.tick();
+  EXPECT_TRUE(slave.pop_b().has_value());
+
+  axi::AwBeat aw2 = aw1; aw2.id = 2; aw2.addr = 0x1100;
+  axi::WBeat w2 = w1; w2.data.fill(0x22);
+  slave.push_aw(aw2);
+  slave.push_w(w2);
+  mem.captured_writes.pop_front();
+  slave.tick();
+  ASSERT_EQ(mem.captured_writes.size(), 1u);
+  EXPECT_EQ(mem.captured_writes[0].id, 2);
+  EXPECT_EQ(mem.captured_writes[0].data[0], 0x22);
+}
