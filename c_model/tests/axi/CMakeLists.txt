@@ -1,0 +1,1 @@
+add_cmodel_test(test_scaffold)
