@@ -10,4 +10,4 @@ transactions:
     len: 0
     size: 5
     burst: INCR
-    data_file: fixtures/single_write_read_aligned_data.txt
+    data_file: fixtures/decerr_oob_write_data.txt

@@ -10,10 +10,12 @@
 
 namespace axi = ni::cmodel::axi;
 
+// Watchdog cap to catch hangs / deadlocks in any single fixture run.
+constexpr std::size_t kMaxCycles = 100'000;
+
 struct IntegrationResult {
   bool        file_diff_pass;
   std::size_t scoreboard_mismatches;
-  std::size_t reads_checked;
   std::size_t cycle_count;
 };
 
@@ -45,18 +47,17 @@ static IntegrationResult run_scenario(const std::string& yaml_path,
     sb.handle_read_observed(rr);
   });
 
-  constexpr std::size_t MAX_CYCLES = 100'000;
   std::size_t cycle = 0;
   while (!master.done()) {
     master.tick();
     slave.tick();
     mem.tick();
-    if (++cycle > MAX_CYCLES) {
-      return IntegrationResult{false, sb.mismatch_count(), sb.reads_checked(), cycle};
+    if (++cycle > kMaxCycles) {
+      return IntegrationResult{false, sb.mismatch_count(), cycle};
     }
   }
   bool fdiff = write_data_path.empty() ? true : diff_files(write_data_path, read_dump_path);
-  return IntegrationResult{fdiff, sb.mismatch_count(), sb.reads_checked(), cycle};
+  return IntegrationResult{fdiff, sb.mismatch_count(), cycle};
 }
 
 struct FixtureParam {
@@ -92,7 +93,7 @@ TEST_P(IntegrationP, RunFixture) {
   if (p.expect_zero_mismatches) {
     EXPECT_EQ(r.scoreboard_mismatches, 0u) << "scoreboard mismatches: " << p.yaml;
   }
-  EXPECT_LE(r.cycle_count, 100'000u) << "watchdog tripped: " << p.yaml;
+  EXPECT_LE(r.cycle_count, kMaxCycles) << "watchdog tripped: " << p.yaml;
 }
 
 INSTANTIATE_TEST_SUITE_P(
