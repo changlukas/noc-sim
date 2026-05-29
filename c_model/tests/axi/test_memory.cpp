@@ -99,3 +99,18 @@ TEST(Memory, WstrbByteMaskMergeWithFill) {
   EXPECT_EQ(mem.peek(0x1003), 0x00);
   EXPECT_EQ(mem.peek(0x1004), 0xFF);
 }
+
+TEST(Memory, BackpressureSubmitReturnsFalseWhenQueueFull) {
+  axi::Memory mem(0x1000, 0x10000, 10, 10, 4);
+  axi::MemWriteReq req{};
+  req.addr = 0x1000; req.data.fill(0); req.strb = 0xFFFF'FFFFu;
+  req.id = 1; req.last = true;
+  EXPECT_TRUE(mem.submit_write(req));
+  EXPECT_TRUE(mem.submit_write(req));
+  EXPECT_TRUE(mem.submit_write(req));
+  EXPECT_TRUE(mem.submit_write(req));
+  EXPECT_FALSE(mem.submit_write(req));
+  for (int i = 0; i < 11; ++i) mem.tick();
+  ASSERT_TRUE(mem.pop_write_resp().has_value());
+  EXPECT_TRUE(mem.submit_write(req));
+}
