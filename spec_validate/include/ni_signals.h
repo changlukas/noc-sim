@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_signals.json
 // Source SHA: 9ed018f23a88
 // Generator version: v1.0.0
-// Generated at: 2026-05-28T07:39:04Z
+// Generated at: 2026-05-29T02:13:45Z
 // ----------------------------------------------------------------------------
 #pragma once
 #include <array>

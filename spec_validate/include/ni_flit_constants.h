@@ -3,7 +3,7 @@
 // Source:    spec_validate/generated/ni_packet.json
 // Source SHA: ce286b7d09b9
 // Generator version: v1.0.0
-// Generated at: 2026-05-28T10:36:16Z
+// Generated at: 2026-05-29T02:13:45Z
 // ----------------------------------------------------------------------------
 #pragma once
 #include <cstddef>
