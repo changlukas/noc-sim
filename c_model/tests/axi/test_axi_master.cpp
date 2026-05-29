@@ -193,3 +193,47 @@ transactions:
   std::ifstream f(dumpPath); std::string line; std::getline(f, line);
   EXPECT_EQ(line.substr(0, 5), "AB AB");
 }
+
+TEST_F(AxiMasterTest, MaxOutstandingWriteLimitsConcurrency) {
+  auto wpath = std::string(::testing::TempDir()) + "/w_concur.txt";
+  std::ofstream(wpath) << "00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF "
+                          "00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF\n";
+  auto yaml = write_tmp(std::string(R"YAML(
+config:
+  max_outstanding_write: 2
+transactions:
+  - op: write
+    addr: 0x0
+    id: 0x1
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: )YAML") + wpath + R"YAML(
+  - op: write
+    addr: 0x20
+    id: 0x2
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: )YAML" + wpath + R"YAML(
+  - op: write
+    addr: 0x40
+    id: 0x3
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: )YAML" + wpath + "\n");
+
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r.txt", 2, 1);
+  master.tick();
+  EXPECT_EQ(mock.captured_aw.size(), 2u);
+  EXPECT_EQ(mock.captured_aw[0].id, 1);
+  EXPECT_EQ(mock.captured_aw[1].id, 2);
+
+  mock.queued_b.push_back(axi::BBeat{1, axi::Resp::OKAY, 0});
+  master.tick();
+  EXPECT_EQ(mock.captured_aw.size(), 3u);
+  EXPECT_EQ(mock.captured_aw[2].id, 3);
+}
