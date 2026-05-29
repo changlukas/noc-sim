@@ -279,3 +279,40 @@ TEST(AxiSlave, SequentialBurstsDifferentIds) {
   EXPECT_EQ(mem.captured_writes[0].id, 2);
   EXPECT_EQ(mem.captured_writes[0].data[0], 0x22);
 }
+
+// Regression: when several AWs are queued before their B responses come back,
+// the W router must advance to the next AW once the current burst's W beats
+// are fully forwarded — not wait for the B drain. Otherwise the second burst's
+// W beats are mis-routed to (or overwrite) the first burst's address space.
+TEST(AxiSlave, ConcurrentBurstsDifferentIds_WRoutingAdvances) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  axi::AwBeat aw1{}; aw1.id = 1; aw1.addr = 0x1000; aw1.len = 0; aw1.size = 5;
+  aw1.burst = axi::Burst::INCR;
+  axi::AwBeat aw2 = aw1; aw2.id = 2; aw2.addr = 0x1020;
+  axi::AwBeat aw3 = aw1; aw3.id = 3; aw3.addr = 0x1040;
+
+  axi::WBeat w1{}; w1.data.fill(0x11); w1.strb = 0xFFFF'FFFFu; w1.last = true;
+  axi::WBeat w2 = w1; w2.data.fill(0x22);
+  axi::WBeat w3 = w1; w3.data.fill(0x33);
+
+  // Push 3 AWs + 3 W beats all in one tick, no B responses yet.
+  slave.push_aw(aw1); slave.push_w(w1);
+  slave.push_aw(aw2); slave.push_w(w2);
+  slave.push_aw(aw3); slave.push_w(w3);
+  slave.tick();
+
+  // All 3 W beats must reach memory with the correct (id, addr, data) routing.
+  ASSERT_EQ(mem.captured_writes.size(), 3u);
+  EXPECT_EQ(mem.captured_writes[0].id,   1);
+  EXPECT_EQ(mem.captured_writes[0].addr, 0x1000u);
+  EXPECT_EQ(mem.captured_writes[0].data[0], 0x11);
+  EXPECT_EQ(mem.captured_writes[1].id,   2);
+  EXPECT_EQ(mem.captured_writes[1].addr, 0x1020u);
+  EXPECT_EQ(mem.captured_writes[1].data[0], 0x22);
+  EXPECT_EQ(mem.captured_writes[2].id,   3);
+  EXPECT_EQ(mem.captured_writes[2].addr, 0x1040u);
+  EXPECT_EQ(mem.captured_writes[2].data[0], 0x33);
+}

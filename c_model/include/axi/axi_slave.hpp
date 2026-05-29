@@ -77,9 +77,9 @@ inline void AxiSlave::tick() {
     if (st.beats_completed == static_cast<std::size_t>(st.aw.len) + 1) {
       b_q_.push_back(BBeat{st.aw.id, st.worst_resp, 0});
       active_writes_.erase(it);
-      for (auto i = aw_issue_order_.begin(); i != aw_issue_order_.end(); ++i) {
-        if (*i == st.aw.id) { aw_issue_order_.erase(i); break; }
-      }
+      // Note: aw_issue_order_.front() was popped when the burst's W beats were
+      // fully submitted to memory (step 4), so the W routing for the NEXT
+      // queued burst is correct even while this one waits on memory latency.
     }
   }
 
@@ -138,7 +138,11 @@ inline void AxiSlave::tick() {
     ++st.beats_submitted;
     w_q_.pop_front();
     if (st.beats_submitted == static_cast<std::size_t>(st.aw.len) + 1) {
-      break;  // burst's W beats done; W consumption stops for this id
+      // Burst's W beats fully forwarded to memory. Free up W routing so the
+      // next queued AW (if any) can take ownership of subsequent W beats,
+      // even while this burst's B response is still pending in memory.
+      aw_issue_order_.pop_front();
+      // Continue the loop: a subsequent burst may have W beats already queued.
     }
   }
 
