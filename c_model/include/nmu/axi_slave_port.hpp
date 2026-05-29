@@ -67,6 +67,12 @@ struct QueueDepths {
   std::size_t r  = 16;
 };
 
+// NOTE: assert messages remain inline string literals (not named constants).
+// The standard `assert(cond && "msg")` macro stringifies the expression and
+// emits *that* on failure — replacing the literal with a `constexpr const char*`
+// makes the assert print the variable name instead of the message, which
+// breaks every EXPECT_DEATH regex. Keep the literals; tests own matching
+// regexes in the .cpp. (Stage 3 reviewer finding #2 deferred.)
 class AxiSlavePort {
 public:
   explicit AxiSlavePort(QueueDepths depths = {}) : depths_(depths) {}
