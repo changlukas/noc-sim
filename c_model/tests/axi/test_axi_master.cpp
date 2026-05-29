@@ -103,3 +103,27 @@ transactions:
 )YAML");
   EXPECT_THROW(axi::load_scenario(path), std::runtime_error);
 }
+
+#include "axi/axi_master.hpp"
+#include "mock_slave.hpp"
+
+class AxiMasterTest : public ScenarioParser {};
+
+TEST_F(AxiMasterTest, ConstructsFromYamlAndOpensDump) {
+  auto wpath = std::string(::testing::TempDir()) + "/w.txt";
+  std::ofstream(wpath) << "AB CD EF 12 34 56 78 9A BC DE F0 11 22 33 44 55 "
+                          "66 77 88 99 AA BB CC DD EE FF 00 11 22 33 44 55\n";
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x0
+    id: 0x1
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_out.txt", 1, 1);
+  EXPECT_FALSE(master.done());
+}
