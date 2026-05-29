@@ -76,3 +76,27 @@ TEST(AxiSlave, WriteBurstIncr8Beat_InBounds) {
   ASSERT_TRUE(b.has_value());
   EXPECT_EQ(b->id, 3);
 }
+
+TEST(AxiSlave, AwWIndependence_WBeforeAw) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+
+  for (uint8_t i = 0; i < 2; ++i) {
+    axi::WBeat w{};
+    w.data.fill(0xAA + i);
+    w.strb = 0xFFFF'FFFFu;
+    w.last = (i == 1);
+    slave.push_w(w);
+  }
+  slave.tick();
+  EXPECT_EQ(mem.captured_writes.size(), 0u);
+
+  axi::AwBeat aw{};
+  aw.id = 5; aw.addr = 0x3000; aw.len = 1; aw.size = 5; aw.burst = axi::Burst::INCR;
+  slave.push_aw(aw);
+
+  for (int t = 0; t < 4; ++t) slave.tick();
+  ASSERT_EQ(mem.captured_writes.size(), 2u);
+  EXPECT_EQ(mem.captured_writes[0].data[0], 0xAA);
+  EXPECT_EQ(mem.captured_writes[1].data[0], 0xAB);
+}
