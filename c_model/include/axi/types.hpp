@@ -1,6 +1,5 @@
 // Algorithms ported from cocotbext-axi (MIT) — see axi/ATTRIBUTION.md
 #pragma once
-#include "ni_signals.h"
 #include "ni_flit_constants.h"
 #include <array>
 #include <cstdint>
