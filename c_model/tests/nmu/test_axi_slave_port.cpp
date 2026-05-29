@@ -129,3 +129,65 @@ TEST(AxiSlavePort_Inbound, IndependentDepthsPerChannel) {
     EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::W)) << "w_q i=" << i;
   EXPECT_FALSE(port.push_inbound_pins(p, nmu::ChannelMask::W)) << "w_q full at depth 8";
 }
+
+TEST(AxiSlavePort_Outbound, BPushPopRoundTrip) {
+  nmu::AxiSlavePort port;
+  nmu::BBeat b{0x33, 0x1, 0x7};  // id, resp=SLVERR, user
+  EXPECT_TRUE(port.push_b(b));
+  auto out = port.pop_outbound_b();
+  ASSERT_TRUE(out.has_value());
+  EXPECT_EQ(out->id, 0x33);
+  EXPECT_EQ(out->resp, 0x1);
+  EXPECT_EQ(out->user, 0x7);
+}
+
+TEST(AxiSlavePort_Outbound, RPushPopRoundTrip) {
+  nmu::AxiSlavePort port;
+  nmu::RBeat r{};
+  r.id = 0x55; r.resp = 0x2; r.last = 1; r.user = 0xAB;
+  for (std::size_t i = 0; i < ni::WSTRB_WIDTH; ++i) r.data[i] = static_cast<uint8_t>(i);
+  EXPECT_TRUE(port.push_r(r));
+  auto out = port.pop_outbound_r();
+  ASSERT_TRUE(out.has_value());
+  EXPECT_EQ(out->id, 0x55); EXPECT_EQ(out->resp, 0x2);
+  EXPECT_EQ(out->last, 1);  EXPECT_EQ(out->user, 0xAB);
+  for (std::size_t i = 0; i < ni::WSTRB_WIDTH; ++i) EXPECT_EQ(out->data[i], static_cast<uint8_t>(i));
+}
+
+TEST(AxiSlavePort_Outbound, IndependentBR) {
+  nmu::AxiSlavePort port;
+  port.push_b(nmu::BBeat{1, 0, 0});
+  EXPECT_TRUE(port.pop_outbound_b().has_value());
+  EXPECT_FALSE(port.pop_outbound_r().has_value()) << "R should not be affected by B push";
+}
+
+TEST(AxiSlavePort_Tick, IsNoOp) {
+  nmu::AxiSlavePort port;
+  ni::pins::AxiSlavePortPins p{};
+  port.push_inbound_pins(p, nmu::ChannelMask::Aw);
+  port.push_b(nmu::BBeat{1, 0, 0});
+  auto aw_before = port.aw_q_size();
+  auto b_before  = port.b_q_size();
+  port.tick();
+  EXPECT_EQ(port.aw_q_size(), aw_before);
+  EXPECT_EQ(port.b_q_size(),  b_before);
+}
+
+#ifdef NDEBUG
+TEST(AxiSlavePort_ProtocolRelease, BadBurstEncodingStillEnqueues) {
+  nmu::AxiSlavePort port;
+  ni::pins::AxiSlavePortPins p{};
+  p.axi_awburst_i = 3;  // reserved encoding
+  EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::Aw));
+  EXPECT_EQ(port.aw_q_size(), 1u);
+}
+#endif
+
+#ifndef NDEBUG
+TEST(AxiSlavePort_ProtocolDebug, BadBurstEncodingDeathTest) {
+  nmu::AxiSlavePort port;
+  ni::pins::AxiSlavePortPins p{};
+  p.axi_awburst_i = 3;
+  EXPECT_DEATH(port.push_inbound_pins(p, nmu::ChannelMask::Aw), "AW_\\* protocol violation");
+}
+#endif
