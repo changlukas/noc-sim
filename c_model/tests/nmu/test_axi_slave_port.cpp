@@ -238,7 +238,7 @@ INSTANTIATE_TEST_SUITE_P(MaskMatrix, AxiSlavePort_InboundP, ::testing::Values(
 // Stage 4: seeded random shadow-model equivalence
 // --------------------------------------------------------------------------
 
-TEST(AxiSlavePort_Random, SeededShadowModelEquivalence) {
+TEST(AxiSlavePort_Random, SeededShadowModelEquivalence_AwOnly) {
   constexpr unsigned kSeed = 0xC0FFEE;
   constexpr int      kOps  = 1000;
   std::mt19937 rng(kSeed);
@@ -275,6 +275,10 @@ TEST(AxiSlavePort_Random, SeededShadowModelEquivalence) {
 // --------------------------------------------------------------------------
 
 TEST(AxiSlavePort_Coverage, AllKeyPathsExercised) {
+  // Each saw_* flag is derived from the API's return value, not asserted
+  // alongside an EXPECT. If a code path stops being exercised (e.g. push_b
+  // disappears), the matching flag stays false and the final EXPECT_TRUE
+  // fails — turning this into a real coverage gate.
   bool saw_full = false, saw_empty = false, saw_atomic_fail = false;
   bool saw_burst_violation = false, saw_resp_violation = false;
   bool saw_aw = false, saw_w = false, saw_ar = false, saw_b = false, saw_r = false;
@@ -284,35 +288,64 @@ TEST(AxiSlavePort_Coverage, AllKeyPathsExercised) {
   p.axi_awburst_i = 1;  // valid INCR
   p.axi_arburst_i = 1;  // valid INCR
 
-  EXPECT_FALSE(port.pop_aw().has_value()); saw_empty = true;
+  // empty-pop path
+  auto empty_pop = port.pop_aw();
+  saw_empty = !empty_pop.has_value();
+  EXPECT_TRUE(saw_empty);
 
-  EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::Aw)); saw_aw = true;
-  EXPECT_FALSE(port.push_inbound_pins(p, nmu::ChannelMask::Aw)); saw_full = true;
+  // successful AW push
+  bool pushed_aw = port.push_inbound_pins(p, nmu::ChannelMask::Aw);
+  saw_aw = pushed_aw;
+  EXPECT_TRUE(saw_aw);
 
-  EXPECT_FALSE(port.push_inbound_pins(p, nmu::ChannelMask::Aw | nmu::ChannelMask::W));
-  EXPECT_EQ(port.w_q_size(), 0u); saw_atomic_fail = true;
+  // full-queue rejection
+  bool pushed_full = port.push_inbound_pins(p, nmu::ChannelMask::Aw);
+  saw_full = !pushed_full;
+  EXPECT_TRUE(saw_full);
+
+  // all-or-nothing rollback: AW|W push must fail (aw full) AND leave w_q empty
+  bool pushed_pair = port.push_inbound_pins(p, nmu::ChannelMask::Aw | nmu::ChannelMask::W);
+  saw_atomic_fail = !pushed_pair && (port.w_q_size() == 0u);
+  EXPECT_TRUE(saw_atomic_fail);
 
   (void)port.pop_aw();
-  EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::W));  saw_w = true;
-  EXPECT_TRUE(port.push_inbound_pins(p, nmu::ChannelMask::Ar)); saw_ar = true;
 
-  EXPECT_TRUE(port.push_b(nmu::BBeat{1, 0, 0})); saw_b = true;
-  EXPECT_TRUE(port.push_r(nmu::RBeat{}));        saw_r = true;
+  // successful W push
+  bool pushed_w = port.push_inbound_pins(p, nmu::ChannelMask::W);
+  saw_w = pushed_w;
+  EXPECT_TRUE(saw_w);
+
+  // successful AR push
+  bool pushed_ar = port.push_inbound_pins(p, nmu::ChannelMask::Ar);
+  saw_ar = pushed_ar;
+  EXPECT_TRUE(saw_ar);
+
+  // outbound B / R push success paths
+  bool pushed_b = port.push_b(nmu::BBeat{1, 0, 0});
+  saw_b = pushed_b;
+  EXPECT_TRUE(saw_b);
+
+  bool pushed_r = port.push_r(nmu::RBeat{});
+  saw_r = pushed_r;
+  EXPECT_TRUE(saw_r);
 
 #ifdef NDEBUG
+  // Release build: protocol violations are non-fatal — enqueue still succeeds.
+  // Tie the flag to that enqueue return so the path is genuinely exercised.
   ni::pins::AxiSlavePortPins bad = p; bad.axi_awburst_i = 3;
   nmu::AxiSlavePort port2;
-  EXPECT_TRUE(port2.push_inbound_pins(bad, nmu::ChannelMask::Aw));
-  saw_burst_violation = true;
-  EXPECT_TRUE(port2.push_b(nmu::BBeat{0, 5, 0}));
-  saw_resp_violation = true;
+  saw_burst_violation = port2.push_inbound_pins(bad, nmu::ChannelMask::Aw);
+  EXPECT_TRUE(saw_burst_violation);
+  saw_resp_violation = port2.push_b(nmu::BBeat{0, 5, 0});
+  EXPECT_TRUE(saw_resp_violation);
 #else
-  // In debug builds the violation paths assert-die; the parameterized
-  // death-test suite below exercises them. Mark counters satisfied so this
-  // test stays meaningful in both build modes.
+  // Debug build: violation paths assert-die. The parameterized death-test
+  // suite below covers them; mark these flags satisfied so the gate stays
+  // meaningful in both build modes.
   saw_burst_violation = true; saw_resp_violation = true;
 #endif
 
+  // Final coverage gate — fails if any path above stopped being exercised.
   EXPECT_TRUE(saw_full); EXPECT_TRUE(saw_empty); EXPECT_TRUE(saw_atomic_fail);
   EXPECT_TRUE(saw_burst_violation); EXPECT_TRUE(saw_resp_violation);
   EXPECT_TRUE(saw_aw); EXPECT_TRUE(saw_w); EXPECT_TRUE(saw_ar); EXPECT_TRUE(saw_b); EXPECT_TRUE(saw_r);
