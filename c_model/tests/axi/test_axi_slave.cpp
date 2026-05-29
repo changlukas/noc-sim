@@ -224,6 +224,33 @@ TEST(AxiSlave, BackpressureRetry_NoBeatDropped) {
   EXPECT_EQ(slave.w_q_size(), 0u);
 }
 
+TEST(AxiSlave, WriteBurstWorstRespAccumulatedAcrossBeats) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+
+  axi::AwBeat aw{};
+  aw.id = 11; aw.addr = 0x4000; aw.len = 2; aw.size = 5; aw.burst = axi::Burst::INCR;
+  slave.push_aw(aw);
+  for (uint8_t i = 0; i < 3; ++i) {
+    axi::WBeat w{}; w.data.fill(0); w.strb = 0xFFFF'FFFFu; w.last = (i == 2);
+    slave.push_w(w);
+  }
+  // 3 ticks to submit all 3 W beats
+  for (int t = 0; t < 4; ++t) slave.tick();
+  ASSERT_EQ(mem.captured_writes.size(), 3u);
+
+  // Mock returns: beat 0 OKAY, beat 1 DECERR, beat 2 SLVERR
+  // worst should be DECERR (3) > SLVERR (2) > OKAY (0)
+  mem.queued_write_resps.push_back(axi::MemWriteResp{11, axi::Resp::OKAY,   mem.captured_writes[0].tag});
+  mem.queued_write_resps.push_back(axi::MemWriteResp{11, axi::Resp::DECERR, mem.captured_writes[1].tag});
+  mem.queued_write_resps.push_back(axi::MemWriteResp{11, axi::Resp::SLVERR, mem.captured_writes[2].tag});
+
+  for (int t = 0; t < 4; ++t) slave.tick();
+  auto b = slave.pop_b();
+  ASSERT_TRUE(b.has_value());
+  EXPECT_EQ(b->resp, axi::Resp::DECERR) << "worst_resp should pick arithmetic max (DECERR=3), not last (SLVERR=2)";
+}
+
 TEST(AxiSlave, SequentialBurstsDifferentIds) {
   test::MockMemoryPort mem;
   axi::AxiSlave slave(mem);

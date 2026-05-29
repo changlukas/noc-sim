@@ -72,7 +72,8 @@ inline void AxiSlave::tick() {
     if (it == active_writes_.end()) continue;
     auto& st = it->second;
     ++st.beats_completed;
-    if (resp->resp != Resp::OKAY) st.worst_resp = resp->resp;
+    if (static_cast<uint8_t>(resp->resp) > static_cast<uint8_t>(st.worst_resp))
+      st.worst_resp = resp->resp;
     if (st.beats_completed == static_cast<std::size_t>(st.aw.len) + 1) {
       b_q_.push_back(BBeat{st.aw.id, st.worst_resp, 0});
       active_writes_.erase(it);
