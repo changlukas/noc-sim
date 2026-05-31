@@ -16,6 +16,7 @@ GoogleTest with synchronous tick-driven semantics.
 | `axi/axi_master.hpp`              | `cocotbext/axi/axi_master.py` (AxiMaster + AxiMasterWrite + AxiMasterRead) |
 | `axi/scoreboard.hpp`              | (independent design; pattern from cocotbext-axi tests) |
 | `axi/scenario_parser.hpp`         | (independent; cocotbext-axi has no scenario file format) |
+| `axi/protocol_rules.hpp`          | (independent design; AXI4 IHI 0022 rule extraction inspired by cocotbext-axi runtime checks) |
 
 ## Adaptation notes
 
