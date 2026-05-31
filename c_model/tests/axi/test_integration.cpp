@@ -145,5 +145,15 @@ INSTANTIATE_TEST_SUITE_P(
         // sub-bursts via split_into_sub_bursts. Both addr=0x0FE0 and 0x1000
         // are 32-byte aligned, so byte_lane=0 throughout — the read dump
         // matches the packed data file byte-for-byte.
-        FixtureParam{"cross_4kb_auto_split.yaml",       "cross_4kb_auto_split_data.txt",       true,  true}),
+        FixtureParam{"cross_4kb_auto_split.yaml",       "cross_4kb_auto_split_data.txt",       true,  true},
+        // Phase B-5b combined fixtures.
+        // - narrow_unaligned: aligned narrow multi-beat (addr=0x1004, size=2,
+        //   len=3). Read dump is bus-image-per-beat, not packed, so file diff
+        //   is skipped; scoreboard validates byte equivalence.
+        // - sparse_multibeat: 4-beat size=5 burst with per-beat sparse WSTRB
+        //   patterns (0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000). Each
+        //   beat enables a different byte-group; scoreboard validates that
+        //   only enabled bytes update memory.
+        FixtureParam{"narrow_unaligned.yaml",           "",                                    false, true},
+        FixtureParam{"sparse_multibeat.yaml",           "",                                    false, true}),
     FixtureName{});
