@@ -100,171 +100,167 @@ public:
   }
 
   void tick() {
-    // Drain B responses
+    // ===== Drain B responses =====
+    //
+    // OperationContext model: one scenario_txn → one OperationContext → N
+    // sub-bursts (split at 4KB / 256-beat). Each sub-burst gets its own AW;
+    // each AW returns its own B. Operation completes (single WriteResult
+    // fires) when all sub-bursts' B responses are in. The slave's per-ID FIFO
+    // delivers B responses in submission order, so we advance the operation's
+    // sub-burst-complete counter regardless of which sub-burst the B id maps
+    // to — order is implied by submission.
     while (auto b = slave_.pop_b()) {
-      auto it = active_writes_.find(b->id);
-      if (it == active_writes_.end()) continue;
-      // WriteResult carries the ORIGINAL user txn.addr plus AXI4 burst
-      // geometry. The scoreboard reconstructs per-beat addr + byte_lane from
-      // (addr, size, len, burst). AW.addr on the wire stays aligned-down.
-      if (wcb_) wcb_(WriteResult{it->second.txn.addr,
-                                  it->second.txn.size,
-                                  it->second.txn.len,
-                                  it->second.txn.burst,
-                                  it->second.data,
-                                  it->second.strb_per_beat,
-                                  b->resp,
-                                  b->id,
-                                  it->second.txn.scenario_line});
-      active_writes_.erase(it);
+      auto it = active_write_ops_.find(b->id);
+      if (it == active_write_ops_.end()) continue;
+      auto& op = it->second;
+      ++op.b_count_;
+      if (static_cast<uint8_t>(b->resp) > static_cast<uint8_t>(op.worst_resp_))
+        op.worst_resp_ = b->resp;
+      if (op.b_count_ == op.sub_bursts.size()) {
+        // WriteResult carries the ORIGINAL user txn (addr, size, len, burst)
+        // — NOT sub-burst geometry. The scoreboard re-derives per-beat addr
+        // from the original txn.
+        if (wcb_) wcb_(WriteResult{op.src_txn.addr,
+                                    op.src_txn.size,
+                                    op.src_txn.len,
+                                    op.src_txn.burst,
+                                    op.data,
+                                    op.strb_per_beat,
+                                    op.worst_resp_,
+                                    b->id,
+                                    op.src_txn.scenario_line});
+        active_write_ops_.erase(it);
+      }
     }
-    // Drain R responses
+
+    // ===== Drain R responses =====
+    //
+    // R beats arrive in sub-burst order (per-id FIFO at the slave). Track
+    // which sub-burst the current beat belongs to via cur_r_sub_idx_ +
+    // r_beats_in_cur_; advance to the next sub-burst on r->last. Operation
+    // completes when cur_r_sub_idx_ reaches sub_bursts.size().
     while (auto r = slave_.pop_r()) {
-      auto it = active_reads_.find(r->id);
-      if (it == active_reads_.end()) continue;
-      auto& rs = it->second;
-      const std::size_t bpb = 1ull << rs.txn.size;
+      auto it = active_read_ops_.find(r->id);
+      if (it == active_read_ops_.end()) continue;
+      auto& op = it->second;
+      const auto& sub = op.sub_bursts[op.cur_r_sub_idx_];
+      const std::size_t bpb = 1ull << sub.size;
       // Lane-positioned bus: byte j on the bus is at lane (byte_lane + j),
-      // where byte_lane = (per-beat addr) mod DATA_BYTES. The per-beat addr
-      // is computed by the shared axi::beat_addr() helper (FIXED stays at
-      // txn.addr; INCR advances by bpb; WRAP wraps within the wrap window).
+      // where byte_lane = (per-beat addr) mod DATA_BYTES. Per-beat addr from
+      // the CURRENT sub-burst (FIXED stays; INCR advances; WRAP wraps).
       // Lane room caps the per-beat payload at DATA_BYTES - byte_lane; any
-      // trailing user bytes that would have fallen off the bus are zero-padded
-      // so downstream packed-buffer offsets stay aligned at (beat * bpb).
-      const uint64_t beat_addr_v = beat_addr(rs.txn.addr, rs.txn.len,
-                                             rs.txn.size, rs.txn.burst,
-                                             rs.beats_observed);
+      // trailing user bytes that would have fallen off the bus are zero-
+      // padded so downstream packed-buffer offsets stay aligned at the
+      // operation-level (beat * bpb) layout.
+      const uint64_t beat_addr_v = beat_addr(sub.addr, sub.len, sub.size,
+                                             sub.burst, op.r_beats_in_cur_);
       const std::size_t byte_lane =
           static_cast<std::size_t>(beat_addr_v & (DATA_BYTES - 1));
       const std::size_t lane_room =
           (byte_lane < DATA_BYTES) ? (DATA_BYTES - byte_lane) : 0;
       const std::size_t copy_bytes = std::min(bpb, lane_room);
       for (std::size_t i = 0; i < copy_bytes; ++i)
-        rs.accumulator.push_back(r->data[byte_lane + i]);
+        op.read_accumulator.push_back(r->data[byte_lane + i]);
       for (std::size_t i = copy_bytes; i < bpb; ++i)
-        rs.accumulator.push_back(0);
-      ++rs.beats_observed;
+        op.read_accumulator.push_back(0);
+      ++op.r_beats_in_cur_;
+      if (static_cast<uint8_t>(r->resp) > static_cast<uint8_t>(op.worst_resp_))
+        op.worst_resp_ = r->resp;
       if (r->last) {
-        // Read dump records the packed user bytes (bpb per beat). For aligned
-        // size=5 this matches the historical full-beat dump format.
-        const std::size_t total = rs.accumulator.size();
-        const std::size_t lines = (bpb > 0) ? (total / bpb) : 0;
+        ++op.cur_r_sub_idx_;
+        op.r_beats_in_cur_ = 0;
+      }
+      if (op.cur_r_sub_idx_ == op.sub_bursts.size()) {
+        // All sub-bursts drained → fire single ReadResult for the original
+        // scenario_txn, dumping the packed user-byte buffer.
+        const std::size_t bpb_orig = 1ull << op.src_txn.size;
+        const std::size_t total = op.read_accumulator.size();
+        const std::size_t lines = (bpb_orig > 0) ? (total / bpb_orig) : 0;
         for (std::size_t line = 0; line < lines; ++line) {
-          for (std::size_t j = 0; j < bpb; ++j) {
+          for (std::size_t j = 0; j < bpb_orig; ++j) {
             if (j > 0) read_dump_ << ' ';
             char buf[4];
             std::snprintf(buf, sizeof(buf), "%02X",
-                          rs.accumulator[line * bpb + j]);
+                          op.read_accumulator[line * bpb_orig + j]);
             read_dump_ << buf;
           }
           read_dump_ << '\n';
         }
         read_dump_.flush();
-        if (rcb_) rcb_(ReadResult{rs.txn.addr,
-                                    rs.txn.size,
-                                    rs.txn.len,
-                                    rs.txn.burst,
-                                    rs.accumulator,
-                                    r->resp, r->id, rs.txn.scenario_line});
-        active_reads_.erase(it);
+        if (rcb_) rcb_(ReadResult{op.src_txn.addr,
+                                    op.src_txn.size,
+                                    op.src_txn.len,
+                                    op.src_txn.burst,
+                                    op.read_accumulator,
+                                    op.worst_resp_, r->id,
+                                    op.src_txn.scenario_line});
+        active_read_ops_.erase(it);
       }
     }
-    // Admission: start next transaction if room
+
+    // ===== Admission =====
+    //
+    // One OperationContext per scenario_txn. Same-id concurrent operations
+    // remain disallowed (operation-level ordering) — sub-burst stacking
+    // happens within ONE operation via slave's per-id FIFO.
     while (next_txn_idx_ < sc_.transactions.size()) {
       const auto& txn = sc_.transactions[next_txn_idx_];
       if (txn.op == ScenarioTransaction::Op::Write) {
-        if (active_writes_.size() >= max_out_w_) break;
-        if (active_writes_.count(txn.id)) break;
-        WriteState ws;
-        ws.txn = txn;
-        ws.data = load_write_data_(txn.data_file,
+        if (active_write_ops_.size() >= max_out_w_) break;
+        if (active_write_ops_.count(txn.id)) break;
+        OperationContext op;
+        op.src_txn = txn;
+        op.sub_bursts = split_into_sub_bursts(txn);
+        op.data = load_write_data_(txn.data_file,
                                     static_cast<std::size_t>(txn.len + 1u) * (1ull << txn.size));
-        ws.strb_per_beat = load_strb_file_(txn.strb_file,
+        op.strb_per_beat = load_strb_file_(txn.strb_file,
                                             static_cast<std::size_t>(txn.len + 1u));
-        active_writes_.emplace(txn.id, std::move(ws));
+        active_write_ops_.emplace(txn.id, std::move(op));
       } else {
-        if (active_reads_.size() >= max_out_r_) break;
-        if (active_reads_.count(txn.id)) break;
-        ReadState rs;
-        rs.txn = txn;
-        active_reads_.emplace(txn.id, std::move(rs));
+        if (active_read_ops_.size() >= max_out_r_) break;
+        if (active_read_ops_.count(txn.id)) break;
+        OperationContext op;
+        op.src_txn = txn;
+        op.sub_bursts = split_into_sub_bursts(txn);
+        active_read_ops_.emplace(txn.id, std::move(op));
       }
       ++next_txn_idx_;
     }
-    // Push AW + W beats for active writes
-    for (auto& [id, ws] : active_writes_) {
-      // AXI4 INCR unaligned start (IHI 0022, AMBA AXI Protocol Specification):
-      //   AW.addr is aligned DOWN to the (1<<size) transfer boundary; the
-      //   unaligned-prefix bytes are skipped via WSTRB on the first beat.
-      //   The byte lane carrying the first valid byte is determined by
-      //   addr mod DATA_BYTES (the bus byte-lane convention), not (1<<size).
-      // Two-alignment scheme: aligned_addr uses (1<<size) for AW.addr (transfer-
-      // size alignment); byte_lane below uses DATA_BYTES (bus-lane alignment).
-      // For Phase A size=5, both coincide; for B-3b narrow they diverge.
-      const uint64_t aligned_addr = ws.txn.addr & ~((1ull << ws.txn.size) - 1);
-      if (ws.aw_pushed_ == 0) {
-        AwBeat aw{};
-        aw.id = id; aw.addr = aligned_addr; aw.len = ws.txn.len; aw.size = ws.txn.size;
-        aw.burst = ws.txn.burst;
-        if (!slave_.push_aw(aw)) continue;
-        ws.aw_pushed_ = 1;
-      }
-      while (ws.w_pushed_ <= ws.txn.len) {
-        WBeat w{};
-        const std::size_t bpb = 1ull << ws.txn.size;
-        // Lane-positioned bus: byte j of the user payload for this beat is
-        // placed at bus lane (byte_lane + j), where byte_lane is derived from
-        // the per-beat address via the shared axi::beat_addr() helper. For
-        // aligned size=5 Phase A INCR, byte_lane=0 and this collapses to the
-        // historical compact placement.
-        const uint64_t beat_addr_v = beat_addr(ws.txn.addr, ws.txn.len,
-                                               ws.txn.size, ws.txn.burst,
-                                               ws.w_pushed_);
-        const std::size_t byte_lane =
-            static_cast<std::size_t>(beat_addr_v & (DATA_BYTES - 1));
-        w.data.fill(0);
-        // ws.data is packed user bytes: beat b contributes bytes
-        // [b*bpb, (b+1)*bpb). They land on bus lanes [byte_lane, byte_lane+bpb)
-        // but never past DATA_BYTES (excess trails are discarded).
-        const std::size_t writable = (byte_lane < DATA_BYTES)
-            ? std::min<std::size_t>(bpb, DATA_BYTES - byte_lane)
-            : 0;
-        for (std::size_t j = 0; j < writable; ++j) {
-          const std::size_t off = ws.w_pushed_ * bpb + j;
-          w.data[byte_lane + j] = (off < ws.data.size()) ? ws.data[off] : 0;
-        }
-        // Lane mask: bus lanes [byte_lane, byte_lane + bpb) are enabled. For
-        // size=5 (bpb=32) the shift width matches uint32 — `((1ull<<32)-1)<<0`
-        // equals 0xFFFFFFFF after uint32 truncation, so the formula collapses
-        // to the historical pass-through. For size<5 narrow (aligned OR
-        // unaligned first beat), this is the correct AXI4 lane-positioned
-        // semantic: only lanes serving the current beat are active.
-        const uint32_t lane_mask =
-            static_cast<uint32_t>(((1ull << bpb) - 1) << byte_lane);
-        w.strb = ws.strb_per_beat[ws.w_pushed_] & lane_mask;
-        w.last = (ws.w_pushed_ == ws.txn.len);
-        if (!slave_.push_w(w)) break;
-        ++ws.w_pushed_;
-      }
+
+    // ===== Push AW + W beats per operation =====
+    //
+    // Walk each operation's sub-bursts in order. For the current sub-burst:
+    //   - Push its AW if not yet pushed.
+    //   - Push its W beats up to its len+1; the W payload is a slice of the
+    //     operation-level packed user buffer starting at op-level beat index
+    //     (which == sum of preceding sub-bursts' beat counts + cur_w_in_sub_).
+    // Advance to the next sub-burst when the current sub-burst's W beats are
+    // fully pushed.
+    for (auto& [id, op] : active_write_ops_) {
+      push_writes_(id, op);
     }
-    // Push AR for active reads
-    for (auto& [id, rs] : active_reads_) {
-      if (rs.ar_pushed_ == 0) {
+
+    // ===== Push AR per operation =====
+    //
+    // Walk sub-bursts in order. Push each sub-burst's AR — slave's per-id
+    // FIFO accepts multi-outstanding same-id ARs.
+    for (auto& [id, op] : active_read_ops_) {
+      while (op.next_ar_sub_idx_ < op.sub_bursts.size()) {
+        const auto& sub = op.sub_bursts[op.next_ar_sub_idx_];
         ArBeat ar{};
         ar.id = id;
         // Align AR addr DOWN to (1<<size) boundary, symmetric with AW.
-        ar.addr = rs.txn.addr & ~((1ull << rs.txn.size) - 1);
-        ar.len = rs.txn.len; ar.size = rs.txn.size;
-        ar.burst = rs.txn.burst;
-        if (!slave_.push_ar(ar)) continue;
-        rs.ar_pushed_ = 1;
+        ar.addr = sub.addr & ~((1ull << sub.size) - 1);
+        ar.len = sub.len; ar.size = sub.size; ar.burst = sub.burst;
+        if (!slave_.push_ar(ar)) break;
+        ++op.next_ar_sub_idx_;
       }
     }
   }
 
   bool done() const {
     return next_txn_idx_ >= sc_.transactions.size()
-        && active_writes_.empty() && active_reads_.empty();
+        && active_write_ops_.empty() && active_read_ops_.empty();
   }
 
   void on_write_completed(std::function<void(const WriteResult&)> cb) { wcb_ = std::move(cb); }
@@ -308,19 +304,86 @@ private:
     return strbs;
   }
 
-  struct WriteState {
-    ScenarioTransaction txn;
-    std::vector<uint8_t> data;
-    std::vector<uint32_t> strb_per_beat;  // size = txn.len + 1
-    std::size_t aw_pushed_ = 0;
-    std::size_t w_pushed_  = 0;
+  // OperationContext aggregates one scenario_txn's full lifecycle. Splitting
+  // INCR at 4KB / 256-beat boundaries produces N sub-bursts; the operation
+  // emits N AWs (or ARs) with the same id, each carrying its own len/addr.
+  // Per-op state tracks BOTH write and read pipeline progress; only the
+  // relevant half is exercised depending on src_txn.op.
+  struct OperationContext {
+    ScenarioTransaction src_txn;
+    std::vector<BurstSpec> sub_bursts;
+    // Write-side state
+    std::vector<uint8_t>  data;            // packed user bytes, full operation
+    std::vector<uint32_t> strb_per_beat;   // operation-level, 1 entry per user beat
+    std::size_t next_aw_sub_idx_ = 0;      // index of next sub-burst's AW to push
+    std::size_t cur_w_sub_idx_   = 0;      // sub-burst currently emitting W beats
+    std::size_t w_pushed_in_cur_ = 0;      // W beats pushed for current sub-burst
+    std::size_t b_count_         = 0;      // B responses received (per sub-burst)
+    Resp worst_resp_             = Resp::OKAY;
+    // Read-side state
+    std::size_t next_ar_sub_idx_ = 0;      // index of next sub-burst's AR to push
+    std::size_t cur_r_sub_idx_   = 0;      // sub-burst currently absorbing R beats
+    std::size_t r_beats_in_cur_  = 0;
+    std::vector<uint8_t> read_accumulator; // packed user bytes, full operation
   };
-  struct ReadState {
-    ScenarioTransaction txn;
-    std::size_t ar_pushed_ = 0;
-    std::vector<uint8_t> accumulator;
-    std::size_t beats_observed = 0;
-  };
+
+  // Per-operation W push: walk sub-bursts in order, pushing AW + W beats.
+  // The operation-level beat index (used to slice op.data / op.strb_per_beat)
+  // is the running sum of preceding sub-bursts' beat counts plus the current
+  // sub-burst's in-progress index.
+  void push_writes_(uint8_t id, OperationContext& op) {
+    // Pre-compute prefix sum of sub-burst beat counts so the operation-level
+    // beat offset for sub-burst k is op_beat_base[k].
+    std::size_t op_beat_base = 0;
+    for (std::size_t k = 0; k < op.cur_w_sub_idx_; ++k) {
+      op_beat_base += static_cast<std::size_t>(op.sub_bursts[k].len) + 1u;
+    }
+    while (op.cur_w_sub_idx_ < op.sub_bursts.size()) {
+      const auto& sub = op.sub_bursts[op.cur_w_sub_idx_];
+      // AXI4 INCR unaligned start (IHI 0022): AW.addr is aligned DOWN to the
+      // (1<<size) transfer boundary; the unaligned-prefix bytes are skipped
+      // via WSTRB on the first beat. The byte_lane used to position bytes on
+      // the bus is derived from the bus DATA_BYTES granularity.
+      const uint64_t aligned_addr = sub.addr & ~((1ull << sub.size) - 1);
+      if (op.next_aw_sub_idx_ == op.cur_w_sub_idx_) {
+        AwBeat aw{};
+        aw.id = id; aw.addr = aligned_addr;
+        aw.len = sub.len; aw.size = sub.size; aw.burst = sub.burst;
+        if (!slave_.push_aw(aw)) return;  // backpressure: retry next tick
+        ++op.next_aw_sub_idx_;
+      }
+      const std::size_t bpb = 1ull << sub.size;
+      while (op.w_pushed_in_cur_ <= sub.len) {
+        WBeat w{};
+        // Lane-positioned bus: byte j of the user payload lands at bus lane
+        // (byte_lane + j); byte_lane = per-beat-addr mod DATA_BYTES.
+        const uint64_t beat_addr_v = beat_addr(sub.addr, sub.len, sub.size,
+                                               sub.burst,
+                                               op.w_pushed_in_cur_);
+        const std::size_t byte_lane =
+            static_cast<std::size_t>(beat_addr_v & (DATA_BYTES - 1));
+        w.data.fill(0);
+        const std::size_t writable = (byte_lane < DATA_BYTES)
+            ? std::min<std::size_t>(bpb, DATA_BYTES - byte_lane)
+            : 0;
+        const std::size_t op_beat = op_beat_base + op.w_pushed_in_cur_;
+        for (std::size_t j = 0; j < writable; ++j) {
+          const std::size_t off = op_beat * bpb + j;
+          w.data[byte_lane + j] = (off < op.data.size()) ? op.data[off] : 0;
+        }
+        const uint32_t lane_mask =
+            static_cast<uint32_t>(((1ull << bpb) - 1) << byte_lane);
+        w.strb = op.strb_per_beat[op_beat] & lane_mask;
+        w.last = (op.w_pushed_in_cur_ == sub.len);
+        if (!slave_.push_w(w)) return;  // backpressure
+        ++op.w_pushed_in_cur_;
+      }
+      // Current sub-burst's W beats fully pushed; advance to the next.
+      op_beat_base += static_cast<std::size_t>(sub.len) + 1u;
+      ++op.cur_w_sub_idx_;
+      op.w_pushed_in_cur_ = 0;
+    }
+  }
 
   Scenario   sc_;
   SlaveT&    slave_;
@@ -329,8 +392,8 @@ private:
   std::ofstream read_dump_;
   std::function<void(const WriteResult&)> wcb_;
   std::function<void(const ReadResult&)>  rcb_;
-  std::map<uint8_t, WriteState> active_writes_;
-  std::map<uint8_t, ReadState>  active_reads_;
+  std::map<uint8_t, OperationContext> active_write_ops_;
+  std::map<uint8_t, OperationContext> active_read_ops_;
 };
 
 class AxiSlave;
