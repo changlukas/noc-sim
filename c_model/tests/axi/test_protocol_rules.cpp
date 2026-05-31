@@ -258,4 +258,91 @@ TEST_F(AxiProtocolDeath, AxiSlave_FiresOnInvalidAwBurstEncoding) {
   EXPECT_DEATH({ slave.tick(); }, "BURST_ENCODING");
 }
 
+// ============================================================================
+// Phase C: AXI4 Exclusive Access (IHI 0022 §A7.2.4)
+// ============================================================================
+
+TEST_F(AxiProtocolDeath, LockEncoding_RejectsRawTwo) {
+  // AXI4 AxLOCK is 1-bit; raw 2 (AXI3 LOCKED) is illegal.
+  EXPECT_DEATH({
+    AXI_PROTOCOL_ASSERT(rules::check_lock_encoding(2),
+                        "LOCK_ENCODING: invalid raw lock value");
+  }, "LOCK_ENCODING");
+}
+
+TEST_F(AxiProtocolDeath, ExclusiveTotalBytes_Rejects256) {
+  // len = 7 (8 beats) × size = 5 (32 B) = 256 B > 128 B max.
+  EXPECT_DEATH({
+    AXI_PROTOCOL_ASSERT(
+        rules::check_exclusive_total_bytes_le_max(axi::LockType::Exclusive, 7, 5),
+        "EXCLUSIVE_TOTAL_BYTES: exceeds 128");
+  }, "EXCLUSIVE_TOTAL_BYTES");
+}
+
+TEST_F(AxiProtocolDeath, ExclusiveTotalBeats_Rejects32) {
+  // len = 31 → 32 beats > 16-beat max.
+  EXPECT_DEATH({
+    AXI_PROTOCOL_ASSERT(
+        rules::check_exclusive_total_beats_le_max(axi::LockType::Exclusive, 31),
+        "EXCLUSIVE_TOTAL_BEATS: exceeds 16");
+  }, "EXCLUSIVE_TOTAL_BEATS");
+}
+
+TEST_F(AxiProtocolDeath, ExclusivePow2_RejectsLen2) {
+  // len = 2 → 3 beats, not a power of 2.
+  EXPECT_DEATH({
+    AXI_PROTOCOL_ASSERT(
+        rules::check_exclusive_total_pow2(axi::LockType::Exclusive, 2),
+        "EXCLUSIVE_POW2: total beats not power of 2");
+  }, "EXCLUSIVE_POW2");
+}
+
+TEST_F(AxiProtocolDeath, ExclusiveAlign_RejectsUnaligned) {
+  // size = 5 (32 B), len = 0 → total 32 B; addr 0x1004 not aligned to 32.
+  EXPECT_DEATH({
+    AXI_PROTOCOL_ASSERT(
+        rules::check_exclusive_addr_aligned_to_total(
+            axi::LockType::Exclusive, 0x1004, 0, 5),
+        "EXCLUSIVE_ALIGN: addr not aligned to total");
+  }, "EXCLUSIVE_ALIGN");
+}
+
+TEST_F(AxiProtocolDeath, ExclusiveBurstFixed_Rejects) {
+  // FIXED is illegal for exclusive.
+  EXPECT_DEATH({
+    AXI_PROTOCOL_ASSERT(
+        rules::check_exclusive_burst_not_fixed(
+            axi::LockType::Exclusive, axi::Burst::FIXED),
+        "EXCLUSIVE_BURST_FIXED: FIXED not allowed for exclusive");
+  }, "EXCLUSIVE_BURST_FIXED");
+}
+
+// Positive controls: legal exclusive bursts must satisfy every rule.
+TEST_F(AxiProtocolDeath, ExclusiveValid_INCR_1Beat_Size5) {
+  // 1 beat × 32 B = 32 B, aligned to 32, INCR — valid exclusive.
+  EXPECT_TRUE(rules::check_lock_encoding(1));
+  EXPECT_TRUE(rules::check_exclusive_total_bytes_le_max(
+      axi::LockType::Exclusive, 0, 5));
+  EXPECT_TRUE(rules::check_exclusive_total_beats_le_max(
+      axi::LockType::Exclusive, 0));
+  EXPECT_TRUE(rules::check_exclusive_total_pow2(axi::LockType::Exclusive, 0));
+  EXPECT_TRUE(rules::check_exclusive_addr_aligned_to_total(
+      axi::LockType::Exclusive, 0x1000, 0, 5));
+  EXPECT_TRUE(rules::check_exclusive_burst_not_fixed(
+      axi::LockType::Exclusive, axi::Burst::INCR));
+}
+
+TEST_F(AxiProtocolDeath, ExclusiveValid_WRAP_4Beat_Size5) {
+  // 4 beats × 32 B = 128 B (boundary), aligned to 128, WRAP — valid exclusive.
+  EXPECT_TRUE(rules::check_exclusive_total_bytes_le_max(
+      axi::LockType::Exclusive, 3, 5));
+  EXPECT_TRUE(rules::check_exclusive_total_beats_le_max(
+      axi::LockType::Exclusive, 3));
+  EXPECT_TRUE(rules::check_exclusive_total_pow2(axi::LockType::Exclusive, 3));
+  EXPECT_TRUE(rules::check_exclusive_addr_aligned_to_total(
+      axi::LockType::Exclusive, 0x1000, 3, 5));
+  EXPECT_TRUE(rules::check_exclusive_burst_not_fixed(
+      axi::LockType::Exclusive, axi::Burst::WRAP));
+}
+
 #endif  // NDEBUG

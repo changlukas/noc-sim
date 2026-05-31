@@ -209,6 +209,85 @@ transactions:
   EXPECT_EQ(sc.transactions[0].strb_file, "");
 }
 
+// Phase C: lock field parsing. Uses per-test unique tempfile names because
+// the shared write_tmp() helper races with parallel ctest runners.
+TEST_F(ScenarioParser, LockNormalAccepted) {
+  std::string tmp_name = std::string("/lock_normal_") +
+      ::testing::UnitTest::GetInstance()->current_test_info()->name() + ".yaml";
+  auto path = std::string(::testing::TempDir()) + tmp_name;
+  std::ofstream(path) << R"YAML(
+transactions:
+  - op: write
+    addr: 0x1000
+    id: 0x5
+    len: 0
+    size: 5
+    burst: INCR
+    lock: normal
+    data_file: w.txt
+)YAML";
+  auto sc = axi::load_scenario(path);
+  ASSERT_EQ(sc.transactions.size(), 1u);
+  EXPECT_EQ(sc.transactions[0].lock, axi::LockType::Normal);
+}
+
+TEST_F(ScenarioParser, LockExclusiveAccepted) {
+  std::string tmp_name = std::string("/lock_excl_") +
+      ::testing::UnitTest::GetInstance()->current_test_info()->name() + ".yaml";
+  auto path = std::string(::testing::TempDir()) + tmp_name;
+  std::ofstream(path) << R"YAML(
+transactions:
+  - op: read
+    addr: 0x1000
+    id: 0x5
+    len: 0
+    size: 5
+    burst: INCR
+    lock: exclusive
+    dump_file: r.txt
+)YAML";
+  auto sc = axi::load_scenario(path);
+  ASSERT_EQ(sc.transactions.size(), 1u);
+  EXPECT_EQ(sc.transactions[0].lock, axi::LockType::Exclusive);
+}
+
+TEST_F(ScenarioParser, LockDefaultsToNormal) {
+  std::string tmp_name = std::string("/lock_default_") +
+      ::testing::UnitTest::GetInstance()->current_test_info()->name() + ".yaml";
+  auto path = std::string(::testing::TempDir()) + tmp_name;
+  std::ofstream(path) << R"YAML(
+transactions:
+  - op: write
+    addr: 0x1000
+    id: 0x5
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: w.txt
+)YAML";
+  auto sc = axi::load_scenario(path);
+  ASSERT_EQ(sc.transactions.size(), 1u);
+  EXPECT_EQ(sc.transactions[0].lock, axi::LockType::Normal);
+}
+
+TEST_F(ScenarioParser, LockInvalidStringThrows) {
+  std::string tmp_name = std::string("/lock_invalid_") +
+      ::testing::UnitTest::GetInstance()->current_test_info()->name() + ".yaml";
+  auto path = std::string(::testing::TempDir()) + tmp_name;
+  std::ofstream(path) << R"YAML(
+transactions:
+  - op: read
+    addr: 0x1000
+    id: 0x5
+    len: 0
+    size: 5
+    burst: INCR
+    lock: foo
+    dump_file: r.txt
+)YAML";
+  EXPECT_THROW(axi::load_scenario(path), std::runtime_error);
+}
+
 #include "axi/axi_master.hpp"
 #include "mock_slave.hpp"
 

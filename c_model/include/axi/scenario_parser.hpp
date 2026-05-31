@@ -28,6 +28,7 @@ struct ScenarioTransaction {
   std::string data_file;
   std::string dump_file;
   std::string strb_file;  // optional; empty = full WSTRB per beat
+  LockType    lock = LockType::Normal;  // optional; YAML "normal" or "exclusive"
   std::size_t scenario_line;
 };
 
@@ -112,6 +113,18 @@ inline Scenario load_scenario(const std::string& path) {
     if (t.op == ScenarioTransaction::Op::Read)  t.dump_file = txn["dump_file"].as<std::string>();
     if (t.op == ScenarioTransaction::Op::Write && txn["strb_file"]) {
       t.strb_file = txn["strb_file"].as<std::string>();
+    }
+    if (txn["lock"]) {
+      auto lock_str = txn["lock"].as<std::string>();
+      if (lock_str == "normal") {
+        t.lock = LockType::Normal;
+      } else if (lock_str == "exclusive") {
+        t.lock = LockType::Exclusive;
+      } else {
+        throw std::runtime_error("scenario txn " + std::to_string(line) +
+                                 ": lock must be 'normal' or 'exclusive' (got '" +
+                                 lock_str + "')");
+      }
     }
     sc.transactions.push_back(t);
   }

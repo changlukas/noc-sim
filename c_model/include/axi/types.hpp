@@ -16,6 +16,11 @@ static_assert(DATA_BYTES * 8 == ni::width::NOC_DATA_WIDTH,
 enum class Burst : uint8_t { FIXED = 0, INCR = 1, WRAP = 2 };
 enum class Resp  : uint8_t { OKAY  = 0, EXOKAY = 1, SLVERR = 2, DECERR = 3 };
 
+// AXI4 IHI 0022 §A7.2: AxLOCK is 1-bit in AXI4 (0=Normal, 1=Exclusive).
+// AXI3 deprecated LOCKED bit is not modeled. AwBeat/ArBeat::lock keeps
+// uint8_t wire fidelity; LockType is the typed scenario-level abstraction.
+enum class LockType : uint8_t { Normal = 0, Exclusive = 1 };
+
 // AXI4 per-beat address (IHI 0022, B1.4.3 Address structure of bursts).
 // Single source of truth used by AxiSlave, AxiMaster (W push + R accumulator),
 // and Scoreboard so the FIXED/INCR/WRAP switch is not duplicated.

@@ -204,4 +204,86 @@ inline bool check_aw_w_independence() { return true; }
 // structurally guaranteed. Tautology, kept for documentation.
 inline bool check_w_no_interleave() { return true; }
 
+// ============================================================================
+// Phase C: AXI4 Exclusive Access (IHI 0022 §A7.2.4)
+// ============================================================================
+
+// LOCK_ENCODING — AXI4 AxLOCK is 1-bit; only 0 (Normal) and 1 (Exclusive)
+// are legal. AXI3 LOCKED encoding (raw=2) is deprecated and not modeled.
+inline bool check_lock_encoding(uint8_t raw) {
+  return raw <= 1;
+}
+
+// EXCLUSIVE_TOTAL_BYTES — exclusive transfer total bytes ≤ 128
+// (IHI 0022 §A7.2.4). Normal transfers are exempt.
+inline bool check_exclusive_total_bytes_le_max(LockType lock,
+                                                uint8_t len, uint8_t size) {
+  if (lock == LockType::Normal) return true;
+  const std::size_t total =
+      (static_cast<std::size_t>(len) + 1u) * (1ull << size);
+  return total <= 128u;
+}
+
+// EXCLUSIVE_TOTAL_BEATS — exclusive transfer total beats ≤ 16
+// (IHI 0022 §A7.2.4). Normal exempt.
+inline bool check_exclusive_total_beats_le_max(LockType lock, uint8_t len) {
+  if (lock == LockType::Normal) return true;
+  return len <= 15u;
+}
+
+// EXCLUSIVE_POW2 — exclusive total beats (len+1) must be a power of 2.
+// Allowed len: 0, 1, 3, 7, 15 (IHI 0022 §A7.2.4). Normal exempt.
+inline bool check_exclusive_total_pow2(LockType lock, uint8_t len) {
+  if (lock == LockType::Normal) return true;
+  const std::size_t beats = static_cast<std::size_t>(len) + 1u;
+  return (beats > 0u) && ((beats & (beats - 1u)) == 0u);
+}
+
+// EXCLUSIVE_ALIGN — exclusive base address must be aligned to total burst
+// bytes (IHI 0022 §A7.2.4). Combined with EXCLUSIVE_POW2 this ensures the
+// (total-1) mask is well-defined. Normal exempt.
+inline bool check_exclusive_addr_aligned_to_total(LockType lock, uint64_t addr,
+                                                    uint8_t len, uint8_t size) {
+  if (lock == LockType::Normal) return true;
+  const std::size_t total =
+      (static_cast<std::size_t>(len) + 1u) * (1ull << size);
+  return (addr & (static_cast<uint64_t>(total) - 1u)) == 0u;
+}
+
+// EXCLUSIVE_BURST_FIXED — FIXED burst is not allowed for exclusive
+// (IHI 0022 §A7.2.4). Normal exempt.
+inline bool check_exclusive_burst_not_fixed(LockType lock, Burst burst) {
+  if (lock == LockType::Normal) return true;
+  return burst != Burst::FIXED;
+}
+
+// EXCLUSIVE_WRITE_MATCHES_READ — the slave-side exclusive monitor compares
+// the incoming exclusive AW against the recorded exclusive AR tag (ID +
+// address window + size + length + burst + cache + protection per
+// IHI 0022 §A7.2.4). Template-driven so the tag struct can live in
+// axi_slave.hpp without a circular include here.
+template <typename ExclusiveTagT>
+inline bool check_exclusive_write_matches_read_tag(const ExclusiveTagT& tag,
+                                                    const AwBeat& aw) {
+  if (!tag.ready) return false;
+  const std::size_t bpb = 1ull << aw.size;
+  const std::size_t total = (static_cast<std::size_t>(aw.len) + 1u) * bpb;
+  uint64_t aw_start;
+  uint64_t aw_end;
+  if (aw.burst == Burst::WRAP) {
+    aw_start = aw.addr & ~(static_cast<uint64_t>(total) - 1u);
+    aw_end   = aw_start + total;
+  } else {
+    aw_start = aw.addr;
+    aw_end   = aw.addr + total;
+  }
+  return tag.addr_start == aw_start
+      && tag.addr_end   == aw_end
+      && tag.len        == aw.len
+      && tag.size       == aw.size
+      && tag.burst      == aw.burst
+      && tag.cache      == aw.cache
+      && tag.prot       == aw.prot;
+}
+
 }  // namespace ni::cmodel::axi::rules
