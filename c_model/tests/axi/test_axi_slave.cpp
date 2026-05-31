@@ -280,6 +280,36 @@ TEST(AxiSlave, SequentialBurstsDifferentIds) {
   EXPECT_EQ(mem.captured_writes[0].data[0], 0x22);
 }
 
+// Phase B-3b: narrow burst (size=2, bpb=4) addr+strb forwarded per-beat
+// without slave-side reinterpretation. AxiSlave just propagates the W beats
+// to the memory port; addr increments by bpb per INCR beat.
+TEST(AxiSlave, NarrowTransferForwardedToMemory) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  axi::AwBeat aw{};
+  aw.id = 9; aw.addr = 0x1004; aw.len = 1; aw.size = 2; aw.burst = axi::Burst::INCR;
+  slave.push_aw(aw);
+
+  // Beat 0: addr 0x1004, byte_lane=4, strb=0xF<<4=0xF0.
+  axi::WBeat w0{}; w0.data.fill(0); w0.strb = 0x000000F0u; w0.last = false;
+  slave.push_w(w0);
+  // Beat 1: addr 0x1008, byte_lane=8, strb=0xF<<8=0xF00.
+  axi::WBeat w1{}; w1.data.fill(0); w1.strb = 0x00000F00u; w1.last = true;
+  slave.push_w(w1);
+
+  for (int t = 0; t < 4; ++t) slave.tick();
+
+  ASSERT_EQ(mem.captured_writes.size(), 2u);
+  EXPECT_EQ(mem.captured_writes[0].addr, 0x1004u);
+  EXPECT_EQ(mem.captured_writes[0].strb, 0x000000F0u);
+  EXPECT_EQ(mem.captured_writes[0].last, false);
+  EXPECT_EQ(mem.captured_writes[1].addr, 0x1008u);
+  EXPECT_EQ(mem.captured_writes[1].strb, 0x00000F00u);
+  EXPECT_EQ(mem.captured_writes[1].last, true);
+}
+
 // Phase B-2.3: WSTRB on the W channel passes through to MemWriteReq.strb
 // unchanged. AxiSlave does not interpret WSTRB; the memory port records the
 // exact mask the master emitted so per-byte enable semantics survive.
