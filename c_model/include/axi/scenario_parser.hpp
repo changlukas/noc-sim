@@ -99,6 +99,7 @@ inline Scenario load_scenario(const std::string& path) {
       throw std::runtime_error("scenario txn " + std::to_string(line) +
                                ": Phase A only supports INCR burst");
     }
+    // (Reachable once WRAP burst acceptance is added in Stage B-4)
     if (t.burst == Burst::WRAP && (t.addr & ((1ull << t.size) - 1)) != 0) {
       throw std::runtime_error("scenario txn " + std::to_string(line) +
                                ": WRAP burst addr must be aligned to (1<<size)");

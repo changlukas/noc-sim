@@ -2,6 +2,7 @@
 #include "axi/scenario_parser.hpp"
 #include <gtest/gtest.h>
 #include <fstream>
+#include <sstream>
 
 namespace axi = ni::cmodel::axi;
 
@@ -355,113 +356,57 @@ std::string write_32byte_tmp_data(const std::string& tag) {
   f << '\n';
   return path;
 }
+
+struct UnalignedCase {
+  uint64_t    txn_addr;
+  uint8_t     size;
+  uint64_t    expected_aw_addr;
+  // expected_strb = ~((1 << (txn_addr & (DATA_BYTES-1))) - 1)  (DATA_BYTES = 32)
+  uint32_t    expected_strb;
+  const char* label;  // GoogleTest case name suffix
+};
 }  // namespace
 
-TEST_F(AxiMasterTest, UnalignedAddrFirstBeatStrbMasked_Size5_Off3) {
-  auto wpath = write_32byte_tmp_data("u_s5_off3");
-  auto yaml = write_tmp(std::string(R"YAML(
-transactions:
-  - op: write
-    addr: 0x1003
-    id: 0x1
-    len: 0
-    size: 5
-    burst: INCR
-    data_file: )YAML") + wpath + "\n");
+class AxiMasterUnalignedP
+    : public AxiMasterTest,
+      public ::testing::WithParamInterface<UnalignedCase> {};
+
+TEST_P(AxiMasterUnalignedP, FirstBeatStrbMaskedAndAwAligned) {
+  const auto& c = GetParam();
+  auto wpath = write_32byte_tmp_data(std::string("u_") + c.label);
+  std::ostringstream yaml_src;
+  yaml_src << "\ntransactions:\n"
+              "  - op: write\n"
+              "    addr: 0x" << std::hex << c.txn_addr << "\n"
+              "    id: 0x1\n"
+              "    len: 0\n"
+              "    size: " << std::dec << static_cast<unsigned>(c.size) << "\n"
+              "    burst: INCR\n"
+              "    data_file: " << wpath << "\n";
+  auto yaml = write_tmp(yaml_src.str());
   ni::cmodel::axi::testing::MockSlave mock;
   axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
-      yaml, mock, std::string(::testing::TempDir()) + "/r_u_s5_off3.txt");
+      yaml, mock,
+      std::string(::testing::TempDir()) + "/r_u_" + c.label + ".txt");
   master.tick();
   ASSERT_EQ(mock.captured_aw.size(), 1u);
-  EXPECT_EQ(mock.captured_aw[0].addr, 0x1000u);
-  ASSERT_EQ(mock.captured_w.size(), 1u);
-  EXPECT_EQ(mock.captured_w[0].strb, 0xFFFFFFF8u);
+  EXPECT_EQ(mock.captured_aw[0].addr, c.expected_aw_addr);
+  ASSERT_FALSE(mock.captured_w.empty());
+  EXPECT_EQ(mock.captured_w[0].strb, c.expected_strb);
   EXPECT_EQ(mock.captured_w[0].last, true);
 }
 
-TEST_F(AxiMasterTest, UnalignedAddrFirstBeatStrbMasked_Size4_Off1) {
-  auto wpath = write_32byte_tmp_data("u_s4_off1");
-  auto yaml = write_tmp(std::string(R"YAML(
-transactions:
-  - op: write
-    addr: 0x1001
-    id: 0x1
-    len: 0
-    size: 4
-    burst: INCR
-    data_file: )YAML") + wpath + "\n");
-  ni::cmodel::axi::testing::MockSlave mock;
-  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
-      yaml, mock, std::string(::testing::TempDir()) + "/r_u_s4_off1.txt");
-  master.tick();
-  ASSERT_EQ(mock.captured_aw.size(), 1u);
-  EXPECT_EQ(mock.captured_aw[0].addr, 0x1000u);
-  ASSERT_EQ(mock.captured_w.size(), 1u);
-  EXPECT_EQ(mock.captured_w[0].strb, 0xFFFFFFFEu);
-}
-
-TEST_F(AxiMasterTest, UnalignedAddrFirstBeatStrbMasked_Size3_Off7) {
-  auto wpath = write_32byte_tmp_data("u_s3_off7");
-  auto yaml = write_tmp(std::string(R"YAML(
-transactions:
-  - op: write
-    addr: 0x1007
-    id: 0x1
-    len: 0
-    size: 3
-    burst: INCR
-    data_file: )YAML") + wpath + "\n");
-  ni::cmodel::axi::testing::MockSlave mock;
-  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
-      yaml, mock, std::string(::testing::TempDir()) + "/r_u_s3_off7.txt");
-  master.tick();
-  ASSERT_EQ(mock.captured_aw.size(), 1u);
-  EXPECT_EQ(mock.captured_aw[0].addr, 0x1000u);
-  ASSERT_EQ(mock.captured_w.size(), 1u);
-  EXPECT_EQ(mock.captured_w[0].strb, 0xFFFFFF80u);
-}
-
-TEST_F(AxiMasterTest, UnalignedAddrFirstBeatStrbMasked_Size2_OffF) {
-  auto wpath = write_32byte_tmp_data("u_s2_offF");
-  auto yaml = write_tmp(std::string(R"YAML(
-transactions:
-  - op: write
-    addr: 0x100F
-    id: 0x1
-    len: 0
-    size: 2
-    burst: INCR
-    data_file: )YAML") + wpath + "\n");
-  ni::cmodel::axi::testing::MockSlave mock;
-  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
-      yaml, mock, std::string(::testing::TempDir()) + "/r_u_s2_offF.txt");
-  master.tick();
-  ASSERT_EQ(mock.captured_aw.size(), 1u);
-  EXPECT_EQ(mock.captured_aw[0].addr, 0x100Cu);
-  ASSERT_EQ(mock.captured_w.size(), 1u);
-  EXPECT_EQ(mock.captured_w[0].strb, 0xFFFF8000u);
-}
-
-TEST_F(AxiMasterTest, UnalignedAddrFirstBeatStrbMasked_Size1_Off1F) {
-  auto wpath = write_32byte_tmp_data("u_s1_off1F");
-  auto yaml = write_tmp(std::string(R"YAML(
-transactions:
-  - op: write
-    addr: 0x101F
-    id: 0x1
-    len: 0
-    size: 1
-    burst: INCR
-    data_file: )YAML") + wpath + "\n");
-  ni::cmodel::axi::testing::MockSlave mock;
-  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
-      yaml, mock, std::string(::testing::TempDir()) + "/r_u_s1_off1F.txt");
-  master.tick();
-  ASSERT_EQ(mock.captured_aw.size(), 1u);
-  EXPECT_EQ(mock.captured_aw[0].addr, 0x101Eu);
-  ASSERT_EQ(mock.captured_w.size(), 1u);
-  EXPECT_EQ(mock.captured_w[0].strb, 0x80000000u);
-}
+INSTANTIATE_TEST_SUITE_P(
+    UnalignedCases, AxiMasterUnalignedP,
+    ::testing::Values(
+        UnalignedCase{0x1003, 5, 0x1000u, 0xFFFFFFF8u, "Size5_Off3"},
+        UnalignedCase{0x1001, 4, 0x1000u, 0xFFFFFFFEu, "Size4_Off1"},
+        UnalignedCase{0x1007, 3, 0x1000u, 0xFFFFFF80u, "Size3_Off7"},
+        UnalignedCase{0x100F, 2, 0x100Cu, 0xFFFF8000u, "Size2_OffF"},
+        UnalignedCase{0x101F, 1, 0x101Eu, 0x80000000u, "Size1_Off1F"}),
+    [](const ::testing::TestParamInfo<UnalignedCase>& info) {
+      return std::string(info.param.label);
+    });
 
 TEST_F(AxiMasterTest, StrbFilePropagatesToWChannel) {
   // 2-beat write with sparse first beat (0x0F) and full second beat (0xFFFFFFFF).
