@@ -95,6 +95,8 @@ public:
         ws.txn = txn;
         ws.data = load_write_data_(txn.data_file,
                                     static_cast<std::size_t>(txn.len + 1u) * (1ull << txn.size));
+        ws.strb_per_beat = load_strb_file_(txn.strb_file,
+                                            static_cast<std::size_t>(txn.len + 1u));
         active_writes_.emplace(txn.id, std::move(ws));
       } else {
         if (active_reads_.size() >= max_out_r_) break;
@@ -121,7 +123,7 @@ public:
           std::size_t off = ws.w_pushed_ * bpb + j;
           w.data[j] = (off < ws.data.size()) ? ws.data[off] : 0;
         }
-        w.strb = 0xFFFF'FFFFu;
+        w.strb = ws.strb_per_beat[ws.w_pushed_];
         w.last = (ws.w_pushed_ == ws.txn.len);
         if (!slave_.push_w(w)) break;
         ++ws.w_pushed_;
@@ -161,9 +163,31 @@ private:
     return bytes;
   }
 
+  static std::vector<uint32_t> load_strb_file_(const std::string& path,
+                                                std::size_t expected_beats,
+                                                uint32_t default_full = 0xFFFF'FFFFu) {
+    if (path.empty()) {
+      return std::vector<uint32_t>(expected_beats, default_full);
+    }
+    std::ifstream f(path);
+    if (!f.is_open())
+      throw std::runtime_error("AxiMaster: cannot open strb_file: " + path);
+    std::vector<uint32_t> strbs;
+    std::string tok;
+    while (f >> tok) {
+      strbs.push_back(static_cast<uint32_t>(std::stoul(tok, nullptr, 16)));
+    }
+    if (strbs.size() != expected_beats)
+      throw std::runtime_error("AxiMaster: strb_file line count " + std::to_string(strbs.size())
+                                + " != expected beats " + std::to_string(expected_beats)
+                                + ": " + path);
+    return strbs;
+  }
+
   struct WriteState {
     ScenarioTransaction txn;
     std::vector<uint8_t> data;
+    std::vector<uint32_t> strb_per_beat;  // size = txn.len + 1
     std::size_t aw_pushed_ = 0;
     std::size_t w_pushed_  = 0;
   };
