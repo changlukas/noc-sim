@@ -280,6 +280,29 @@ TEST(AxiSlave, SequentialBurstsDifferentIds) {
   EXPECT_EQ(mem.captured_writes[0].data[0], 0x22);
 }
 
+// Phase B-2.3: WSTRB on the W channel passes through to MemWriteReq.strb
+// unchanged. AxiSlave does not interpret WSTRB; the memory port records the
+// exact mask the master emitted so per-byte enable semantics survive.
+TEST(AxiSlave, SparseStrbForwardedToMemory) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  axi::AwBeat aw{};
+  aw.id = 8; aw.addr = 0x1000; aw.len = 0; aw.size = 5; aw.burst = axi::Burst::INCR;
+  slave.push_aw(aw);
+
+  axi::WBeat w{};
+  w.data.fill(0xCC);
+  w.strb = 0xFFFFFFF8u;  // lanes 0..2 cleared, lanes 3..31 set
+  w.last = true;
+  slave.push_w(w);
+
+  slave.tick();
+  ASSERT_EQ(mem.captured_writes.size(), 1u);
+  EXPECT_EQ(mem.captured_writes[0].strb, 0xFFFFFFF8u);
+}
+
 // Regression: when several AWs are queued before their B responses come back,
 // the W router must advance to the next AW once the current burst's W beats
 // are fully forwarded — not wait for the B drain. Otherwise the second burst's
