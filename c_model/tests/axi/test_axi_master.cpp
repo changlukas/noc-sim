@@ -77,18 +77,69 @@ transactions:
   EXPECT_THROW(axi::load_scenario(path), std::runtime_error);
 }
 
-TEST_F(ScenarioParser, NonIncrBurstThrows_PhaseA) {
+// Phase B-4: WRAP burst is now accepted with constraints (len ∈ {1,3,7,15}
+// and addr aligned to (1<<size)). FIXED is accepted unconditionally.
+TEST_F(ScenarioParser, WrapAcceptedWithValidLen) {
+  for (uint8_t len : {uint8_t(1), uint8_t(3), uint8_t(7), uint8_t(15)}) {
+    std::ostringstream y;
+    y << "\ntransactions:\n"
+         "  - op: read\n"
+         "    addr: 0\n"
+         "    id: 0\n"
+         "    len: " << static_cast<unsigned>(len) << "\n"
+         "    size: 5\n"
+         "    burst: WRAP\n"
+         "    dump_file: r.txt\n";
+    auto path = write_tmp(y.str());
+    EXPECT_NO_THROW(axi::load_scenario(path)) << "len=" << int(len);
+  }
+}
+
+TEST_F(ScenarioParser, WrapRejectedWithInvalidLen) {
+  for (uint8_t len : {uint8_t(0), uint8_t(2), uint8_t(4), uint8_t(5),
+                       uint8_t(6), uint8_t(8), uint8_t(9), uint8_t(16)}) {
+    std::ostringstream y;
+    y << "\ntransactions:\n"
+         "  - op: read\n"
+         "    addr: 0\n"
+         "    id: 0\n"
+         "    len: " << static_cast<unsigned>(len) << "\n"
+         "    size: 5\n"
+         "    burst: WRAP\n"
+         "    dump_file: r.txt\n";
+    auto path = write_tmp(y.str());
+    EXPECT_THROW(axi::load_scenario(path), std::runtime_error) << "len=" << int(len);
+  }
+}
+
+TEST_F(ScenarioParser, WrapRejectedWithUnalignedAddr) {
   auto path = write_tmp(R"YAML(
 transactions:
   - op: read
-    addr: 0
+    addr: 0x1003
     id: 0
-    len: 1
+    len: 3
     size: 5
     burst: WRAP
     dump_file: r.txt
 )YAML");
   EXPECT_THROW(axi::load_scenario(path), std::runtime_error);
+}
+
+TEST_F(ScenarioParser, FixedAccepted) {
+  auto path = write_tmp(R"YAML(
+transactions:
+  - op: read
+    addr: 0x1000
+    id: 0
+    len: 3
+    size: 5
+    burst: FIXED
+    dump_file: r.txt
+)YAML");
+  auto sc = axi::load_scenario(path);
+  ASSERT_EQ(sc.transactions.size(), 1u);
+  EXPECT_EQ(sc.transactions[0].burst, axi::Burst::FIXED);
 }
 
 TEST_F(ScenarioParser, IncrUnalignedAccepted_PhaseB) {

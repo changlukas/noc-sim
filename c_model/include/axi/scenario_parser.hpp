@@ -40,7 +40,7 @@ inline Burst parse_burst(const std::string& s) {
   if (s == "INCR")  return Burst::INCR;
   if (s == "WRAP")  return Burst::WRAP;
   if (s == "FIXED") return Burst::FIXED;
-  throw std::runtime_error("scenario: unknown burst '" + s + "' (Phase A only supports INCR)");
+  throw std::runtime_error("scenario: unknown burst '" + s + "'");
 }
 
 inline Scenario load_scenario(const std::string& path) {
@@ -95,14 +95,18 @@ inline Scenario load_scenario(const std::string& path) {
                                ": size must be <= 5 (Phase A max beat = 32 bytes)");
     }
     t.burst = parse_burst(txn["burst"].as<std::string>());
-    if (t.burst != Burst::INCR) {
-      throw std::runtime_error("scenario txn " + std::to_string(line) +
-                               ": Phase A only supports INCR burst");
-    }
-    // (Reachable once WRAP burst acceptance is added in Stage B-4)
-    if (t.burst == Burst::WRAP && (t.addr & ((1ull << t.size) - 1)) != 0) {
-      throw std::runtime_error("scenario txn " + std::to_string(line) +
-                               ": WRAP burst addr must be aligned to (1<<size)");
+    // AXI4 WRAP constraints (IHI 0022 B1.4.3 Address structure of bursts):
+    //   - len ∈ {1, 3, 7, 15} so that total_burst_bytes is a power of 2
+    //   - addr aligned to (1<<size) so per-beat addresses stay grid-aligned
+    if (t.burst == Burst::WRAP) {
+      if (t.len != 1 && t.len != 3 && t.len != 7 && t.len != 15) {
+        throw std::runtime_error("scenario txn " + std::to_string(line) +
+                                 ": WRAP burst len must be 1, 3, 7, or 15");
+      }
+      if ((t.addr & ((1ull << t.size) - 1)) != 0) {
+        throw std::runtime_error("scenario txn " + std::to_string(line) +
+                                 ": WRAP burst addr must be aligned to (1<<size)");
+      }
     }
     if (t.op == ScenarioTransaction::Op::Write) t.data_file = txn["data_file"].as<std::string>();
     if (t.op == ScenarioTransaction::Op::Read)  t.dump_file = txn["dump_file"].as<std::string>();
