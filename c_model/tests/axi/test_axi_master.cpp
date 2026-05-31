@@ -453,3 +453,148 @@ transactions:
   EXPECT_EQ(mock.captured_w[1].strb, 0xFFFFFFFFu);
   EXPECT_EQ(mock.captured_w[1].last, true);
 }
+
+// Phase B-3b: AxiMaster aligned narrow transfers (size<5). bpb = 1<<size;
+// lane_mask = ((1<<bpb)-1) << byte_lane; user bytes land on bus lanes
+// [byte_lane, byte_lane+bpb).
+namespace {
+// Write an arbitrary hex byte string to a tmp file. Variable-size companion
+// to write_32byte_tmp_data (which is hardcoded to 32 bytes).
+std::string write_hex_tmp_data(const std::string& tag, const std::string& hex_bytes) {
+  auto path = std::string(::testing::TempDir()) + "/" + tag + ".dat";
+  std::ofstream f(path);
+  f << hex_bytes << '\n';
+  return path;
+}
+}  // namespace
+
+TEST_F(AxiMasterTest, NarrowSize0_1BytePerBeat) {
+  // addr=0x1000 size=0 len=3: 4 beats x 1 byte. Beat n: byte_lane = n,
+  // strb = 1 << n, data[n] = user[n].
+  auto wpath = write_hex_tmp_data("narrow_s0", "AA BB CC DD");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x1000
+    id: 0x1
+    len: 3
+    size: 0
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_narrow_s0.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].addr, 0x1000u);
+  EXPECT_EQ(mock.captured_aw[0].size, 0u);
+  EXPECT_EQ(mock.captured_aw[0].len,  3u);
+  ASSERT_EQ(mock.captured_w.size(), 4u);
+  const uint8_t expected_bytes[4] = {0xAA, 0xBB, 0xCC, 0xDD};
+  for (std::size_t n = 0; n < 4; ++n) {
+    EXPECT_EQ(mock.captured_w[n].strb, 1u << n) << "beat " << n;
+    EXPECT_EQ(mock.captured_w[n].data[n], expected_bytes[n]) << "beat " << n;
+    EXPECT_EQ(mock.captured_w[n].last, n == 3u) << "beat " << n;
+  }
+}
+
+TEST_F(AxiMasterTest, NarrowSize1_2BytePerBeat) {
+  // addr=0x1002 size=1 len=1: 2 beats x 2 bytes.
+  // Beat 0: addr=0x1002, byte_lane=2, strb=0x3<<2=0xC, data[2..3]=user[0..1].
+  // Beat 1: addr=0x1004, byte_lane=4, strb=0x3<<4=0x30, data[4..5]=user[2..3].
+  auto wpath = write_hex_tmp_data("narrow_s1", "11 22 33 44");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x1002
+    id: 0x2
+    len: 1
+    size: 1
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_narrow_s1.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].addr, 0x1002u);  // aligned to bpb=2
+  ASSERT_EQ(mock.captured_w.size(), 2u);
+  EXPECT_EQ(mock.captured_w[0].strb, 0x0000000Cu);
+  EXPECT_EQ(mock.captured_w[0].data[2], 0x11);
+  EXPECT_EQ(mock.captured_w[0].data[3], 0x22);
+  EXPECT_EQ(mock.captured_w[0].last, false);
+  EXPECT_EQ(mock.captured_w[1].strb, 0x00000030u);
+  EXPECT_EQ(mock.captured_w[1].data[4], 0x33);
+  EXPECT_EQ(mock.captured_w[1].data[5], 0x44);
+  EXPECT_EQ(mock.captured_w[1].last, true);
+}
+
+TEST_F(AxiMasterTest, NarrowSize2_4BytePerBeat) {
+  // The canonical narrow case. addr=0x1004 size=2 len=1: 2 beats x 4 bytes.
+  // Beat 0: byte_lane=4, strb=0xF<<4=0xF0,  data[4..7]=user[0..3].
+  // Beat 1: byte_lane=8, strb=0xF<<8=0xF00, data[8..11]=user[4..7].
+  auto wpath = write_hex_tmp_data("narrow_s2", "AB CD EF 12 34 56 78 9A");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x1004
+    id: 0x3
+    len: 1
+    size: 2
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_narrow_s2.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].addr, 0x1004u);
+  ASSERT_EQ(mock.captured_w.size(), 2u);
+  EXPECT_EQ(mock.captured_w[0].strb, 0x000000F0u);
+  EXPECT_EQ(mock.captured_w[0].data[4], 0xAB);
+  EXPECT_EQ(mock.captured_w[0].data[5], 0xCD);
+  EXPECT_EQ(mock.captured_w[0].data[6], 0xEF);
+  EXPECT_EQ(mock.captured_w[0].data[7], 0x12);
+  EXPECT_EQ(mock.captured_w[0].last, false);
+  EXPECT_EQ(mock.captured_w[1].strb, 0x00000F00u);
+  EXPECT_EQ(mock.captured_w[1].data[8],  0x34);
+  EXPECT_EQ(mock.captured_w[1].data[9],  0x56);
+  EXPECT_EQ(mock.captured_w[1].data[10], 0x78);
+  EXPECT_EQ(mock.captured_w[1].data[11], 0x9A);
+  EXPECT_EQ(mock.captured_w[1].last, true);
+}
+
+TEST_F(AxiMasterTest, NarrowSize3_8BytePerBeat) {
+  // addr=0x1000 size=3 len=1: 2 beats x 8 bytes.
+  // Beat 0: byte_lane=0, strb=0xFF,    data[0..7] =user[0..7].
+  // Beat 1: byte_lane=8, strb=0xFF<<8, data[8..15]=user[8..15].
+  auto wpath = write_hex_tmp_data(
+      "narrow_s3",
+      "01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x1000
+    id: 0x4
+    len: 1
+    size: 3
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_narrow_s3.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].addr, 0x1000u);
+  ASSERT_EQ(mock.captured_w.size(), 2u);
+  EXPECT_EQ(mock.captured_w[0].strb, 0x000000FFu);
+  for (std::size_t j = 0; j < 8; ++j) {
+    EXPECT_EQ(mock.captured_w[0].data[j], static_cast<uint8_t>(0x01 + j));
+  }
+  EXPECT_EQ(mock.captured_w[0].last, false);
+  EXPECT_EQ(mock.captured_w[1].strb, 0x0000FF00u);
+  for (std::size_t j = 0; j < 8; ++j) {
+    EXPECT_EQ(mock.captured_w[1].data[8 + j], static_cast<uint8_t>(0x09 + j));
+  }
+  EXPECT_EQ(mock.captured_w[1].last, true);
+}
