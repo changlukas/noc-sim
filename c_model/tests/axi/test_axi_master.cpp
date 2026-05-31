@@ -90,18 +90,21 @@ transactions:
   EXPECT_THROW(axi::load_scenario(path), std::runtime_error);
 }
 
-TEST_F(ScenarioParser, UnalignedAddrThrows_PhaseA) {
+TEST_F(ScenarioParser, IncrUnalignedAccepted_PhaseB) {
   auto path = write_tmp(R"YAML(
 transactions:
   - op: read
-    addr: 0x1001
+    addr: 0x1003
     id: 0
     len: 0
     size: 5
     burst: INCR
     dump_file: r.txt
 )YAML");
-  EXPECT_THROW(axi::load_scenario(path), std::runtime_error);
+  auto sc = axi::load_scenario(path);
+  ASSERT_EQ(sc.transactions.size(), 1u);
+  EXPECT_EQ(sc.transactions[0].addr, 0x1003u);
+  EXPECT_EQ(sc.transactions[0].burst, axi::Burst::INCR);
 }
 
 TEST_F(ScenarioParser, StrbFileFieldAccepted) {

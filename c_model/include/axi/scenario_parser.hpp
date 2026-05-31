@@ -99,9 +99,9 @@ inline Scenario load_scenario(const std::string& path) {
       throw std::runtime_error("scenario txn " + std::to_string(line) +
                                ": Phase A only supports INCR burst");
     }
-    if ((t.addr & ((1ull << t.size) - 1)) != 0) {
+    if (t.burst == Burst::WRAP && (t.addr & ((1ull << t.size) - 1)) != 0) {
       throw std::runtime_error("scenario txn " + std::to_string(line) +
-                               ": addr must be aligned to (1<<size) in Phase A");
+                               ": WRAP burst addr must be aligned to (1<<size)");
     }
     if (t.op == ScenarioTransaction::Op::Write) t.data_file = txn["data_file"].as<std::string>();
     if (t.op == ScenarioTransaction::Op::Read)  t.dump_file = txn["dump_file"].as<std::string>();
