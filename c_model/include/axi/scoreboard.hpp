@@ -14,38 +14,62 @@ namespace ni::cmodel::axi {
 
 class Scoreboard {
 public:
+  // Lane-positioned bus semantics (AXI4):
+  //   wr.addr is the ORIGINAL user txn.addr. Each beat covers bpb=1<<size
+  //   bytes; the per-beat byte_lane = beat_addr mod DATA_BYTES anchors the
+  //   user payload on the bus. The packed user-byte buffer 'data' supplies
+  //   bpb bytes per beat starting at offset beat*bpb. WSTRB on the wire is
+  //   lane-positioned; the scoreboard checks strb bits at lanes
+  //   (byte_lane + j) for j in [0, bpb) and records data[beat*bpb + j] at
+  //   memory address beat_addr + j when the corresponding strb bit is set.
   void handle_write_completed(const WriteResult& wr,
                               const std::vector<uint8_t>& data,
                               const std::vector<uint32_t>& strb_per_beat) {
     if (wr.resp != Resp::OKAY) return;
-    const std::size_t bytes_per_beat = DATA_BYTES;
-    assert(data.size() >= strb_per_beat.size() * bytes_per_beat &&
-           "Scoreboard: data buffer too short for strb_per_beat coverage");
-    const std::size_t beat_count = strb_per_beat.size();
+    const std::size_t bpb = 1ull << wr.size;
+    const std::size_t beat_count = static_cast<std::size_t>(wr.len) + 1u;
+    assert(data.size() >= beat_count * bpb &&
+           "Scoreboard: data buffer too short for lane-positioned coverage");
+    assert(strb_per_beat.size() == beat_count &&
+           "Scoreboard: strb_per_beat count mismatch");
     for (std::size_t beat = 0; beat < beat_count; ++beat) {
+      uint64_t beat_addr = wr.addr + beat * bpb;
+      if (wr.burst == Burst::FIXED) beat_addr = wr.addr;
+      const std::size_t byte_lane =
+          static_cast<std::size_t>(beat_addr & (DATA_BYTES - 1));
       const uint32_t strb = strb_per_beat[beat];
-      for (std::size_t byte_lane = 0; byte_lane < bytes_per_beat; ++byte_lane) {
-        if ((strb >> byte_lane) & 0x1u) {
-          const std::size_t data_idx = beat * bytes_per_beat + byte_lane;
-          expected_[wr.addr + data_idx] = data[data_idx];
+      for (std::size_t j = 0; j < bpb; ++j) {
+        if ((strb >> (byte_lane + j)) & 0x1u) {
+          expected_[beat_addr + j] = data[beat * bpb + j];
         }
       }
     }
   }
+  // Read verification: rr.data is the packed user-byte buffer the master
+  // accumulated (bpb per beat, beat_count total). We re-derive per-beat addr
+  // from rr.addr/size/burst and compare against expected_.
   void handle_read_observed(const ReadResult& rr) {
     if (rr.resp != Resp::OKAY) return;
-    for (std::size_t i = 0; i < rr.data.size(); ++i) {
-      uint64_t a = rr.addr + i;
-      auto it = expected_.find(a);
-      uint8_t exp = (it == expected_.end()) ? 0x00 : it->second;
-      if (exp != rr.data[i]) {
-        ++mismatches_;
-        std::ostringstream oss;
-        oss << "[Scoreboard] MISMATCH at addr=0x" << std::hex << a
-            << " (scenario line " << std::dec << rr.scenario_line << "): "
-            << "expected=0x" << std::hex << +exp
-            << " actual=0x" << +rr.data[i];
-        log_.push_back(oss.str());
+    const std::size_t bpb = 1ull << rr.size;
+    const std::size_t beat_count = static_cast<std::size_t>(rr.len) + 1u;
+    for (std::size_t beat = 0; beat < beat_count; ++beat) {
+      uint64_t beat_addr = rr.addr + beat * bpb;
+      if (rr.burst == Burst::FIXED) beat_addr = rr.addr;
+      for (std::size_t j = 0; j < bpb; ++j) {
+        const std::size_t idx = beat * bpb + j;
+        if (idx >= rr.data.size()) break;
+        const uint64_t a = beat_addr + j;
+        auto it = expected_.find(a);
+        const uint8_t exp = (it == expected_.end()) ? 0x00 : it->second;
+        if (exp != rr.data[idx]) {
+          ++mismatches_;
+          std::ostringstream oss;
+          oss << "[Scoreboard] MISMATCH at addr=0x" << std::hex << a
+              << " (scenario line " << std::dec << rr.scenario_line << "): "
+              << "expected=0x" << std::hex << +exp
+              << " actual=0x" << +rr.data[idx];
+          log_.push_back(oss.str());
+        }
       }
     }
     ++reads_checked_;

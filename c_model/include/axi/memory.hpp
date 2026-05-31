@@ -1,6 +1,7 @@
 // Algorithms ported from cocotbext-axi (MIT) — see axi/ATTRIBUTION.md
 #pragma once
 #include "axi/memory_port.hpp"
+#include <algorithm>
 #include <cstddef>
 #include <deque>
 #include <vector>
@@ -82,14 +83,23 @@ private:
     return addr >= base_ && (addr + bytes) <= (base_ + size_);
   }
 
+  // AXI4 lane-positioned bus semantics:
+  //   req.addr names the first user byte; the bus carries DATA_BYTES bytes
+  //   anchored to the aligned word containing req.addr. Byte j (0..DATA_BYTES-1)
+  //   on the bus corresponds to storage_[aligned_word + j]. WSTRB enables
+  //   per-lane writes; reads return the full bus image with the user-byte
+  //   bytes placed at lanes [byte_lane, byte_lane + (1<<size)). Aligned-word
+  //   indexing keeps Phase A (size=5, byte_lane=0) bit-for-bit identical and
+  //   generalizes to unaligned/narrow transfers.
   MemWriteResp perform_write_(const MemWriteReq& req) {
-    std::size_t bytes_per_beat = DATA_BYTES;
-    if (!in_bounds_(req.addr, bytes_per_beat)) {
+    const uint64_t aligned_word =
+        req.addr & ~static_cast<uint64_t>(DATA_BYTES - 1);
+    if (!in_bounds_(aligned_word, DATA_BYTES)) {
       return MemWriteResp{req.id, Resp::DECERR, req.tag};
     }
-    for (std::size_t i = 0; i < bytes_per_beat; ++i) {
+    for (std::size_t i = 0; i < DATA_BYTES; ++i) {
       if ((req.strb >> i) & 0x1u) {
-        storage_[(req.addr - base_) + i] = req.data[i];
+        storage_[(aligned_word - base_) + i] = req.data[i];
       }
     }
     return MemWriteResp{req.id, Resp::OKAY, req.tag};
@@ -98,14 +108,26 @@ private:
   MemReadResp perform_read_(const MemReadReq& req) {
     MemReadResp resp{};
     resp.id = req.id; resp.tag = req.tag; resp.last = req.last;
-    std::size_t bytes_per_beat = 1u << req.size;
-    if (!in_bounds_(req.addr, bytes_per_beat)) {
+    const uint64_t aligned_word =
+        req.addr & ~static_cast<uint64_t>(DATA_BYTES - 1);
+    const std::size_t byte_lane =
+        static_cast<std::size_t>(req.addr & (DATA_BYTES - 1));
+    const std::size_t bytes_per_beat = 1u << req.size;
+    if (!in_bounds_(aligned_word, DATA_BYTES)) {
       resp.resp = Resp::DECERR; resp.data.fill(0x00);
       return resp;
     }
     resp.resp = Resp::OKAY; resp.data.fill(0x00);
-    for (std::size_t i = 0; i < bytes_per_beat; ++i) {
-      resp.data[i] = storage_[(req.addr - base_) + i];
+    // Lane-positioned: place up to bpb user bytes starting at lane byte_lane.
+    // Reads never extend past DATA_BYTES on a single beat — the trailing bytes
+    // of a narrow/unaligned transfer that overflow the bus are the master's
+    // concern (it issues an additional beat in the spec-correct AXI4 burst).
+    const std::size_t lane_room =
+        (byte_lane < DATA_BYTES) ? (DATA_BYTES - byte_lane) : 0;
+    const std::size_t copy_bytes = std::min(bytes_per_beat, lane_room);
+    for (std::size_t i = 0; i < copy_bytes; ++i) {
+      resp.data[byte_lane + i] =
+          storage_[(aligned_word - base_) + byte_lane + i];
     }
     return resp;
   }

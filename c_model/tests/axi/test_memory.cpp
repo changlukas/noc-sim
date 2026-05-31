@@ -52,10 +52,14 @@ TEST(Memory, ReadLatencyCountdown) {
   EXPECT_EQ(r->tag, 200u);
 }
 
+// Lane-positioned bus: bounds check is per the aligned-down word (the actual
+// 32-byte beat the bus carries). To trip DECERR, the request addr must lie in
+// (or past) a word that is itself out of bounds — e.g., addr=0x1100 in a
+// [0x1000, 0x1100) region.
 TEST(Memory, OobWriteReturnsDecerr) {
   axi::Memory mem(0x1000, 0x100, 0, 0);
   axi::MemWriteReq req{};
-  req.addr = 0x10F0; req.data.fill(0xAA); req.strb = 0xFFFF'FFFFu;
+  req.addr = 0x1100; req.data.fill(0xAA); req.strb = 0xFFFF'FFFFu;
   req.id = 1; req.last = true; req.tag = 300;
   EXPECT_TRUE(mem.submit_write(req));
   mem.tick();
@@ -67,7 +71,7 @@ TEST(Memory, OobWriteReturnsDecerr) {
 TEST(Memory, OobReadReturnsDecerr) {
   axi::Memory mem(0x1000, 0x100, 0, 0);
   axi::MemReadReq req{};
-  req.addr = 0x10FE; req.size = 5; req.id = 2; req.last = true; req.tag = 400;
+  req.addr = 0x1100; req.size = 5; req.id = 2; req.last = true; req.tag = 400;
   EXPECT_TRUE(mem.submit_read(req));
   mem.tick();
   auto r = mem.pop_read_resp();
@@ -76,9 +80,12 @@ TEST(Memory, OobReadReturnsDecerr) {
 }
 
 TEST(Memory, OobWriteDoesNotMutateStorage) {
+  // Lay down a sentinel byte inside the in-bounds last word (0x10E0..0x10FF),
+  // then issue an OOB write at the next word boundary. No storage byte should
+  // change (DECERR short-circuits the strb apply loop).
   axi::Memory mem(0x1000, 0x100, 0, 0, 32, 0xFF);
   axi::MemWriteReq req{};
-  req.addr = 0x10F8; req.data.fill(0x00); req.strb = 0xFFFF'FFFFu;
+  req.addr = 0x1100; req.data.fill(0x00); req.strb = 0xFFFF'FFFFu;
   req.id = 1; req.last = true;
   mem.submit_write(req); mem.tick(); (void)mem.pop_write_resp();
   EXPECT_EQ(mem.peek(0x10F8), 0xFF);

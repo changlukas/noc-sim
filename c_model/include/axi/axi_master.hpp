@@ -2,6 +2,7 @@
 #pragma once
 #include "axi/types.hpp"
 #include "axi/scenario_parser.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -14,18 +15,29 @@
 
 namespace ni::cmodel::axi {
 
+// WriteResult / ReadResult carry the ORIGINAL user txn.addr (the address the
+// scenario asked the master to access), plus enough AXI4 burst geometry to let
+// the scoreboard re-derive per-beat lane offsets under lane-positioned bus
+// semantics. Per-beat byte_lane = (txn.addr + beat*(1<<size)) mod DATA_BYTES;
+// the AW.addr on the wire is still aligned DOWN by the master.
 struct WriteResult {
-  uint64_t addr;
-  std::vector<uint8_t> data;
-  std::vector<uint32_t> strb_per_beat;
+  uint64_t addr;                       // original user txn.addr
+  uint8_t  size;                       // log2(bytes_per_beat)
+  uint8_t  len;                        // beats - 1
+  Burst    burst;
+  std::vector<uint8_t> data;           // packed user bytes, (len+1)*(1<<size)
+  std::vector<uint32_t> strb_per_beat; // bus-level WSTRB per beat (lane-positioned)
   Resp resp;
   uint8_t id;
   std::size_t scenario_line;
 };
 
 struct ReadResult {
-  uint64_t addr;
-  std::vector<uint8_t> data;
+  uint64_t addr;                       // original user txn.addr
+  uint8_t  size;
+  uint8_t  len;
+  Burst    burst;
+  std::vector<uint8_t> data;           // packed user bytes, (len+1)*(1<<size)
   Resp resp;
   uint8_t id;
   std::size_t scenario_line;
@@ -53,12 +65,13 @@ public:
     while (auto b = slave_.pop_b()) {
       auto it = active_writes_.find(b->id);
       if (it == active_writes_.end()) continue;
-      // Report the aligned base address: WriteResult.addr names the memory
-      // location where data[0] would land if WSTRB allowed it. The unaligned
-      // prefix is encoded in strb_per_beat[0] (bits 0..first_lane-1 cleared).
-      const uint64_t wr_aligned_addr =
-          it->second.txn.addr & ~((1ull << it->second.txn.size) - 1);
-      if (wcb_) wcb_(WriteResult{wr_aligned_addr,
+      // WriteResult carries the ORIGINAL user txn.addr plus AXI4 burst
+      // geometry. The scoreboard reconstructs per-beat addr + byte_lane from
+      // (addr, size, len, burst). AW.addr on the wire stays aligned-down.
+      if (wcb_) wcb_(WriteResult{it->second.txn.addr,
+                                  it->second.txn.size,
+                                  it->second.txn.len,
+                                  it->second.txn.burst,
                                   it->second.data,
                                   it->second.strb_per_beat,
                                   b->resp,
@@ -71,28 +84,46 @@ public:
       auto it = active_reads_.find(r->id);
       if (it == active_reads_.end()) continue;
       auto& rs = it->second;
-      std::size_t bpb = 1ull << rs.txn.size;
-      for (std::size_t i = 0; i < bpb; ++i)
-        rs.accumulator.push_back(r->data[i]);
+      const std::size_t bpb = 1ull << rs.txn.size;
+      // Lane-positioned bus: byte j on the bus is at lane (byte_lane + j),
+      // where byte_lane = (per-beat addr) mod DATA_BYTES. For INCR the per-beat
+      // addr advances by bpb; for FIXED it stays at txn.addr. Lane room caps
+      // the per-beat payload at DATA_BYTES - byte_lane; any trailing user
+      // bytes that would have fallen off the bus are zero-padded so downstream
+      // packed-buffer offsets stay aligned at (beat * bpb).
+      uint64_t beat_addr = rs.txn.addr + rs.beats_observed * bpb;
+      if (rs.txn.burst == Burst::FIXED) beat_addr = rs.txn.addr;
+      const std::size_t byte_lane =
+          static_cast<std::size_t>(beat_addr & (DATA_BYTES - 1));
+      const std::size_t lane_room =
+          (byte_lane < DATA_BYTES) ? (DATA_BYTES - byte_lane) : 0;
+      const std::size_t copy_bytes = std::min(bpb, lane_room);
+      for (std::size_t i = 0; i < copy_bytes; ++i)
+        rs.accumulator.push_back(r->data[byte_lane + i]);
+      for (std::size_t i = copy_bytes; i < bpb; ++i)
+        rs.accumulator.push_back(0);
       ++rs.beats_observed;
       if (r->last) {
-        std::size_t lines = rs.accumulator.size() / DATA_BYTES;
+        // Read dump records the packed user bytes (bpb per beat). For aligned
+        // size=5 this matches the historical full-beat dump format.
+        const std::size_t total = rs.accumulator.size();
+        const std::size_t lines = (bpb > 0) ? (total / bpb) : 0;
         for (std::size_t line = 0; line < lines; ++line) {
-          for (std::size_t j = 0; j < DATA_BYTES; ++j) {
+          for (std::size_t j = 0; j < bpb; ++j) {
             if (j > 0) read_dump_ << ' ';
             char buf[4];
-            std::snprintf(buf, sizeof(buf), "%02X", rs.accumulator[line * DATA_BYTES + j]);
+            std::snprintf(buf, sizeof(buf), "%02X",
+                          rs.accumulator[line * bpb + j]);
             read_dump_ << buf;
           }
           read_dump_ << '\n';
         }
         read_dump_.flush();
-        // Report aligned base address symmetric to WriteResult: the read
-        // returns full aligned beats; any unaligned-prefix interpretation is
-        // left to higher layers.
-        const uint64_t rr_aligned_addr =
-            rs.txn.addr & ~((1ull << rs.txn.size) - 1);
-        if (rcb_) rcb_(ReadResult{rr_aligned_addr, rs.accumulator,
+        if (rcb_) rcb_(ReadResult{rs.txn.addr,
+                                    rs.txn.size,
+                                    rs.txn.len,
+                                    rs.txn.burst,
+                                    rs.accumulator,
                                     r->resp, r->id, rs.txn.scenario_line});
         active_reads_.erase(it);
       }
@@ -138,10 +169,25 @@ public:
       }
       while (ws.w_pushed_ <= ws.txn.len) {
         WBeat w{};
-        std::size_t bpb = 1ull << ws.txn.size;
-        for (std::size_t j = 0; j < DATA_BYTES; ++j) {
-          std::size_t off = ws.w_pushed_ * bpb + j;
-          w.data[j] = (off < ws.data.size()) ? ws.data[off] : 0;
+        const std::size_t bpb = 1ull << ws.txn.size;
+        // Lane-positioned bus: byte j of the user payload for this beat is
+        // placed at bus lane (byte_lane + j), where byte_lane is derived from
+        // the per-beat address. For aligned size=5 Phase A, byte_lane=0 and
+        // this collapses to the historical compact placement.
+        uint64_t beat_addr = ws.txn.addr + ws.w_pushed_ * bpb;
+        if (ws.txn.burst == Burst::FIXED) beat_addr = ws.txn.addr;
+        const std::size_t byte_lane =
+            static_cast<std::size_t>(beat_addr & (DATA_BYTES - 1));
+        w.data.fill(0);
+        // ws.data is packed user bytes: beat b contributes bytes
+        // [b*bpb, (b+1)*bpb). They land on bus lanes [byte_lane, byte_lane+bpb)
+        // but never past DATA_BYTES (excess trails are discarded).
+        const std::size_t writable = (byte_lane < DATA_BYTES)
+            ? std::min<std::size_t>(bpb, DATA_BYTES - byte_lane)
+            : 0;
+        for (std::size_t j = 0; j < writable; ++j) {
+          const std::size_t off = ws.w_pushed_ * bpb + j;
+          w.data[byte_lane + j] = (off < ws.data.size()) ? ws.data[off] : 0;
         }
         w.strb = ws.strb_per_beat[ws.w_pushed_];
         if (ws.w_pushed_ == 0 && first_lane != 0) {
