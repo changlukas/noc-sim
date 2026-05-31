@@ -36,14 +36,31 @@
 
 ---
 
-## Stage B-3: Narrow transfer
+## Stage B-3a: Bus semantics refactor (lane-positioned)
 
-**Goal**: AxiMaster 按 size 計算 byte lane 與 strb，把 data 放在 WBeat 正確位置；AxiSlave 解 interpret；parser 接受 narrow size。
+**Goal**: c_model AXI bus 採 AXI4 lane-positioned semantics (RTL-faithful)。`byte_lane = bus_addr & (DATA_BYTES-1)`；narrow / unaligned 的 data 放在 `data[byte_lane..byte_lane+bpb-1]`，strb 對應位置 set。Memory.perform_write_/read_ + Scoreboard byte-merge + AxiMaster read accumulator 都改 lane-positioned。**只改 algorithm，不加 feature**。
 
 **Success Criteria**:
-- `test_axi_master` 所有 narrow sizes 0-4 byte-lane 計算 unit tests 全綠
-- `test_axi_slave` narrow interpret tests 全綠
-- Integration fixtures `narrow_transfer_size2.yaml` + `narrow_transfer_size0.yaml` 2 個全綠
+- `Memory::perform_write_` 改用 `storage[(req.addr & ~(DATA_BYTES-1)) - base + lane] = data[lane]`
+- `Memory::perform_read_` 回 lane-positioned resp.data
+- `AxiMaster` read accumulator 從 `data[byte_lane..]` 拉
+- `Scoreboard::handle_write_completed` 重算 byte 位置 (per-beat bpb + per-beat addr aware)
+- **Phase A 78 tests + B-1 7 + B-2 7 = 92/92 全綠** (若 Phase A test 預設 compact bus，更新預期值)
+
+**Status**: Not Started
+
+---
+
+## Stage B-3b: AxiMaster narrow W push + tests + fixtures
+
+**Goal**: 在 B-3a refactor 後加 narrow feature 本體：AxiMaster narrow byte-lane W push、4 個 sizes 0/1/2/3 unit tests、1 個 AxiSlave narrow forward test、2 個 integration fixtures。同時更新 B-2 `INSTANTIATE_TEST_SUITE_P(UnalignedCases, ...)` 預期 strb 值 (size<5 的 3 個 case 變 lane-positioned 公式 result)。
+
+**Success Criteria**:
+- `test_axi_master` narrow size 0/1/2/3 + size=4 共 4-5 個 unit tests 全綠
+- `test_axi_slave` `NarrowTransferForwardedToMemory` 全綠
+- Integration fixtures `narrow_transfer_size2.yaml`、`narrow_transfer_size0.yaml` 全綠
+- B-2 `UnalignedCases` 5 個 case 全綠 (Size4_Off1 → 0x0001FFFE、Size3_Off7 → 0x00007F80、Size2_OffF → 0x00078000；Size5_Off3 與 Size1_Off1F 不變)
+- Total ~98/98 ctest
 
 **Status**: Not Started
 
