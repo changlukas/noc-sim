@@ -15,6 +15,45 @@
 
 namespace ni::cmodel::axi {
 
+// Sub-burst descriptor produced by split_into_sub_bursts(). Each describes one
+// AXI4 AW/AR (with its own len/addr) carved out of a single scenario_txn.
+struct BurstSpec {
+  uint64_t addr;
+  uint8_t  len;
+  uint8_t  size;
+  Burst    burst;
+};
+
+// AXI4 (IHI 0022 A3.4.1) requires INCR bursts not to cross a 4KB boundary, and
+// caps a single burst at 256 beats. A scenario_txn that violates either is
+// auto-segmented here into a chain of legal sub-bursts. WRAP/FIXED never need
+// splitting — WRAP wraps inside [wrap_lower, wrap_upper) by construction;
+// FIXED reuses one address.
+inline std::vector<BurstSpec>
+split_into_sub_bursts(const ScenarioTransaction& txn) {
+  std::vector<BurstSpec> out;
+  if (txn.burst != Burst::INCR) {
+    out.push_back(BurstSpec{txn.addr, txn.len, txn.size, txn.burst});
+    return out;
+  }
+  const std::size_t bpb = 1ull << txn.size;
+  uint64_t addr = txn.addr;
+  std::size_t beats_remaining = static_cast<std::size_t>(txn.len) + 1u;
+  while (beats_remaining > 0) {
+    const std::size_t bytes_to_4kb = 0x1000u - (addr & 0xFFFu);
+    std::size_t beats_to_4kb = bytes_to_4kb / bpb;
+    if (beats_to_4kb == 0) beats_to_4kb = beats_remaining;  // already aligned
+    const std::size_t beats_this =
+        std::min({beats_to_4kb, beats_remaining, std::size_t{256}});
+    out.push_back(BurstSpec{
+        addr, static_cast<uint8_t>(beats_this - 1),
+        txn.size, Burst::INCR});
+    addr += beats_this * bpb;
+    beats_remaining -= beats_this;
+  }
+  return out;
+}
+
 // WriteResult / ReadResult carry the ORIGINAL user txn.addr (the address the
 // scenario asked the master to access), plus enough AXI4 burst geometry to let
 // the scoreboard re-derive per-beat lane offsets under lane-positioned bus

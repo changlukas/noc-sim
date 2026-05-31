@@ -649,3 +649,69 @@ transactions:
   }
   EXPECT_EQ(mock.captured_w[1].last, true);
 }
+
+// Phase B-5a: split_into_sub_bursts. AXI4 (IHI 0022 A3.4.1) forbids INCR
+// bursts crossing a 4KB boundary and caps a single burst at 256 beats. The
+// helper carves a scenario_txn into a chain of legal sub-bursts.
+namespace {
+axi::ScenarioTransaction make_txn(uint64_t addr, uint8_t len, uint8_t size,
+                                  axi::Burst burst) {
+  axi::ScenarioTransaction t{};
+  t.op = axi::ScenarioTransaction::Op::Write;
+  t.addr = addr; t.len = len; t.size = size; t.burst = burst;
+  return t;
+}
+}  // namespace
+
+TEST(SplitIntoSubBursts, NoSplit_AlignedAt4KBStart) {
+  auto subs = axi::split_into_sub_bursts(make_txn(0x1000, 0, 5, axi::Burst::INCR));
+  ASSERT_EQ(subs.size(), 1u);
+  EXPECT_EQ(subs[0].addr, 0x1000u);
+  EXPECT_EQ(subs[0].len,  0u);
+}
+
+TEST(SplitIntoSubBursts, NoSplit_WithinPage) {
+  // 0x1040 size=5 len=3 → 4 beats × 32B = 128B. Spans 0x1040..0x10C0,
+  // entirely within page 0x1000..0x2000. 1 sub-burst.
+  auto subs = axi::split_into_sub_bursts(make_txn(0x1040, 3, 5, axi::Burst::INCR));
+  ASSERT_EQ(subs.size(), 1u);
+  EXPECT_EQ(subs[0].addr, 0x1040u);
+  EXPECT_EQ(subs[0].len,  3u);
+}
+
+TEST(SplitIntoSubBursts, Split4KBCross_2SubBursts) {
+  // 0x0FE0 size=5 len=7 → 8 beats × 32B = 256B spans 0x0FE0..0x10E0.
+  // Crosses 4KB at 0x1000. Beat 0 at 0x0FE0; beats 1..7 at 0x1000..0x10C0.
+  auto subs = axi::split_into_sub_bursts(make_txn(0x0FE0, 7, 5, axi::Burst::INCR));
+  ASSERT_EQ(subs.size(), 2u);
+  EXPECT_EQ(subs[0].addr, 0x0FE0u);
+  EXPECT_EQ(subs[0].len,  0u);          // 1 beat
+  EXPECT_EQ(subs[1].addr, 0x1000u);
+  EXPECT_EQ(subs[1].len,  6u);          // 7 beats
+}
+
+TEST(SplitIntoSubBursts, Split256BeatCap) {
+  // 0x0000 size=5 len=255 → 256 beats × 32B = 8KB. Spans 2 pages.
+  // Split into 128-beat halves: 128*32 = 4KB each.
+  auto subs = axi::split_into_sub_bursts(make_txn(0x0000, 255, 5, axi::Burst::INCR));
+  ASSERT_EQ(subs.size(), 2u);
+  EXPECT_EQ(subs[0].addr, 0x0000u);
+  EXPECT_EQ(subs[0].len,  127u);
+  EXPECT_EQ(subs[1].addr, 0x1000u);
+  EXPECT_EQ(subs[1].len,  127u);
+}
+
+TEST(SplitIntoSubBursts, WrapNoSplit) {
+  // WRAP confines beats inside [wrap_lower, wrap_upper) by construction.
+  // The split helper must NOT segment WRAP — its semantics differ from INCR.
+  auto subs = axi::split_into_sub_bursts(make_txn(0x0FE0, 3, 5, axi::Burst::WRAP));
+  ASSERT_EQ(subs.size(), 1u);
+  EXPECT_EQ(subs[0].burst, axi::Burst::WRAP);
+}
+
+TEST(SplitIntoSubBursts, FixedNoSplit) {
+  // FIXED reuses one address for every beat — no boundary cross to worry about.
+  auto subs = axi::split_into_sub_bursts(make_txn(0x1000, 3, 5, axi::Burst::FIXED));
+  ASSERT_EQ(subs.size(), 1u);
+  EXPECT_EQ(subs[0].burst, axi::Burst::FIXED);
+}
