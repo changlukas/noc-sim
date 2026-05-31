@@ -118,6 +118,9 @@ INSTANTIATE_TEST_SUITE_P(
         // Phase B-2: INCR with unaligned start addr 0x1005 size=5; first beat
         // WSTRB clears lanes 0..4. Read dump cannot byte-match the write data
         // (alignment differs); scoreboard validates byte-level correctness.
+        // NOTE: c_model emits 1 beat where AXI4 spec would require 2 (the burst
+        // logically crosses lane 31 into a 2nd bus word). Data file uses
+        // trailing 0 padding to compensate; only 27 user bytes are committed.
         FixtureParam{"unaligned_start.yaml",            "",                                    false, true},
         // Phase B-3b: aligned narrow bursts. data_file is packed user bytes
         // ((len+1)*bpb total); read dump is per-beat bus-image and does not

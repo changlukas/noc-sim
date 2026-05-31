@@ -92,7 +92,7 @@ inline Scenario load_scenario(const std::string& path) {
     t.size  = txn["size"].as<uint8_t>();
     if (t.size > 5) {
       throw std::runtime_error("scenario txn " + std::to_string(line) +
-                               ": size must be <= 5 (Phase A max beat = 32 bytes)");
+                               ": size must be <= 5 (max beat = 32 bytes, log2(DATA_BYTES))");
     }
     t.burst = parse_burst(txn["burst"].as<std::string>());
     // AXI4 WRAP constraints (IHI 0022 B1.4.3 Address structure of bursts):
