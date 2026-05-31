@@ -145,21 +145,32 @@ inline bool check_4kb_cross(uint64_t base_addr, uint8_t len,
 // Cross-channel ordering checks
 // ============================================================================
 
-// B_ID_MATCH_OUTSTANDING — every B id must match an in-flight write burst
-// (IHI 0022 A5.3 + A3.4.4: responses match an outstanding AW.id).
+// Helper: a per-id "outstanding entry" is non-empty (for slave per-id FIFO
+// the value is a std::deque; for master operation-context map it is the
+// operation itself — always non-empty when the key exists).
+namespace detail {
 template <typename T>
+inline bool entry_non_empty(const std::deque<T>& d) { return !d.empty(); }
+template <typename T>
+inline bool entry_non_empty(const T&) { return true; }
+}  // namespace detail
+
+// B_ID_MATCH_OUTSTANDING — every B id must match an in-flight write burst
+// (IHI 0022 A5.3 + A3.4.4: responses match an outstanding AW.id). Works for
+// per-id FIFO maps (slave) and per-id operation maps (master).
+template <typename V>
 inline bool check_b_id_match_outstanding(
-    uint8_t b_id, const std::map<uint8_t, std::deque<T>>& outstanding) {
+    uint8_t b_id, const std::map<uint8_t, V>& outstanding) {
   auto it = outstanding.find(b_id);
-  return it != outstanding.end() && !it->second.empty();
+  return it != outstanding.end() && detail::entry_non_empty(it->second);
 }
 
 // R_ID_MATCH_OUTSTANDING — symmetric to B.
-template <typename T>
+template <typename V>
 inline bool check_r_id_match_outstanding(
-    uint8_t r_id, const std::map<uint8_t, std::deque<T>>& outstanding) {
+    uint8_t r_id, const std::map<uint8_t, V>& outstanding) {
   auto it = outstanding.find(r_id);
-  return it != outstanding.end() && !it->second.empty();
+  return it != outstanding.end() && detail::entry_non_empty(it->second);
 }
 
 // SAME_ID_W_ORDER — same-ID write responses must come back in issue order.

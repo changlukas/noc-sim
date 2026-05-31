@@ -1,6 +1,7 @@
 // Algorithms ported from cocotbext-axi (MIT) — see axi/ATTRIBUTION.md
 #pragma once
 #include "axi/types.hpp"
+#include "axi/protocol_rules.hpp"
 #include "axi/scenario_parser.hpp"
 #include <algorithm>
 #include <cstdint>
@@ -110,9 +111,16 @@ public:
     // sub-burst-complete counter regardless of which sub-burst the B id maps
     // to — order is implied by submission.
     while (auto b = slave_.pop_b()) {
+      AXI_PROTOCOL_ASSERT(rules::check_resp_encoding(b->resp),
+                          "RESP_ENCODING: B response must be a legal AXI4 response");
+      AXI_PROTOCOL_ASSERT(rules::check_b_id_match_outstanding(b->id, active_write_ops_),
+                          "B_ID_MATCH_OUTSTANDING: B id must match an in-flight write operation");
       auto it = active_write_ops_.find(b->id);
       if (it == active_write_ops_.end()) continue;
       auto& op = it->second;
+      AXI_PROTOCOL_ASSERT(
+          rules::check_b_one_response_per_write(op.b_count_ + 1, op.sub_bursts.size()),
+          "B_ONE_RESPONSE_PER_WRITE: B responses exceed the operation's expected count");
       ++op.b_count_;
       if (static_cast<uint8_t>(b->resp) > static_cast<uint8_t>(op.worst_resp_))
         op.worst_resp_ = b->resp;

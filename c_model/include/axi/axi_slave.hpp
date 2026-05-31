@@ -2,6 +2,7 @@
 #pragma once
 #include "axi/types.hpp"
 #include "axi/memory_port.hpp"
+#include "axi/protocol_rules.hpp"
 #include <deque>
 #include <map>
 #include <optional>
@@ -75,6 +76,10 @@ inline void AxiSlave::tick() {
   //    Per-ID FIFO: same-id bursts complete in issue order (AXI4 IHI 0022
   //    A5.3 — ordering of transactions with the same AXI ID is preserved).
   while (auto resp = memory_port_.pop_write_resp()) {
+    AXI_PROTOCOL_ASSERT(rules::check_resp_encoding(resp->resp),
+                        "RESP_ENCODING: memory BRESP must be a legal AXI4 response");
+    AXI_PROTOCOL_ASSERT(rules::check_b_id_match_outstanding(resp->id, active_writes_),
+                        "B_ID_MATCH_OUTSTANDING: memory BRESP id must match an in-flight write burst");
     auto it = active_writes_.find(resp->id);
     if (it == active_writes_.end() || it->second.empty()) continue;
     auto& st = it->second.front();
@@ -82,6 +87,9 @@ inline void AxiSlave::tick() {
     if (static_cast<uint8_t>(resp->resp) > static_cast<uint8_t>(st.worst_resp))
       st.worst_resp = resp->resp;
     if (st.beats_completed == static_cast<std::size_t>(st.aw.len) + 1) {
+      AXI_PROTOCOL_ASSERT(rules::check_w_before_b(
+                              st.beats_submitted == static_cast<std::size_t>(st.aw.len) + 1u),
+                          "W_BEFORE_B: B response fired before all W beats submitted");
       b_q_.push_back(BBeat{st.aw.id, st.worst_resp, 0});
       it->second.pop_front();
       if (it->second.empty()) active_writes_.erase(it);
@@ -93,13 +101,21 @@ inline void AxiSlave::tick() {
 
   // 2. Drain memory read responses → push R beats (advance OLDEST per id).
   while (auto rresp = memory_port_.pop_read_resp()) {
+    AXI_PROTOCOL_ASSERT(rules::check_resp_encoding(rresp->resp),
+                        "RESP_ENCODING: memory RRESP must be a legal AXI4 response");
+    AXI_PROTOCOL_ASSERT(rules::check_r_id_match_outstanding(rresp->id, active_reads_),
+                        "R_ID_MATCH_OUTSTANDING: memory RRESP id must match an in-flight read burst");
     auto it = active_reads_.find(rresp->id);
     if (it == active_reads_.end() || it->second.empty()) continue;
     auto& st = it->second.front();
+    AXI_PROTOCOL_ASSERT(rules::check_r_beat_count_within(st.beats_returned + 1, st.ar.len),
+                        "R_BEAT_COUNT_WITHIN: R beats returned exceed burst len+1");
     RBeat rb{};
     rb.id = st.ar.id; rb.data = rresp->data; rb.resp = rresp->resp;
     rb.last = (st.beats_returned + 1 == static_cast<std::size_t>(st.ar.len) + 1);
     rb.user = 0;
+    AXI_PROTOCOL_ASSERT(rules::check_r_last_timing(rb.last, st.beats_returned, st.ar.len),
+                        "R_LAST_TIMING: RLAST must be asserted on (and only on) the final R beat");
     r_q_.push_back(rb);
     ++st.beats_returned;
     if (rb.last) {
@@ -114,6 +130,16 @@ inline void AxiSlave::tick() {
   //    in steps 1/4 (B drain + W routing).
   while (!aw_q_.empty()) {
     auto& aw = aw_q_.front();
+    AXI_PROTOCOL_ASSERT(rules::check_burst_encoding(aw.burst),
+                        "BURST_ENCODING: AW.burst must be FIXED, INCR, or WRAP");
+    AXI_PROTOCOL_ASSERT(rules::check_size_bound(aw.size),
+                        "SIZE_BOUND: AW.size must be <= log2(DATA_BYTES)");
+    AXI_PROTOCOL_ASSERT(rules::check_wrap_len(aw.burst, aw.len),
+                        "WRAP_LEN: AW.len must be 1, 3, 7, or 15 for WRAP burst");
+    AXI_PROTOCOL_ASSERT(rules::check_wrap_align(aw.burst, aw.addr, aw.size),
+                        "WRAP_ALIGN: AW.addr must be aligned to (1<<size) for WRAP burst");
+    AXI_PROTOCOL_ASSERT(rules::check_4kb_cross(aw.addr, aw.len, aw.size, aw.burst),
+                        "CROSS_4KB: INCR burst at slave must not cross a 4KB boundary");
     if (bounds_set_) {
       std::size_t bpb = 1ull << aw.size;
       std::size_t total = bpb * (static_cast<std::size_t>(aw.len) + 1);
@@ -164,8 +190,19 @@ inline void AxiSlave::tick() {
     if (!stp) break;  // should not happen — aw_issue_order_ tracks pending W
     auto& st = *stp;
     std::size_t beat_idx = st.beats_submitted;
+    AXI_PROTOCOL_ASSERT(rules::check_w_beat_count_within(beat_idx + 1, st.aw.len),
+                        "W_BEAT_COUNT_WITHIN: master submitted more W beats than burst len+1");
+    AXI_PROTOCOL_ASSERT(rules::check_w_last_timing(w_q_.front().last, beat_idx, st.aw.len),
+                        "W_LAST_TIMING: WLAST must be asserted on (and only on) the final W beat");
+    AXI_PROTOCOL_ASSERT(rules::check_strb_valid_bits(w_q_.front().strb),
+                        "STRB_VALID_BITS: WSTRB bits above WSTRB_WIDTH must be 0");
+    const uint64_t w_beat_addr_v =
+        beat_addr(st.aw.addr, st.aw.len, st.aw.size, st.aw.burst, beat_idx);
+    AXI_PROTOCOL_ASSERT(
+        rules::check_strb_sparse_legal(w_q_.front().strb, st.aw.size, w_beat_addr_v),
+        "STRB_SPARSE_LEGAL: WSTRB bits outside this beat's byte-lane window must be 0");
     MemWriteReq req{};
-    req.addr = beat_addr(st.aw.addr, st.aw.len, st.aw.size, st.aw.burst, beat_idx);
+    req.addr = w_beat_addr_v;
     req.data = w_q_.front().data;
     req.strb = w_q_.front().strb;
     req.id   = st.aw.id;
@@ -188,6 +225,16 @@ inline void AxiSlave::tick() {
   //    advances FRONT — AXI4 preserves same-id response order.
   while (!ar_q_.empty()) {
     auto& ar = ar_q_.front();
+    AXI_PROTOCOL_ASSERT(rules::check_burst_encoding(ar.burst),
+                        "BURST_ENCODING: AR.burst must be FIXED, INCR, or WRAP");
+    AXI_PROTOCOL_ASSERT(rules::check_size_bound(ar.size),
+                        "SIZE_BOUND: AR.size must be <= log2(DATA_BYTES)");
+    AXI_PROTOCOL_ASSERT(rules::check_wrap_len(ar.burst, ar.len),
+                        "WRAP_LEN: AR.len must be 1, 3, 7, or 15 for WRAP burst");
+    AXI_PROTOCOL_ASSERT(rules::check_wrap_align(ar.burst, ar.addr, ar.size),
+                        "WRAP_ALIGN: AR.addr must be aligned to (1<<size) for WRAP burst");
+    AXI_PROTOCOL_ASSERT(rules::check_4kb_cross(ar.addr, ar.len, ar.size, ar.burst),
+                        "CROSS_4KB: INCR read burst at slave must not cross a 4KB boundary");
     if (bounds_set_) {
       std::size_t bpb = 1ull << ar.size;
       std::size_t total = bpb * (static_cast<std::size_t>(ar.len) + 1);
