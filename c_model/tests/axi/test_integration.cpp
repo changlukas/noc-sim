@@ -124,5 +124,20 @@ INSTANTIATE_TEST_SUITE_P(
         // match the packed layout, so file diff is skipped. Scoreboard
         // validates byte-level write->read equivalence.
         FixtureParam{"narrow_transfer_size2.yaml",      "",                                    false, true},
-        FixtureParam{"narrow_transfer_size0.yaml",      "",                                    false, true}),
+        FixtureParam{"narrow_transfer_size0.yaml",      "",                                    false, true},
+        // Phase B-4: WRAP and FIXED bursts (AXI4 IHI 0022 B1.4.3).
+        // - wrap_burst_aligned: 2-beat WRAP that stays inside the window (no
+        //   actual wrap). Read dump matches the packed data file byte-for-byte
+        //   because beats arrive in receive order on aligned size=5.
+        // - wrap_burst_actual_wrap: 4-beat WRAP that crosses wrap_upper. Beats
+        //   arrive in receive order (0x1060, 0x1000, 0x1020, 0x1040) and the
+        //   write data file is laid out in the same receive order, so file
+        //   diff still matches.
+        // - fixed_burst: 4-beat FIXED with all beats at addr 0x1000. Memory
+        //   sees last-beat-wins, so the read dump returns 4 copies of beat 3
+        //   while the data file has 4 distinct beats; file diff is skipped.
+        //   Scoreboard models last-beat-wins per byte via map assignment.
+        FixtureParam{"wrap_burst_aligned.yaml",         "wrap_burst_aligned_data.txt",         true,  true},
+        FixtureParam{"wrap_burst_actual_wrap.yaml",     "wrap_burst_actual_wrap_data.txt",     true,  true},
+        FixtureParam{"fixed_burst.yaml",                "",                                    false, true}),
     FixtureName{});
