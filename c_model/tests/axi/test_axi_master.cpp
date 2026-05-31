@@ -104,6 +104,56 @@ transactions:
   EXPECT_THROW(axi::load_scenario(path), std::runtime_error);
 }
 
+TEST_F(ScenarioParser, StrbFileFieldAccepted) {
+  auto path = write_tmp(R"YAML(
+transactions:
+  - op: write
+    addr: 0x0
+    id: 0x1
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: w.txt
+    strb_file: s.txt
+)YAML");
+  auto sc = axi::load_scenario(path);
+  ASSERT_EQ(sc.transactions.size(), 1u);
+  EXPECT_EQ(sc.transactions[0].strb_file, "s.txt");
+}
+
+TEST_F(ScenarioParser, StrbFileOptional) {
+  auto path = write_tmp(R"YAML(
+transactions:
+  - op: write
+    addr: 0x0
+    id: 0x1
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: w.txt
+)YAML");
+  auto sc = axi::load_scenario(path);
+  ASSERT_EQ(sc.transactions.size(), 1u);
+  EXPECT_EQ(sc.transactions[0].strb_file, "");
+}
+
+TEST_F(ScenarioParser, ReadTxnIgnoresStrbFile) {
+  auto path = write_tmp(R"YAML(
+transactions:
+  - op: read
+    addr: 0x0
+    id: 0x2
+    len: 0
+    size: 5
+    burst: INCR
+    dump_file: r.txt
+    strb_file: s.txt
+)YAML");
+  auto sc = axi::load_scenario(path);
+  ASSERT_EQ(sc.transactions.size(), 1u);
+  EXPECT_EQ(sc.transactions[0].strb_file, "");
+}
+
 #include "axi/axi_master.hpp"
 #include "mock_slave.hpp"
 
@@ -236,4 +286,50 @@ transactions:
   master.tick();
   EXPECT_EQ(mock.captured_aw.size(), 3u);
   EXPECT_EQ(mock.captured_aw[2].id, 3);
+}
+
+TEST_F(AxiMasterTest, StrbFileMissingThrows) {
+  auto wpath = std::string(::testing::TempDir()) + "/w_missing_strb.txt";
+  std::ofstream(wpath) << "01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 "
+                          "11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20\n";
+  auto strb_missing = std::string(::testing::TempDir()) + "/does_not_exist.strb";
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x0
+    id: 0x1
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: )YAML") + wpath + R"YAML(
+    strb_file: )YAML" + strb_missing + "\n");
+
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_missing.txt");
+  EXPECT_THROW(master.tick(), std::runtime_error);
+}
+
+TEST_F(AxiMasterTest, StrbFileLineCountMismatchThrows) {
+  auto wpath = std::string(::testing::TempDir()) + "/w_lc.txt";
+  std::ofstream(wpath) << "01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 "
+                          "11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20\n";
+  // expected beats = len + 1 = 1, but provide 2 strb tokens
+  auto spath = std::string(::testing::TempDir()) + "/s_lc.txt";
+  std::ofstream(spath) << "FFFFFFFF FFFFFFFF\n";
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x0
+    id: 0x1
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: )YAML") + wpath + R"YAML(
+    strb_file: )YAML" + spath + "\n");
+
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_lc.txt");
+  EXPECT_THROW(master.tick(), std::runtime_error);
 }
