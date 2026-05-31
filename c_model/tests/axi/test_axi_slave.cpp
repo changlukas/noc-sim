@@ -369,3 +369,97 @@ TEST(AxiSlave, ConcurrentBurstsDifferentIds_WRoutingAdvances) {
   EXPECT_EQ(mem.captured_writes[2].addr, 0x1040u);
   EXPECT_EQ(mem.captured_writes[2].data[0], 0x33);
 }
+
+// Phase B-4: WRAP burst per-beat address wraps at wrap_upper = wrap_lower +
+// total_burst_bytes (AXI4 IHI 0022 B1.4.3). wrap_lower = addr &
+// ~(total_burst_bytes - 1). WRAP requires len ∈ {1,3,7,15} and addr aligned
+// to (1<<size); the parser enforces these, so the slave can assume total is
+// a power of 2.
+TEST(AxiSlave, WrapBurstLen3_4BeatActualWrap) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  axi::ArBeat ar{};
+  ar.id = 5; ar.addr = 0x1060;  // burst total = 4*32 = 128, wrap_lower = 0x1000, wrap_upper = 0x1080
+  ar.len = 3; ar.size = 5; ar.burst = axi::Burst::WRAP;
+  // beat 0 @ 0x1060; beat 1 @ 0x1080 → wraps → 0x1000; beat 2 @ 0x1020; beat 3 @ 0x1040
+  slave.push_ar(ar);
+  for (int t = 0; t < 6; ++t) slave.tick();
+  ASSERT_EQ(mem.captured_reads.size(), 4u);
+  EXPECT_EQ(mem.captured_reads[0].addr, 0x1060u);
+  EXPECT_EQ(mem.captured_reads[1].addr, 0x1000u);
+  EXPECT_EQ(mem.captured_reads[2].addr, 0x1020u);
+  EXPECT_EQ(mem.captured_reads[3].addr, 0x1040u);
+}
+
+TEST(AxiSlave, WrapBurstLen1_2BeatNoWrap) {
+  // 2-beat WRAP that stays inside the wrap window without crossing wrap_upper.
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+  axi::ArBeat ar{};
+  ar.id = 7; ar.addr = 0x1040; ar.len = 1; ar.size = 5; ar.burst = axi::Burst::WRAP;
+  // burst total = 64, wrap_lower = 0x1040 (already aligned to 64), wrap_upper = 0x1080.
+  // Beats at 0x1040, 0x1060 (both < 0x1080).
+  slave.push_ar(ar);
+  for (int t = 0; t < 4; ++t) slave.tick();
+  ASSERT_EQ(mem.captured_reads.size(), 2u);
+  EXPECT_EQ(mem.captured_reads[0].addr, 0x1040u);
+  EXPECT_EQ(mem.captured_reads[1].addr, 0x1060u);
+}
+
+TEST(AxiSlave, WrapBurstLen7_8BeatActualWrap) {
+  // 8-beat WRAP, addr mid-window.
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+  axi::ArBeat ar{};
+  ar.id = 9; ar.addr = 0x10C0; ar.len = 7; ar.size = 5; ar.burst = axi::Burst::WRAP;
+  // burst total = 256, wrap_lower = 0x1000, wrap_upper = 0x1100. Beats start at 0x10C0.
+  // beat 0 @ 0x10C0, beat 1 @ 0x10E0, beat 2 @ 0x1100 → wraps → 0x1000, ..., beat 7 @ 0x10A0.
+  slave.push_ar(ar);
+  for (int t = 0; t < 10; ++t) slave.tick();
+  ASSERT_EQ(mem.captured_reads.size(), 8u);
+  EXPECT_EQ(mem.captured_reads[0].addr, 0x10C0u);
+  EXPECT_EQ(mem.captured_reads[1].addr, 0x10E0u);
+  EXPECT_EQ(mem.captured_reads[2].addr, 0x1000u);
+  EXPECT_EQ(mem.captured_reads[7].addr, 0x10A0u);
+}
+
+TEST(AxiSlave, WrapBurstLen15_16Beat) {
+  // 16-beat narrow WRAP — size=4 (bpb=16, burst total = 16*16 = 256).
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+  axi::ArBeat ar{};
+  ar.id = 11; ar.addr = 0x10F0; ar.len = 15; ar.size = 4; ar.burst = axi::Burst::WRAP;
+  // burst total = 256, wrap_lower = 0x1000, wrap_upper = 0x1100. 16 beats of 16 bytes.
+  slave.push_ar(ar);
+  for (int t = 0; t < 20; ++t) slave.tick();
+  ASSERT_EQ(mem.captured_reads.size(), 16u);
+  EXPECT_EQ(mem.captured_reads[0].addr, 0x10F0u);
+  EXPECT_EQ(mem.captured_reads[1].addr, 0x1000u);  // wraps immediately after first beat
+  EXPECT_EQ(mem.captured_reads[15].addr, 0x10E0u);
+}
+
+// Phase B-4: FIXED burst — every beat targets the same address (AXI4 IHI 0022
+// B1.4.3). Memory sees N writes at addr; last-beat-wins semantics emerge
+// from sequential storage updates.
+TEST(AxiSlave, FixedBurstAllBeatsSameAddr) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+  axi::AwBeat aw{};
+  aw.id = 6; aw.addr = 0x1000; aw.len = 3; aw.size = 5; aw.burst = axi::Burst::FIXED;
+  slave.push_aw(aw);
+  for (uint8_t i = 0; i < 4; ++i) {
+    axi::WBeat w{}; w.data.fill(0x10 + i); w.strb = 0xFFFFFFFFu; w.last = (i == 3);
+    slave.push_w(w);
+  }
+  for (int t = 0; t < 8; ++t) slave.tick();
+  ASSERT_EQ(mem.captured_writes.size(), 4u);
+  for (auto& cw : mem.captured_writes) {
+    EXPECT_EQ(cw.addr, 0x1000u);
+  }
+}

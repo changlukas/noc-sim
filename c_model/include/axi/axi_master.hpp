@@ -86,15 +86,17 @@ public:
       auto& rs = it->second;
       const std::size_t bpb = 1ull << rs.txn.size;
       // Lane-positioned bus: byte j on the bus is at lane (byte_lane + j),
-      // where byte_lane = (per-beat addr) mod DATA_BYTES. For INCR the per-beat
-      // addr advances by bpb; for FIXED it stays at txn.addr. Lane room caps
-      // the per-beat payload at DATA_BYTES - byte_lane; any trailing user
-      // bytes that would have fallen off the bus are zero-padded so downstream
-      // packed-buffer offsets stay aligned at (beat * bpb).
-      uint64_t beat_addr = rs.txn.addr + rs.beats_observed * bpb;
-      if (rs.txn.burst == Burst::FIXED) beat_addr = rs.txn.addr;
+      // where byte_lane = (per-beat addr) mod DATA_BYTES. The per-beat addr
+      // is computed by the shared axi::beat_addr() helper (FIXED stays at
+      // txn.addr; INCR advances by bpb; WRAP wraps within the wrap window).
+      // Lane room caps the per-beat payload at DATA_BYTES - byte_lane; any
+      // trailing user bytes that would have fallen off the bus are zero-padded
+      // so downstream packed-buffer offsets stay aligned at (beat * bpb).
+      const uint64_t beat_addr_v = beat_addr(rs.txn.addr, rs.txn.len,
+                                             rs.txn.size, rs.txn.burst,
+                                             rs.beats_observed);
       const std::size_t byte_lane =
-          static_cast<std::size_t>(beat_addr & (DATA_BYTES - 1));
+          static_cast<std::size_t>(beat_addr_v & (DATA_BYTES - 1));
       const std::size_t lane_room =
           (byte_lane < DATA_BYTES) ? (DATA_BYTES - byte_lane) : 0;
       const std::size_t copy_bytes = std::min(bpb, lane_room);
@@ -173,12 +175,14 @@ public:
         const std::size_t bpb = 1ull << ws.txn.size;
         // Lane-positioned bus: byte j of the user payload for this beat is
         // placed at bus lane (byte_lane + j), where byte_lane is derived from
-        // the per-beat address. For aligned size=5 Phase A, byte_lane=0 and
-        // this collapses to the historical compact placement.
-        uint64_t beat_addr = ws.txn.addr + ws.w_pushed_ * bpb;
-        if (ws.txn.burst == Burst::FIXED) beat_addr = ws.txn.addr;
+        // the per-beat address via the shared axi::beat_addr() helper. For
+        // aligned size=5 Phase A INCR, byte_lane=0 and this collapses to the
+        // historical compact placement.
+        const uint64_t beat_addr_v = beat_addr(ws.txn.addr, ws.txn.len,
+                                               ws.txn.size, ws.txn.burst,
+                                               ws.w_pushed_);
         const std::size_t byte_lane =
-            static_cast<std::size_t>(beat_addr & (DATA_BYTES - 1));
+            static_cast<std::size_t>(beat_addr_v & (DATA_BYTES - 1));
         w.data.fill(0);
         // ws.data is packed user bytes: beat b contributes bytes
         // [b*bpb, (b+1)*bpb). They land on bus lanes [byte_lane, byte_lane+bpb)

@@ -34,10 +34,14 @@ public:
     assert(strb_per_beat.size() == beat_count &&
            "Scoreboard: strb_per_beat count mismatch");
     for (std::size_t beat = 0; beat < beat_count; ++beat) {
-      uint64_t beat_addr = wr.addr + beat * bpb;
-      if (wr.burst == Burst::FIXED) beat_addr = wr.addr;
+      // Per-beat address via the shared axi::beat_addr() helper. FIXED keeps
+      // wr.addr (last-beat-wins on the same address); INCR advances by bpb;
+      // WRAP wraps within the wrap window. The fully-qualified call avoids
+      // shadowing with the local 'beat' loop variable.
+      const uint64_t beat_addr_v =
+          axi::beat_addr(wr.addr, wr.len, wr.size, wr.burst, beat);
       const std::size_t byte_lane =
-          static_cast<std::size_t>(beat_addr & (DATA_BYTES - 1));
+          static_cast<std::size_t>(beat_addr_v & (DATA_BYTES - 1));
       const uint32_t strb = strb_per_beat[beat];
       // Cap the byte loop at the bus lane room to avoid shifting uint32_t by
       // >=32 (C++ UB). Mirrors the lane_room/copy_bytes pattern used in
@@ -47,7 +51,7 @@ public:
       const std::size_t j_max = std::min(bpb, lane_room);
       for (std::size_t j = 0; j < j_max; ++j) {
         if ((strb >> (byte_lane + j)) & 0x1u) {
-          expected_[beat_addr + j] = data[beat * bpb + j];
+          expected_[beat_addr_v + j] = data[beat * bpb + j];
         }
       }
     }
@@ -60,12 +64,12 @@ public:
     const std::size_t bpb = 1ull << rr.size;
     const std::size_t beat_count = static_cast<std::size_t>(rr.len) + 1u;
     for (std::size_t beat = 0; beat < beat_count; ++beat) {
-      uint64_t beat_addr = rr.addr + beat * bpb;
-      if (rr.burst == Burst::FIXED) beat_addr = rr.addr;
+      const uint64_t beat_addr_v =
+          axi::beat_addr(rr.addr, rr.len, rr.size, rr.burst, beat);
       for (std::size_t j = 0; j < bpb; ++j) {
         const std::size_t idx = beat * bpb + j;
         if (idx >= rr.data.size()) break;
-        const uint64_t a = beat_addr + j;
+        const uint64_t a = beat_addr_v + j;
         auto it = expected_.find(a);
         const uint8_t exp = (it == expected_.end()) ? 0x00 : it->second;
         if (exp != rr.data[idx]) {

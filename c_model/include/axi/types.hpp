@@ -16,6 +16,41 @@ static_assert(DATA_BYTES * 8 == ni::width::NOC_DATA_WIDTH,
 enum class Burst : uint8_t { FIXED = 0, INCR = 1, WRAP = 2 };
 enum class Resp  : uint8_t { OKAY  = 0, EXOKAY = 1, SLVERR = 2, DECERR = 3 };
 
+// AXI4 per-beat address (IHI 0022, B1.4.3 Address structure of bursts).
+// Single source of truth used by AxiSlave, AxiMaster (W push + R accumulator),
+// and Scoreboard so the FIXED/INCR/WRAP switch is not duplicated.
+//   FIXED: every beat at base_addr.
+//   INCR : base_addr + beat_idx * (1<<size).
+//   WRAP : INCR within [wrap_lower, wrap_upper); wraps to wrap_lower at upper.
+//          wrap_lower = base_addr & ~(total_burst_bytes - 1).
+//          total_burst_bytes = (len+1) * (1<<size). WRAP requires
+//          len ∈ {1,3,7,15} (enforced in parser) → total is a power of 2, so
+//          the mask is well-defined.
+inline uint64_t beat_addr(uint64_t base_addr,
+                          uint8_t  len,
+                          uint8_t  size,
+                          Burst    burst,
+                          std::size_t beat_idx) {
+  const std::size_t bpb = 1ull << size;
+  switch (burst) {
+    case Burst::FIXED:
+      return base_addr;
+    case Burst::INCR:
+      return base_addr + beat_idx * bpb;
+    case Burst::WRAP: {
+      const std::size_t total_burst_bytes =
+          (static_cast<std::size_t>(len) + 1u) * bpb;
+      const uint64_t wrap_lower =
+          base_addr & ~(static_cast<uint64_t>(total_burst_bytes) - 1u);
+      const uint64_t wrap_upper = wrap_lower + total_burst_bytes;
+      const uint64_t naive = base_addr + beat_idx * bpb;
+      return (naive < wrap_upper) ? naive
+                                  : wrap_lower + (naive - wrap_upper);
+    }
+  }
+  return base_addr;  // unreachable
+}
+
 struct AwBeat {
   uint8_t  id;
   uint64_t addr;

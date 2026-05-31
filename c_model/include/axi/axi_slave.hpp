@@ -104,8 +104,20 @@ inline void AxiSlave::tick() {
     if (bounds_set_) {
       std::size_t bpb = 1ull << aw.size;
       std::size_t total = bpb * (static_cast<std::size_t>(aw.len) + 1);
-      bool oob = (aw.addr < bounds_base_) ||
-                 (aw.addr + total > bounds_base_ + bounds_size_);
+      // WRAP confines all beats to [wrap_lower, wrap_upper); check that
+      // window rather than the linear [addr, addr+total). FIXED/INCR span
+      // the linear range.
+      bool oob = false;
+      if (aw.burst == Burst::WRAP) {
+        const uint64_t wrap_lower =
+            aw.addr & ~(static_cast<uint64_t>(total) - 1u);
+        const uint64_t wrap_upper = wrap_lower + total;
+        oob = (wrap_lower < bounds_base_) ||
+              (wrap_upper > bounds_base_ + bounds_size_);
+      } else {
+        oob = (aw.addr < bounds_base_) ||
+              (aw.addr + total > bounds_base_ + bounds_size_);
+      }
       if (oob) {
         b_q_.push_back(BBeat{aw.id, Resp::DECERR, 0});
         // Discard the W beats corresponding to this burst
@@ -128,7 +140,7 @@ inline void AxiSlave::tick() {
     auto& st = active_writes_[front_id];
     std::size_t beat_idx = st.beats_submitted;
     MemWriteReq req{};
-    req.addr = st.aw.addr + beat_idx * (1ull << st.aw.size);
+    req.addr = beat_addr(st.aw.addr, st.aw.len, st.aw.size, st.aw.burst, beat_idx);
     req.data = w_q_.front().data;
     req.strb = w_q_.front().strb;
     req.id   = st.aw.id;
@@ -153,8 +165,17 @@ inline void AxiSlave::tick() {
     if (bounds_set_) {
       std::size_t bpb = 1ull << ar.size;
       std::size_t total = bpb * (static_cast<std::size_t>(ar.len) + 1);
-      bool oob = (ar.addr < bounds_base_) ||
-                 (ar.addr + total > bounds_base_ + bounds_size_);
+      bool oob = false;
+      if (ar.burst == Burst::WRAP) {
+        const uint64_t wrap_lower =
+            ar.addr & ~(static_cast<uint64_t>(total) - 1u);
+        const uint64_t wrap_upper = wrap_lower + total;
+        oob = (wrap_lower < bounds_base_) ||
+              (wrap_upper > bounds_base_ + bounds_size_);
+      } else {
+        oob = (ar.addr < bounds_base_) ||
+              (ar.addr + total > bounds_base_ + bounds_size_);
+      }
       if (oob) {
         for (uint8_t i = 0; i < ar.len + 1; ++i) {
           RBeat rb{}; rb.id = ar.id;
@@ -174,7 +195,8 @@ inline void AxiSlave::tick() {
   for (auto& [id, st] : active_reads_) {
     while (st.beats_submitted < static_cast<std::size_t>(st.ar.len) + 1) {
       MemReadReq req{};
-      req.addr = st.ar.addr + st.beats_submitted * (1ull << st.ar.size);
+      req.addr = beat_addr(st.ar.addr, st.ar.len, st.ar.size, st.ar.burst,
+                           st.beats_submitted);
       req.size = st.ar.size; req.id = st.ar.id;
       req.last = (st.beats_submitted == static_cast<std::size_t>(st.ar.len));
       req.tag  = (static_cast<uint64_t>(id) << 32) | st.beats_submitted;
