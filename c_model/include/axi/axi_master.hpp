@@ -17,6 +17,7 @@ namespace ni::cmodel::axi {
 struct WriteResult {
   uint64_t addr;
   std::vector<uint8_t> data;
+  std::vector<uint32_t> strb_per_beat;
   Resp resp;
   uint8_t id;
   std::size_t scenario_line;
@@ -54,6 +55,7 @@ public:
       if (it == active_writes_.end()) continue;
       if (wcb_) wcb_(WriteResult{it->second.txn.addr,
                                   it->second.data,
+                                  it->second.strb_per_beat,
                                   b->resp,
                                   b->id,
                                   it->second.txn.scenario_line});

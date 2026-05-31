@@ -41,7 +41,7 @@ static IntegrationResult run_scenario(const std::string& yaml_path,
                                         sc.config.max_outstanding_read);
   axi::Scoreboard sb;
   master.on_write_completed([&](const axi::WriteResult& wr) {
-    sb.handle_write_completed(wr, wr.data);
+    sb.handle_write_completed(wr, wr.data, wr.strb_per_beat);
   });
   master.on_read_observed([&](const axi::ReadResult& rr) {
     sb.handle_read_observed(rr);
