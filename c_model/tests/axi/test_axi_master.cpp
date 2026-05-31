@@ -715,3 +715,133 @@ TEST(SplitIntoSubBursts, FixedNoSplit) {
   ASSERT_EQ(subs.size(), 1u);
   EXPECT_EQ(subs[0].burst, axi::Burst::FIXED);
 }
+
+// Phase B-5a: AxiMaster with 4KB-crossing scenario_txn emits multiple AWs
+// (one per sub-burst) sharing the same id. WriteResult fires ONCE after the
+// final sub-burst's B response.
+TEST_F(AxiMasterTest, Cross4KB_EmitsTwoAwsOneWriteResult) {
+  // 8 beats × 32B = 256B starting at 0x0FE0 → 1 beat at 0x0FE0 + 7 beats at
+  // 0x1000. Data file holds 8 × 32 = 256 user bytes.
+  auto wpath = std::string(::testing::TempDir()) + "/w_cross_4kb.txt";
+  {
+    std::ofstream wf(wpath);
+    for (int beat = 0; beat < 8; ++beat) {
+      for (int j = 0; j < 32; ++j) {
+        if (j) wf << ' ';
+        char buf[4];
+        std::snprintf(buf, sizeof(buf), "%02X",
+                      static_cast<unsigned>((beat * 32 + j) & 0xFFu));
+        wf << buf;
+      }
+      wf << '\n';
+    }
+  }
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x0FE0
+    id: 0x4
+    len: 7
+    size: 5
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_cross_4kb.txt");
+
+  int write_callbacks = 0;
+  master.on_write_completed([&](const axi::WriteResult& wr) {
+    ++write_callbacks;
+    EXPECT_EQ(wr.id, 4);
+    EXPECT_EQ(wr.addr, 0x0FE0u) << "WriteResult.addr must be the ORIGINAL "
+                                    "scenario_txn addr, not a sub-burst addr";
+    EXPECT_EQ(wr.len,  7u);
+    EXPECT_EQ(wr.size, 5u);
+    EXPECT_EQ(wr.resp, axi::Resp::OKAY);
+  });
+
+  master.tick();
+  // Two AWs emitted: 1-beat sub-burst at 0x0FE0, then 7-beat sub-burst at 0x1000.
+  ASSERT_EQ(mock.captured_aw.size(), 2u);
+  EXPECT_EQ(mock.captured_aw[0].id,   4);
+  EXPECT_EQ(mock.captured_aw[0].addr, 0x0FE0u);
+  EXPECT_EQ(mock.captured_aw[0].len,  0u);
+  EXPECT_EQ(mock.captured_aw[1].id,   4);
+  EXPECT_EQ(mock.captured_aw[1].addr, 0x1000u);
+  EXPECT_EQ(mock.captured_aw[1].len,  6u);
+  // 8 W beats total, with .last set on beat 0 (end of sub-burst 0) and beat 7.
+  ASSERT_EQ(mock.captured_w.size(), 8u);
+  EXPECT_EQ(mock.captured_w[0].last, true);   // end of sub-burst 0
+  EXPECT_EQ(mock.captured_w[1].last, false);
+  EXPECT_EQ(mock.captured_w[6].last, false);
+  EXPECT_EQ(mock.captured_w[7].last, true);   // end of sub-burst 1
+
+  // Only one B response so far → no callback.
+  mock.queued_b.push_back(axi::BBeat{4, axi::Resp::OKAY, 0});
+  master.tick();
+  EXPECT_EQ(write_callbacks, 0) << "WriteResult must NOT fire after only 1/2 "
+                                    "sub-burst B responses";
+
+  // Second B response → operation complete, single callback.
+  mock.queued_b.push_back(axi::BBeat{4, axi::Resp::OKAY, 0});
+  master.tick();
+  EXPECT_EQ(write_callbacks, 1)
+      << "WriteResult must fire exactly once per scenario_txn";
+  EXPECT_TRUE(master.done());
+}
+
+// Phase B-5a: 4KB-crossing read scenario_txn emits multiple ARs; the master
+// accumulates R beats across sub-bursts into a single ReadResult.
+TEST_F(AxiMasterTest, Cross4KB_EmitsTwoArsOneReadResult) {
+  auto yaml = write_tmp(R"YAML(
+transactions:
+  - op: read
+    addr: 0x0FE0
+    id: 0xA
+    len: 7
+    size: 5
+    burst: INCR
+    dump_file: r.txt
+)YAML");
+
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_cross_4kb_read.txt");
+
+  int read_callbacks = 0;
+  master.on_read_observed([&](const axi::ReadResult& rr) {
+    ++read_callbacks;
+    EXPECT_EQ(rr.id, 0xA);
+    EXPECT_EQ(rr.addr, 0x0FE0u);
+    EXPECT_EQ(rr.len, 7u);
+    EXPECT_EQ(rr.size, 5u);
+  });
+
+  master.tick();
+  ASSERT_EQ(mock.captured_ar.size(), 2u);
+  EXPECT_EQ(mock.captured_ar[0].addr, 0x0FE0u);
+  EXPECT_EQ(mock.captured_ar[0].len,  0u);
+  EXPECT_EQ(mock.captured_ar[1].addr, 0x1000u);
+  EXPECT_EQ(mock.captured_ar[1].len,  6u);
+
+  // Drain sub-burst 0 (1 beat, last=true).
+  {
+    axi::RBeat rb{}; rb.id = 0xA; rb.data.fill(0xAA);
+    rb.resp = axi::Resp::OKAY; rb.last = true;
+    mock.queued_r.push_back(rb);
+  }
+  master.tick();
+  EXPECT_EQ(read_callbacks, 0) << "ReadResult must wait for sub-burst 1";
+
+  // Drain sub-burst 1 (7 beats; last=true on beat 6).
+  for (int i = 0; i < 7; ++i) {
+    axi::RBeat rb{}; rb.id = 0xA; rb.data.fill(0xB0 + i);
+    rb.resp = axi::Resp::OKAY; rb.last = (i == 6);
+    mock.queued_r.push_back(rb);
+  }
+  master.tick();
+  EXPECT_EQ(read_callbacks, 1)
+      << "ReadResult must fire exactly once per scenario_txn";
+  EXPECT_TRUE(master.done());
+}
