@@ -139,5 +139,11 @@ INSTANTIATE_TEST_SUITE_P(
         //   Scoreboard models last-beat-wins per byte via map assignment.
         FixtureParam{"wrap_burst_aligned.yaml",         "wrap_burst_aligned_data.txt",         true,  true},
         FixtureParam{"wrap_burst_actual_wrap.yaml",     "wrap_burst_actual_wrap_data.txt",     true,  true},
-        FixtureParam{"fixed_burst.yaml",                "",                                    false, true}),
+        FixtureParam{"fixed_burst.yaml",                "",                                    false, true},
+        // Phase B-5a: INCR txn at 0x0FE0 size=5 len=7 (256B) crosses the 4KB
+        // boundary at 0x1000. AxiMaster auto-segments into 1-beat + 7-beat
+        // sub-bursts via split_into_sub_bursts. Both addr=0x0FE0 and 0x1000
+        // are 32-byte aligned, so byte_lane=0 throughout — the read dump
+        // matches the packed data file byte-for-byte.
+        FixtureParam{"cross_4kb_auto_split.yaml",       "cross_4kb_auto_split_data.txt",       true,  true}),
     FixtureName{});
