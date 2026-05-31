@@ -27,6 +27,7 @@ struct ScenarioTransaction {
   Burst    burst;
   std::string data_file;
   std::string dump_file;
+  std::string strb_file;  // optional; empty = full WSTRB per beat
   std::size_t scenario_line;
 };
 
@@ -104,6 +105,9 @@ inline Scenario load_scenario(const std::string& path) {
     }
     if (t.op == ScenarioTransaction::Op::Write) t.data_file = txn["data_file"].as<std::string>();
     if (t.op == ScenarioTransaction::Op::Read)  t.dump_file = txn["dump_file"].as<std::string>();
+    if (t.op == ScenarioTransaction::Op::Write && txn["strb_file"]) {
+      t.strb_file = txn["strb_file"].as<std::string>();
+    }
     sc.transactions.push_back(t);
   }
   return sc;
