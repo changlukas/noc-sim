@@ -161,8 +161,6 @@ public:
       // size alignment); byte_lane below uses DATA_BYTES (bus-lane alignment).
       // For Phase A size=5, both coincide; for B-3b narrow they diverge.
       const uint64_t aligned_addr = ws.txn.addr & ~((1ull << ws.txn.size) - 1);
-      const std::size_t first_lane =
-          static_cast<std::size_t>(ws.txn.addr & (DATA_BYTES - 1));
       if (ws.aw_pushed_ == 0) {
         AwBeat aw{};
         aw.id = id; aw.addr = aligned_addr; aw.len = ws.txn.len; aw.size = ws.txn.size;
@@ -192,12 +190,15 @@ public:
           const std::size_t off = ws.w_pushed_ * bpb + j;
           w.data[byte_lane + j] = (off < ws.data.size()) ? ws.data[off] : 0;
         }
-        w.strb = ws.strb_per_beat[ws.w_pushed_];
-        if (ws.w_pushed_ == 0 && first_lane != 0) {
-          const uint32_t prefix_mask =
-              ~static_cast<uint32_t>((1ull << first_lane) - 1);
-          w.strb &= prefix_mask;
-        }
+        // Lane mask: bus lanes [byte_lane, byte_lane + bpb) are enabled. For
+        // size=5 (bpb=32) the shift width matches uint32 — `((1ull<<32)-1)<<0`
+        // equals 0xFFFFFFFF after uint32 truncation, so the formula collapses
+        // to the historical pass-through. For size<5 narrow (aligned OR
+        // unaligned first beat), this is the correct AXI4 lane-positioned
+        // semantic: only lanes serving the current beat are active.
+        const uint32_t lane_mask =
+            static_cast<uint32_t>(((1ull << bpb) - 1) << byte_lane);
+        w.strb = ws.strb_per_beat[ws.w_pushed_] & lane_mask;
         w.last = (ws.w_pushed_ == ws.txn.len);
         if (!slave_.push_w(w)) break;
         ++ws.w_pushed_;

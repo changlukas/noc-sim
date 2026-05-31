@@ -361,7 +361,9 @@ struct UnalignedCase {
   uint64_t    txn_addr;
   uint8_t     size;
   uint64_t    expected_aw_addr;
-  // expected_strb = ~((1 << (txn_addr & (DATA_BYTES-1))) - 1)  (DATA_BYTES = 32)
+  // expected_strb = ((1 << (1<<size)) - 1) << (txn_addr & (DATA_BYTES-1)),
+  // truncated to uint32. AXI4 lane-positioned semantic: only the bus lanes
+  // [byte_lane, byte_lane + bpb) carry valid bytes for this beat.
   uint32_t    expected_strb;
   const char* label;  // GoogleTest case name suffix
 };
@@ -400,9 +402,9 @@ INSTANTIATE_TEST_SUITE_P(
     UnalignedCases, AxiMasterUnalignedP,
     ::testing::Values(
         UnalignedCase{0x1003, 5, 0x1000u, 0xFFFFFFF8u, "Size5_Off3"},
-        UnalignedCase{0x1001, 4, 0x1000u, 0xFFFFFFFEu, "Size4_Off1"},
-        UnalignedCase{0x1007, 3, 0x1000u, 0xFFFFFF80u, "Size3_Off7"},
-        UnalignedCase{0x100F, 2, 0x100Cu, 0xFFFF8000u, "Size2_OffF"},
+        UnalignedCase{0x1001, 4, 0x1000u, 0x0001FFFEu, "Size4_Off1"},
+        UnalignedCase{0x1007, 3, 0x1000u, 0x00007F80u, "Size3_Off7"},
+        UnalignedCase{0x100F, 2, 0x100Cu, 0x00078000u, "Size2_OffF"},
         UnalignedCase{0x101F, 1, 0x101Eu, 0x80000000u, "Size1_Off1F"}),
     [](const ::testing::TestParamInfo<UnalignedCase>& info) {
       return std::string(info.param.label);
