@@ -443,6 +443,47 @@ TEST(AxiSlave, WrapBurstLen15_16Beat) {
   EXPECT_EQ(mem.captured_reads[15].addr, 0x10E0u);
 }
 
+// Phase B-5a: Per-ID FIFO. AXI4 allows multi-outstanding bursts with the same
+// ID provided responses come back in issue order. The slave now keys
+// active_writes_ / active_reads_ as map<id, deque<state>>, so stacked same-id
+// AWs are admitted (no exclusion) and W beats route to the oldest in-flight
+// burst at that id via aw_issue_order_.
+TEST(AxiSlave, SameIdMultiOutstanding_FifoOrder) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  for (int i = 0; i < 3; ++i) {
+    axi::AwBeat aw{};
+    aw.id = 5; aw.addr = 0x1000 + i * 0x40;
+    aw.len = 0; aw.size = 5; aw.burst = axi::Burst::INCR;
+    slave.push_aw(aw);
+    axi::WBeat w{}; w.data.fill(0xA0 + i); w.strb = 0xFFFFFFFFu; w.last = true;
+    slave.push_w(w);
+  }
+  for (int t = 0; t < 5; ++t) slave.tick();
+  ASSERT_EQ(mem.captured_writes.size(), 3u);
+  EXPECT_EQ(mem.captured_writes[0].addr, 0x1000u);
+  EXPECT_EQ(mem.captured_writes[1].addr, 0x1040u);
+  EXPECT_EQ(mem.captured_writes[2].addr, 0x1080u);
+  EXPECT_EQ(mem.captured_writes[0].data[0], 0xA0);
+  EXPECT_EQ(mem.captured_writes[1].data[0], 0xA1);
+  EXPECT_EQ(mem.captured_writes[2].data[0], 0xA2);
+
+  // Drain B responses in submission order; each B should carry id=5.
+  for (std::size_t i = 0; i < 3; ++i) {
+    mem.queued_write_resps.push_back(
+        axi::MemWriteResp{5, axi::Resp::OKAY, mem.captured_writes[i].tag});
+  }
+  for (int t = 0; t < 5; ++t) slave.tick();
+  for (int i = 0; i < 3; ++i) {
+    auto b = slave.pop_b();
+    ASSERT_TRUE(b.has_value()) << "burst " << i;
+    EXPECT_EQ(b->id, 5);
+    EXPECT_EQ(b->resp, axi::Resp::OKAY);
+  }
+}
+
 // Phase B-4: FIXED burst — every beat targets the same address (AXI4 IHI 0022
 // B1.4.3). Memory sees N writes at addr; last-beat-wins semantics emerge
 // from sequential storage updates.

@@ -58,49 +58,62 @@ private:
   std::deque<BBeat>  b_q_;
   std::deque<RBeat>  r_q_;
   std::deque<uint8_t> aw_issue_order_;  // oldest first; for W matching per AXI4
-  std::map<uint8_t, WriteBurstState> active_writes_;
-  std::map<uint8_t, ReadBurstState>  active_reads_;
+  // Per-ID FIFO: AXI4 requires same-ID burst responses to come back in issue
+  // order, so each id maps to a deque of in-flight bursts (front = oldest).
+  // Phase B-5a master can stack same-id sub-bursts (4KB cross auto-split), so
+  // a single-slot map would block. Multi-id concurrency still works via the
+  // map keying — each id has its own FIFO chain.
+  std::map<uint8_t, std::deque<WriteBurstState>> active_writes_;
+  std::map<uint8_t, std::deque<ReadBurstState>>  active_reads_;
   uint64_t bounds_base_ = 0;
   std::size_t bounds_size_ = 0;
   bool bounds_set_ = false;
 };
 
 inline void AxiSlave::tick() {
-  // 1. Drain memory write responses → match by id
+  // 1. Drain memory write responses → match by id, advance OLDEST burst.
+  //    Per-ID FIFO: same-id bursts complete in issue order (AXI4 IHI 0022
+  //    A5.3 — ordering of transactions with the same AXI ID is preserved).
   while (auto resp = memory_port_.pop_write_resp()) {
     auto it = active_writes_.find(resp->id);
-    if (it == active_writes_.end()) continue;
-    auto& st = it->second;
+    if (it == active_writes_.end() || it->second.empty()) continue;
+    auto& st = it->second.front();
     ++st.beats_completed;
     if (static_cast<uint8_t>(resp->resp) > static_cast<uint8_t>(st.worst_resp))
       st.worst_resp = resp->resp;
     if (st.beats_completed == static_cast<std::size_t>(st.aw.len) + 1) {
       b_q_.push_back(BBeat{st.aw.id, st.worst_resp, 0});
-      active_writes_.erase(it);
+      it->second.pop_front();
+      if (it->second.empty()) active_writes_.erase(it);
       // Note: aw_issue_order_.front() was popped when the burst's W beats were
       // fully submitted to memory (step 4), so the W routing for the NEXT
       // queued burst is correct even while this one waits on memory latency.
     }
   }
 
-  // 2. Drain memory read responses → push R beats
+  // 2. Drain memory read responses → push R beats (advance OLDEST per id).
   while (auto rresp = memory_port_.pop_read_resp()) {
     auto it = active_reads_.find(rresp->id);
-    if (it == active_reads_.end()) continue;
-    auto& st = it->second;
+    if (it == active_reads_.end() || it->second.empty()) continue;
+    auto& st = it->second.front();
     RBeat rb{};
     rb.id = st.ar.id; rb.data = rresp->data; rb.resp = rresp->resp;
     rb.last = (st.beats_returned + 1 == static_cast<std::size_t>(st.ar.len) + 1);
     rb.user = 0;
     r_q_.push_back(rb);
     ++st.beats_returned;
-    if (rb.last) active_reads_.erase(it);
+    if (rb.last) {
+      it->second.pop_front();
+      if (it->second.empty()) active_reads_.erase(it);
+    }
   }
 
-  // 3. Start new AW (with burst-atomic OOB pre-check)
+  // 3. Start new AW (with burst-atomic OOB pre-check).
+  //    Per-ID FIFO admits multi-outstanding same-id bursts: just append to
+  //    the id's chain. AXI4 same-id ordering is preserved by FIFO discipline
+  //    in steps 1/4 (B drain + W routing).
   while (!aw_q_.empty()) {
     auto& aw = aw_q_.front();
-    if (active_writes_.count(aw.id)) break;  // wait for same-ID to finish
     if (bounds_set_) {
       std::size_t bpb = 1ull << aw.size;
       std::size_t total = bpb * (static_cast<std::size_t>(aw.len) + 1);
@@ -129,15 +142,27 @@ inline void AxiSlave::tick() {
         continue;
       }
     }
-    active_writes_[aw.id] = WriteBurstState{aw, 0, 0, Resp::OKAY};
+    active_writes_[aw.id].push_back(WriteBurstState{aw, 0, 0, Resp::OKAY});
     aw_issue_order_.push_back(aw.id);
     aw_q_.pop_front();
   }
 
-  // 4. Submit W beats for oldest-issued active write
+  // 4. Submit W beats for oldest-issued active write (per-id FIFO).
+  //    Multi-outstanding same-id: chain.front() may already have its W beats
+  //    fully submitted (and be waiting on B drain). Find the FIRST burst in
+  //    the chain that still has W beats remaining — that is the one currently
+  //    receiving W beats. aw_issue_order_ orders these globally across ids.
   while (!w_q_.empty() && !aw_issue_order_.empty()) {
     uint8_t front_id = aw_issue_order_.front();
-    auto& st = active_writes_[front_id];
+    auto& chain = active_writes_[front_id];
+    WriteBurstState* stp = nullptr;
+    for (auto& cand : chain) {
+      if (cand.beats_submitted < static_cast<std::size_t>(cand.aw.len) + 1) {
+        stp = &cand; break;
+      }
+    }
+    if (!stp) break;  // should not happen — aw_issue_order_ tracks pending W
+    auto& st = *stp;
     std::size_t beat_idx = st.beats_submitted;
     MemWriteReq req{};
     req.addr = beat_addr(st.aw.addr, st.aw.len, st.aw.size, st.aw.burst, beat_idx);
@@ -158,10 +183,11 @@ inline void AxiSlave::tick() {
     }
   }
 
-  // 5. Start new AR (with burst-atomic OOB pre-check)
+  // 5. Start new AR (with burst-atomic OOB pre-check).
+  //    Per-ID FIFO: append same-id ARs to the id's chain. Step 2 (R drain)
+  //    advances FRONT — AXI4 preserves same-id response order.
   while (!ar_q_.empty()) {
     auto& ar = ar_q_.front();
-    if (active_reads_.count(ar.id)) break;
     if (bounds_set_) {
       std::size_t bpb = 1ull << ar.size;
       std::size_t total = bpb * (static_cast<std::size_t>(ar.len) + 1);
@@ -187,21 +213,28 @@ inline void AxiSlave::tick() {
         continue;
       }
     }
-    active_reads_[ar.id] = ReadBurstState{ar, 0, 0};
+    active_reads_[ar.id].push_back(ReadBurstState{ar, 0, 0});
     ar_q_.pop_front();
   }
 
-  // 6. Submit AR beats to memory
-  for (auto& [id, st] : active_reads_) {
-    while (st.beats_submitted < static_cast<std::size_t>(st.ar.len) + 1) {
-      MemReadReq req{};
-      req.addr = beat_addr(st.ar.addr, st.ar.len, st.ar.size, st.ar.burst,
-                           st.beats_submitted);
-      req.size = st.ar.size; req.id = st.ar.id;
-      req.last = (st.beats_submitted == static_cast<std::size_t>(st.ar.len));
-      req.tag  = (static_cast<uint64_t>(id) << 32) | st.beats_submitted;
-      if (!memory_port_.submit_read(req)) break;
-      ++st.beats_submitted;
+  // 6. Submit AR beats to memory.
+  //    For each id, walk the FIFO chain front-to-back: drain the front burst's
+  //    remaining beats before issuing the next one. This preserves the order
+  //    in which the memory side observes per-id reads (AXI4 same-id ordering).
+  for (auto& [id, chain] : active_reads_) {
+    bool backpressure = false;
+    for (auto& st : chain) {
+      if (backpressure) break;
+      while (st.beats_submitted < static_cast<std::size_t>(st.ar.len) + 1) {
+        MemReadReq req{};
+        req.addr = beat_addr(st.ar.addr, st.ar.len, st.ar.size, st.ar.burst,
+                             st.beats_submitted);
+        req.size = st.ar.size; req.id = st.ar.id;
+        req.last = (st.beats_submitted == static_cast<std::size_t>(st.ar.len));
+        req.tag  = (static_cast<uint64_t>(id) << 32) | st.beats_submitted;
+        if (!memory_port_.submit_read(req)) { backpressure = true; break; }
+        ++st.beats_submitted;
+      }
     }
   }
 }
