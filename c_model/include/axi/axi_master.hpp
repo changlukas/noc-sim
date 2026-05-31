@@ -177,7 +177,10 @@ private:
     std::vector<uint32_t> strbs;
     std::string tok;
     while (f >> tok) {
-      strbs.push_back(static_cast<uint32_t>(std::stoul(tok, nullptr, 16)));
+      unsigned long long v = std::stoull(tok, nullptr, 16);
+      if (v > 0xFFFFFFFFull)
+        throw std::runtime_error("AxiMaster: strb_file token out of uint32_t range: " + tok);
+      strbs.push_back(static_cast<uint32_t>(v));
     }
     if (strbs.size() != expected_beats)
       throw std::runtime_error("AxiMaster: strb_file line count " + std::to_string(strbs.size())

@@ -2,6 +2,7 @@
 #pragma once
 #include "axi/axi_master.hpp"
 #include "axi/types.hpp"
+#include <cassert>
 #include <cstddef>
 #include <iomanip>
 #include <map>
@@ -18,15 +19,15 @@ public:
                               const std::vector<uint32_t>& strb_per_beat) {
     if (wr.resp != Resp::OKAY) return;
     const std::size_t bytes_per_beat = DATA_BYTES;
+    assert(data.size() >= strb_per_beat.size() * bytes_per_beat &&
+           "Scoreboard: data buffer too short for strb_per_beat coverage");
     const std::size_t beat_count = strb_per_beat.size();
     for (std::size_t beat = 0; beat < beat_count; ++beat) {
       const uint32_t strb = strb_per_beat[beat];
       for (std::size_t byte_lane = 0; byte_lane < bytes_per_beat; ++byte_lane) {
         if ((strb >> byte_lane) & 0x1u) {
           const std::size_t data_idx = beat * bytes_per_beat + byte_lane;
-          if (data_idx < data.size()) {
-            expected_[wr.addr + data_idx] = data[data_idx];
-          }
+          expected_[wr.addr + data_idx] = data[data_idx];
         }
       }
     }

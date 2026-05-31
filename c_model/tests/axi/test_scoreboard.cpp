@@ -17,9 +17,11 @@ TEST(Scoreboard, NoUpdateOnDecerr) {
 TEST(Scoreboard, MismatchDetected) {
   axi::Scoreboard sb;
   std::vector<uint32_t> strb1(1, 0xFFFF'FFFFu);
+  std::vector<uint8_t> wdata(axi::DATA_BYTES, 0x00u);
+  wdata[0] = 0xAB; wdata[1] = 0xCD; wdata[2] = 0xEF; wdata[3] = 0x12;
   sb.handle_write_completed(
-      axi::WriteResult{0x200, {0xAB, 0xCD, 0xEF, 0x12}, strb1, axi::Resp::OKAY, 1, 1},
-      std::vector<uint8_t>{0xAB, 0xCD, 0xEF, 0x12},
+      axi::WriteResult{0x200, wdata, strb1, axi::Resp::OKAY, 1, 1},
+      wdata,
       strb1);
   sb.handle_read_observed(
       axi::ReadResult{0x200, {0xAB, 0xCD, 0xEE, 0x12}, axi::Resp::OKAY, 1, 2});
@@ -30,9 +32,11 @@ TEST(Scoreboard, MismatchDetected) {
 TEST(Scoreboard, MatchPassesSilent) {
   axi::Scoreboard sb;
   std::vector<uint32_t> strb1(1, 0xFFFF'FFFFu);
+  std::vector<uint8_t> wdata(axi::DATA_BYTES, 0x00u);
+  wdata[0] = 0xDE; wdata[1] = 0xAD; wdata[2] = 0xBE; wdata[3] = 0xEF;
   sb.handle_write_completed(
-      axi::WriteResult{0x300, {0xDE, 0xAD, 0xBE, 0xEF}, strb1, axi::Resp::OKAY, 1, 1},
-      std::vector<uint8_t>{0xDE, 0xAD, 0xBE, 0xEF},
+      axi::WriteResult{0x300, wdata, strb1, axi::Resp::OKAY, 1, 1},
+      wdata,
       strb1);
   sb.handle_read_observed(
       axi::ReadResult{0x300, {0xDE, 0xAD, 0xBE, 0xEF}, axi::Resp::OKAY, 1, 2});

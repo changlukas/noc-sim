@@ -333,3 +333,47 @@ transactions:
       yaml, mock, std::string(::testing::TempDir()) + "/r_lc.txt");
   EXPECT_THROW(master.tick(), std::runtime_error);
 }
+
+TEST_F(AxiMasterTest, StrbFilePropagatesToWChannel) {
+  // 2-beat write with sparse first beat (0x0F) and full second beat (0xFFFFFFFF).
+  // Verify both strb masks ride the W channel in order.
+  auto wpath = std::string(::testing::TempDir()) + "/w_strb_prop.txt";
+  // 2 beats * DATA_BYTES bytes; arbitrary data, content not under test.
+  {
+    std::ofstream wf(wpath);
+    for (int beat = 0; beat < 2; ++beat) {
+      for (int j = 0; j < axi::DATA_BYTES; ++j) {
+        if (j) wf << ' ';
+        char buf[4];
+        std::snprintf(buf, sizeof(buf), "%02X",
+                      static_cast<unsigned>((beat * axi::DATA_BYTES + j) & 0xFFu));
+        wf << buf;
+      }
+      wf << '\n';
+    }
+  }
+  auto spath = std::string(::testing::TempDir()) + "/s_strb_prop.txt";
+  std::ofstream(spath) << "0000000F\nFFFFFFFF\n";
+
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x0
+    id: 0x4
+    len: 1
+    size: 5
+    burst: INCR
+    data_file: )YAML") + wpath + R"YAML(
+    strb_file: )YAML" + spath + "\n");
+
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_strb_prop.txt");
+
+  master.tick();
+  ASSERT_EQ(mock.captured_w.size(), 2u);
+  EXPECT_EQ(mock.captured_w[0].strb, 0x0000000Fu);
+  EXPECT_EQ(mock.captured_w[0].last, false);
+  EXPECT_EQ(mock.captured_w[1].strb, 0xFFFFFFFFu);
+  EXPECT_EQ(mock.captured_w[1].last, true);
+}
