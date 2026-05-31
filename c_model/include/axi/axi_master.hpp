@@ -53,7 +53,12 @@ public:
     while (auto b = slave_.pop_b()) {
       auto it = active_writes_.find(b->id);
       if (it == active_writes_.end()) continue;
-      if (wcb_) wcb_(WriteResult{it->second.txn.addr,
+      // Report the aligned base address: WriteResult.addr names the memory
+      // location where data[0] would land if WSTRB allowed it. The unaligned
+      // prefix is encoded in strb_per_beat[0] (bits 0..first_lane-1 cleared).
+      const uint64_t wr_aligned_addr =
+          it->second.txn.addr & ~((1ull << it->second.txn.size) - 1);
+      if (wcb_) wcb_(WriteResult{wr_aligned_addr,
                                   it->second.data,
                                   it->second.strb_per_beat,
                                   b->resp,
@@ -82,7 +87,12 @@ public:
           read_dump_ << '\n';
         }
         read_dump_.flush();
-        if (rcb_) rcb_(ReadResult{rs.txn.addr, rs.accumulator,
+        // Report aligned base address symmetric to WriteResult: the read
+        // returns full aligned beats; any unaligned-prefix interpretation is
+        // left to higher layers.
+        const uint64_t rr_aligned_addr =
+            rs.txn.addr & ~((1ull << rs.txn.size) - 1);
+        if (rcb_) rcb_(ReadResult{rr_aligned_addr, rs.accumulator,
                                     r->resp, r->id, rs.txn.scenario_line});
         active_reads_.erase(it);
       }
@@ -111,9 +121,17 @@ public:
     }
     // Push AW + W beats for active writes
     for (auto& [id, ws] : active_writes_) {
+      // AXI4 INCR unaligned start (IHI 0022, AMBA AXI Protocol Specification):
+      //   AW.addr is aligned DOWN to the (1<<size) transfer boundary; the
+      //   unaligned-prefix bytes are skipped via WSTRB on the first beat.
+      //   The byte lane carrying the first valid byte is determined by
+      //   addr mod DATA_BYTES (the bus byte-lane convention), not (1<<size).
+      const uint64_t aligned_addr = ws.txn.addr & ~((1ull << ws.txn.size) - 1);
+      const std::size_t first_lane =
+          static_cast<std::size_t>(ws.txn.addr & (DATA_BYTES - 1));
       if (ws.aw_pushed_ == 0) {
         AwBeat aw{};
-        aw.id = id; aw.addr = ws.txn.addr; aw.len = ws.txn.len; aw.size = ws.txn.size;
+        aw.id = id; aw.addr = aligned_addr; aw.len = ws.txn.len; aw.size = ws.txn.size;
         aw.burst = ws.txn.burst;
         if (!slave_.push_aw(aw)) continue;
         ws.aw_pushed_ = 1;
@@ -126,6 +144,11 @@ public:
           w.data[j] = (off < ws.data.size()) ? ws.data[off] : 0;
         }
         w.strb = ws.strb_per_beat[ws.w_pushed_];
+        if (ws.w_pushed_ == 0 && first_lane != 0) {
+          const uint32_t prefix_mask =
+              ~static_cast<uint32_t>((1ull << first_lane) - 1);
+          w.strb &= prefix_mask;
+        }
         w.last = (ws.w_pushed_ == ws.txn.len);
         if (!slave_.push_w(w)) break;
         ++ws.w_pushed_;
@@ -135,7 +158,10 @@ public:
     for (auto& [id, rs] : active_reads_) {
       if (rs.ar_pushed_ == 0) {
         ArBeat ar{};
-        ar.id = id; ar.addr = rs.txn.addr; ar.len = rs.txn.len; ar.size = rs.txn.size;
+        ar.id = id;
+        // Align AR addr DOWN to (1<<size) boundary, symmetric with AW.
+        ar.addr = rs.txn.addr & ~((1ull << rs.txn.size) - 1);
+        ar.len = rs.txn.len; ar.size = rs.txn.size;
         ar.burst = rs.txn.burst;
         if (!slave_.push_ar(ar)) continue;
         rs.ar_pushed_ = 1;

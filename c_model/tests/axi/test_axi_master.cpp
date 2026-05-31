@@ -337,6 +337,132 @@ transactions:
   EXPECT_THROW(master.tick(), std::runtime_error);
 }
 
+// Phase B-2.2: AxiMaster aligns AW.addr DOWN to (1<<size) and masks first-beat
+// WSTRB lanes 0..first_lane-1 where first_lane = txn.addr & (DATA_BYTES - 1).
+
+namespace {
+// Write 32 arbitrary non-zero bytes to a tmp data file and return the path.
+std::string write_32byte_tmp_data(const std::string& tag) {
+  auto path = std::string(::testing::TempDir()) + "/" + tag + ".dat";
+  std::ofstream f(path);
+  for (int j = 0; j < 32; ++j) {
+    if (j) f << ' ';
+    char buf[4];
+    std::snprintf(buf, sizeof(buf), "%02X",
+                  static_cast<unsigned>(0x40u + (j & 0x3Fu)));
+    f << buf;
+  }
+  f << '\n';
+  return path;
+}
+}  // namespace
+
+TEST_F(AxiMasterTest, UnalignedAddrFirstBeatStrbMasked_Size5_Off3) {
+  auto wpath = write_32byte_tmp_data("u_s5_off3");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x1003
+    id: 0x1
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_u_s5_off3.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].addr, 0x1000u);
+  ASSERT_EQ(mock.captured_w.size(), 1u);
+  EXPECT_EQ(mock.captured_w[0].strb, 0xFFFFFFF8u);
+  EXPECT_EQ(mock.captured_w[0].last, true);
+}
+
+TEST_F(AxiMasterTest, UnalignedAddrFirstBeatStrbMasked_Size4_Off1) {
+  auto wpath = write_32byte_tmp_data("u_s4_off1");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x1001
+    id: 0x1
+    len: 0
+    size: 4
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_u_s4_off1.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].addr, 0x1000u);
+  ASSERT_EQ(mock.captured_w.size(), 1u);
+  EXPECT_EQ(mock.captured_w[0].strb, 0xFFFFFFFEu);
+}
+
+TEST_F(AxiMasterTest, UnalignedAddrFirstBeatStrbMasked_Size3_Off7) {
+  auto wpath = write_32byte_tmp_data("u_s3_off7");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x1007
+    id: 0x1
+    len: 0
+    size: 3
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_u_s3_off7.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].addr, 0x1000u);
+  ASSERT_EQ(mock.captured_w.size(), 1u);
+  EXPECT_EQ(mock.captured_w[0].strb, 0xFFFFFF80u);
+}
+
+TEST_F(AxiMasterTest, UnalignedAddrFirstBeatStrbMasked_Size2_OffF) {
+  auto wpath = write_32byte_tmp_data("u_s2_offF");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x100F
+    id: 0x1
+    len: 0
+    size: 2
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_u_s2_offF.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].addr, 0x100Cu);
+  ASSERT_EQ(mock.captured_w.size(), 1u);
+  EXPECT_EQ(mock.captured_w[0].strb, 0xFFFF8000u);
+}
+
+TEST_F(AxiMasterTest, UnalignedAddrFirstBeatStrbMasked_Size1_Off1F) {
+  auto wpath = write_32byte_tmp_data("u_s1_off1F");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x101F
+    id: 0x1
+    len: 0
+    size: 1
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_u_s1_off1F.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].addr, 0x101Eu);
+  ASSERT_EQ(mock.captured_w.size(), 1u);
+  EXPECT_EQ(mock.captured_w[0].strb, 0x80000000u);
+}
+
 TEST_F(AxiMasterTest, StrbFilePropagatesToWChannel) {
   // 2-beat write with sparse first beat (0x0F) and full second beat (0xFFFFFFFF).
   // Verify both strb masks ride the W channel in order.
