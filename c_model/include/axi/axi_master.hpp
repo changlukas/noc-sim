@@ -157,6 +157,9 @@ public:
       //   unaligned-prefix bytes are skipped via WSTRB on the first beat.
       //   The byte lane carrying the first valid byte is determined by
       //   addr mod DATA_BYTES (the bus byte-lane convention), not (1<<size).
+      // Two-alignment scheme: aligned_addr uses (1<<size) for AW.addr (transfer-
+      // size alignment); byte_lane below uses DATA_BYTES (bus-lane alignment).
+      // For Phase A size=5, both coincide; for B-3b narrow they diverge.
       const uint64_t aligned_addr = ws.txn.addr & ~((1ull << ws.txn.size) - 1);
       const std::size_t first_lane =
           static_cast<std::size_t>(ws.txn.addr & (DATA_BYTES - 1));

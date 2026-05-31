@@ -2,6 +2,7 @@
 #pragma once
 #include "axi/axi_master.hpp"
 #include "axi/types.hpp"
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <iomanip>
@@ -38,7 +39,13 @@ public:
       const std::size_t byte_lane =
           static_cast<std::size_t>(beat_addr & (DATA_BYTES - 1));
       const uint32_t strb = strb_per_beat[beat];
-      for (std::size_t j = 0; j < bpb; ++j) {
+      // Cap the byte loop at the bus lane room to avoid shifting uint32_t by
+      // >=32 (C++ UB). Mirrors the lane_room/copy_bytes pattern used in
+      // Memory::perform_read_, AxiMaster W push, and AxiMaster R accumulator.
+      const std::size_t lane_room =
+          (byte_lane < DATA_BYTES) ? (DATA_BYTES - byte_lane) : 0;
+      const std::size_t j_max = std::min(bpb, lane_room);
+      for (std::size_t j = 0; j < j_max; ++j) {
         if ((strb >> (byte_lane + j)) & 0x1u) {
           expected_[beat_addr + j] = data[beat * bpb + j];
         }
