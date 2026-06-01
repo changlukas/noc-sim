@@ -32,3 +32,13 @@ cocotbext-axi is MIT licensed. See <https://github.com/alexforencich/cocotbext-a
 
 This c_model project inherits the MIT terms for the ported algorithms;
 the rest of c_model follows the project's own license (see repo root).
+
+## Phase C — Exclusive Access (AxLOCK + EXOKAY)
+
+Independent design per AXI4 IHI 0022 §A7. cocotbext-axi (MIT) does NOT implement
+exclusive monitor (only carries lock signal). Closest OSS reference is
+ZipCPU/wb2axip AXIDOUBLE (Apache 2.0, Verilog, master-side buffer), used only as
+semantic reference for register/state shape — no code ported.
+
+Files: `axi_slave.hpp` (exclusive_tags_, E1-E6), `protocol_rules.hpp`
+(6 stateless + 1 monitor helper, `compute_tag_range`).

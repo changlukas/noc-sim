@@ -158,5 +158,21 @@ INSTANTIATE_TEST_SUITE_P(
         //   beat enables a different byte-group; scoreboard validates that
         //   only enabled bytes update memory.
         FixtureParam{"narrow_unaligned.yaml",           "",                                    false, true},
-        FixtureParam{"sparse_multibeat.yaml",           "",                                    false, true}),
+        FixtureParam{"sparse_multibeat.yaml",           "",                                    false, true},
+        // Phase C: AXI4 exclusive access (IHI 0022 §A7).
+        // - exclusive_pair_success: matched AR(excl)/AW(excl) pair → EXOKAY;
+        //   memory commits; final verify-read returns the exclusive payload.
+        // - exclusive_intervening_write: AR(excl) → normal AW(same addr, diff
+        //   id) invalidates the tag → exclusive AW returns OKAY, memory NOT
+        //   committed; final read returns the intervening normal write value.
+        // - exclusive_no_prior_read: exclusive AW with no prior AR → silent
+        //   OKAY, no memory commit; subsequent read returns 0s.
+        // - exclusive_wrap_pair_success: 2-beat WRAP exclusive pair → EXOKAY;
+        //   tag range uses wrap window.
+        // file_diff skipped: dump_file emits per-beat bus image, not packed
+        // user-byte layout. Scoreboard validates byte-level correctness.
+        FixtureParam{"exclusive_pair_success.yaml",         "",  false, true},
+        FixtureParam{"exclusive_intervening_write.yaml",    "",  false, true},
+        FixtureParam{"exclusive_no_prior_read.yaml",        "",  false, true},
+        FixtureParam{"exclusive_wrap_pair_success.yaml",    "",  false, true}),
     FixtureName{});
