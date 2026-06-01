@@ -39,6 +39,36 @@
 
 ---
 
+## Phase C audit follow-ups (deferred to future stage)
+
+Verification audit (2026-06-01) found the following Important coverage/quality
+gaps to address in a future stage:
+
+- **A7.2.4 release-build enforcement**: exclusive constraints only checked via
+  AXI_PROTOCOL_ASSERT (debug-only). Release build silently accepts illegal
+  configs. Consider moving the 5 stateless checks into scenario_parser.hpp for
+  unconditional rejection.
+- **Cross-feature coverage gaps**: exclusive + narrow size (all exclusive tests
+  are size=5); WRAP + sparse WSTRB; mixed-lock multi-outstanding; partial-OOB
+  4KB-split DECERR.
+- **Exclusive read byte verification**: ReadResult does not carry lock;
+  scoreboard cannot validate exclusive read returned bytes. Consider adding
+  ReadResult.lock + scoreboard read-side validation.
+- **A4.1.3 unaligned full-width byte-lane drift**: c_model truncates user bytes
+  when unaligned-prefix + lane-positioned span would exceed bus; AXI4 spec
+  requires additional beat. Currently masked by fixture trailing-zero padding.
+  RTL co-sim will surface this drift.
+- **Positional aggregate-init brittleness**: WriteResult, ReadResult,
+  WriteBurstState, ExclusiveTag all use positional `{...}` init across many
+  callsites. Future field additions risk silent mis-binding. Consider migrating
+  to designated initializers (C++20) or factory functions.
+- **ExclusiveWRAP_TagRangeIsWrapWindow weak coverage**: cannot distinguish
+  WRAP-branch from INCR-branch arithmetic when EXCLUSIVE_ALIGN forces
+  wrap_lower==addr. Acceptable but worth a non-exclusive WRAP variant if test
+  pool expands.
+
+---
+
 ## 下一步：Stage 3 NoC integration（或 Phase D 視 roadmap）
 
 - DPI bridge → 解鎖 handshake-level rules (`*_VALID_STABLE` 等)；SV testbench + Verilator integration

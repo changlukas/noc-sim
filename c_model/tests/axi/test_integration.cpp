@@ -150,14 +150,16 @@ INSTANTIATE_TEST_SUITE_P(
         // matches the packed data file byte-for-byte.
         FixtureParam{"cross_4kb_auto_split.yaml",       "cross_4kb_auto_split_data.txt",       true,  true},
         // Phase B-5b combined fixtures.
-        // - narrow_unaligned: aligned narrow multi-beat (addr=0x1004, size=2,
-        //   len=3). Read dump is bus-image-per-beat, not packed, so file diff
-        //   is skipped; scoreboard validates byte equivalence.
+        // - narrow_aligned_multibeat: aligned narrow multi-beat (addr=0x1004,
+        //   size=2, len=3). Read dump is bus-image-per-beat, not packed, so
+        //   file diff is skipped; scoreboard validates byte equivalence.
+        //   (Renamed from narrow_unaligned.yaml in Phase C audit D1-1 —
+        //   addr=0x1004 is (1<<size)=4-aligned, not unaligned.)
         // - sparse_multibeat: 4-beat size=5 burst with per-beat sparse WSTRB
         //   patterns (0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000). Each
         //   beat enables a different byte-group; scoreboard validates that
         //   only enabled bytes update memory.
-        FixtureParam{"narrow_unaligned.yaml",           "",                                    false, true},
+        FixtureParam{"narrow_aligned_multibeat.yaml",   "",                                    false, true},
         FixtureParam{"sparse_multibeat.yaml",           "",                                    false, true},
         // Phase C: AXI4 exclusive access (IHI 0022 §A7).
         // - exclusive_pair_success: matched AR(excl)/AW(excl) pair → EXOKAY;

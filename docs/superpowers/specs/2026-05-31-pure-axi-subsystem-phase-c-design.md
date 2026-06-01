@@ -141,15 +141,20 @@ void handle_write_completed(const WriteResult& wr, ...) {
 
 ## 4 AxiSlave monitor state machine
 
-### Per-tick event order (fixed by Phase B AxiSlave::tick() steps)
-1. **B drain** (E6)
-2. **R drain** (E5)
-3. **AR admit** (E1)
-4. **AW admit** (E2 or E3)
-5. **W submit** (E4)
-6. forward to memory_port
+### Per-tick event order (Phase B AxiSlave::tick() steps)
+1. **B drain** (E6 normal / EXOKAY path; memory write resp → BBeat)
+2. **R drain** (E5: decrement pending_rlasts, ready=true on last)
+3. **AW admit** (E2 normal-overlap erase or E3 exclusive match + erase)
+4. **W submit** (E4: suppress memory submit on failed exclusive)
+5. **Failed-exclusive synthetic B drain** (E6 OKAY path for suppressed bursts)
+6. **AR admit** (E1: set tag, pending_rlasts = in-flight ARs + 1)
+7. **AR submit to memory** (forward beats per per-id FIFO)
 
-This order ensures a normal AW in the same tick as an exclusive AR does not clear a tag that was just set (E1 happens after E2).
+Ordering invariant: AW admit (step 3) precedes AR admit (step 6) within a
+single tick, so a normal AW in this tick observes the OLD exclusive_tags_
+snapshot (from the previous tick), not a tag that an exclusive AR sets later
+in the same tick. Conversely, an exclusive AR admitted in tick N is visible
+to AWs starting in tick N+1.
 
 ### 6 events
 

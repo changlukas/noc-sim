@@ -834,6 +834,69 @@ TEST(AxiSlaveExclusive, ExclusiveAR_SameId_SecondOverwritesFirst) {
   EXPECT_FALSE(tag.ready) << "the new tag starts not-ready";
 }
 
+// Audit fix D3-2 regression: when a 2nd exclusive AR with the same ID arrives
+// while the 1st AR's R is still in flight, the 1st AR's RLAST must NOT promote
+// the new tag to ready. The new tag should only become ready after its OWN
+// RLAST. pending_rlasts accounts for in-flight RLASTs ahead of the new tag.
+TEST(AxiSlaveExclusive, ExclusiveAR_SameId_RaceBetweenOverwriteAndOldRLAST) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  // 1st exclusive AR — admit and submit to memory, but do NOT drain R yet.
+  push_exclusive_ar(slave, /*id=*/5, /*addr=*/0x1000);
+  slave.tick();
+  ASSERT_TRUE(slave.has_exclusive_tag(5));
+  // Tag's own AR is the only one in flight → pending_rlasts == 1.
+  EXPECT_EQ(slave.exclusive_tag_pending_rlasts(5), 1u);
+  EXPECT_FALSE(slave.exclusive_tag_ready(5));
+  ASSERT_EQ(mem.captured_reads.size(), 1u);
+
+  // 2nd exclusive AR (same id, different addr) admitted BEFORE 1st R completes.
+  // The 1st AR is still queued in active_reads_[5], so E1 must set the NEW
+  // tag's pending_rlasts to (1 in-flight + 1 self) = 2.
+  push_exclusive_ar(slave, /*id=*/5, /*addr=*/0x1080);
+  slave.tick();
+  ASSERT_TRUE(slave.has_exclusive_tag(5));
+  auto tag_after_overwrite = slave.peek_exclusive_tag(5);
+  EXPECT_EQ(tag_after_overwrite.addr_start, 0x1080u)
+      << "second exclusive AR must overwrite the per-id tag (§A7.2.3)";
+  EXPECT_FALSE(tag_after_overwrite.ready);
+  EXPECT_EQ(slave.exclusive_tag_pending_rlasts(5), 2u)
+      << "new tag must wait for both the in-flight 1st RLAST and its own RLAST";
+
+  // 2nd AR's memory submit — both reads are now queued.
+  ASSERT_GE(mem.captured_reads.size(), 2u);
+
+  // Push memory R responses: 1st AR's RLAST FIRST.
+  axi::MemReadResp r1{};
+  r1.id = 5; r1.data.fill(0xA0); r1.resp = axi::Resp::OKAY;
+  r1.last = true; r1.tag = mem.captured_reads[0].tag;
+  mem.queued_read_resps.push_back(r1);
+  slave.tick();
+  while (auto rb = slave.pop_r()) { (void)rb; }
+
+  // After the OLD AR's RLAST: pending_rlasts must decrement to 1, NOT promote
+  // the new tag to ready. This is the core race the fix addresses — pre-fix
+  // code unconditionally set ready=true here.
+  ASSERT_TRUE(slave.has_exclusive_tag(5));
+  EXPECT_EQ(slave.exclusive_tag_pending_rlasts(5), 1u);
+  EXPECT_FALSE(slave.exclusive_tag_ready(5))
+      << "1st AR's RLAST must not promote the 2nd AR's tag (bug pre-fix)";
+
+  // Push 2nd AR's RLAST — only NOW should the tag become ready.
+  axi::MemReadResp r2{};
+  r2.id = 5; r2.data.fill(0xB0); r2.resp = axi::Resp::OKAY;
+  r2.last = true; r2.tag = mem.captured_reads[1].tag;
+  mem.queued_read_resps.push_back(r2);
+  slave.tick();
+  while (auto rb = slave.pop_r()) { (void)rb; }
+
+  EXPECT_EQ(slave.exclusive_tag_pending_rlasts(5), 0u);
+  EXPECT_TRUE(slave.exclusive_tag_ready(5))
+      << "tag ready only after its OWN AR's RLAST has arrived";
+}
+
 TEST(AxiSlaveExclusive, DifferentId_ExclusiveAW_DoesNotAffectOtherTag) {
   test::MockMemoryPort mem;
   axi::AxiSlave slave(mem);

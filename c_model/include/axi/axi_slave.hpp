@@ -24,6 +24,11 @@ struct ExclusiveTag {
   uint8_t  cache = 0;
   uint8_t  prot  = 0;
   bool     ready = false;  // set on RLAST; gates exclusive-write match
+  // Number of RLASTs that must still arrive before this tag becomes ready.
+  // Set at E1 (AR admit) to (active_reads_[id].size() + 1) so any RLASTs from
+  // older same-id ARs still in flight do not prematurely promote a newly-set
+  // tag — only the tag's own AR's RLAST takes it to ready.
+  std::size_t pending_rlasts = 0;
 };
 
 class AxiSlave {
@@ -65,6 +70,11 @@ public:
   }
   ExclusiveTag peek_exclusive_tag(uint8_t id) const {
     return exclusive_tags_.at(id);
+  }
+  // Phase C audit fix (D3-2): expose pending-RLAST counter so the race
+  // regression test can verify the tag-promotion accounting end to end.
+  std::size_t exclusive_tag_pending_rlasts(uint8_t id) const {
+    return exclusive_tags_.at(id).pending_rlasts;
   }
 
 private:
@@ -173,9 +183,18 @@ inline void AxiSlave::tick() {
       // Phase C — E5: an exclusive AR's tag becomes ready on RLAST so a
       // following exclusive AW can match it (§A7.2.3). Only an existing tag
       // for this id is promoted; absent tag (normal AR) is left alone.
+      //
+      // Audit fix (D3-2): when a 2nd exclusive AR with the same ID overwrites
+      // an in-flight tag, the in-flight AR's RLAST must not falsely promote
+      // the NEW tag. pending_rlasts is set at E1 to (in-flight ARs + self) so
+      // every same-id RLAST decrements once; only when the counter reaches 0
+      // has the tag's own AR's RLAST arrived.
       auto tag_it = exclusive_tags_.find(rb.id);
-      if (tag_it != exclusive_tags_.end()) {
-        tag_it->second.ready = true;
+      if (tag_it != exclusive_tags_.end() && tag_it->second.pending_rlasts > 0) {
+        --tag_it->second.pending_rlasts;
+        if (tag_it->second.pending_rlasts == 0) {
+          tag_it->second.ready = true;
+        }
       }
       it->second.pop_front();
       if (it->second.empty()) active_reads_.erase(it);
@@ -455,9 +474,26 @@ inline void AxiSlave::tick() {
           rules::check_exclusive_burst_not_fixed(ar_lock, ar.burst),
           "EXCLUSIVE_BURST_FIXED: AR exclusive burst must not be FIXED");
       auto [start, end] = rules::compute_tag_range(ar);
-      exclusive_tags_[ar.id] = ExclusiveTag{start, end, ar.len, ar.size,
-                                              ar.burst, ar.cache, ar.prot,
-                                              /*ready=*/false};
+      ExclusiveTag tag{};
+      tag.addr_start     = start;
+      tag.addr_end       = end;
+      tag.len            = ar.len;
+      tag.size           = ar.size;
+      tag.burst          = ar.burst;
+      tag.cache          = ar.cache;
+      tag.prot           = ar.prot;
+      tag.ready          = false;
+      // E1 runs BEFORE the AR is pushed to active_reads_[ar.id] below, so the
+      // current chain size counts only OLDER same-id ARs still in flight; the
+      // "+1" represents the just-being-admitted AR whose RLAST will close out
+      // the new tag. If an old same-id tag was present (per §A7.2.3 it gets
+      // silently overwritten), its pending counter is discarded with it —
+      // each in-flight AR's RLAST decrements whatever tag is currently mapped.
+      auto chain_it = active_reads_.find(ar.id);
+      const std::size_t in_flight =
+          (chain_it == active_reads_.end()) ? 0u : chain_it->second.size();
+      tag.pending_rlasts = in_flight + 1u;
+      exclusive_tags_[ar.id] = tag;
     }
     active_reads_[ar.id].push_back(ReadBurstState{ar, 0, 0});
     ar_q_.pop_front();
