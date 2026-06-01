@@ -26,7 +26,14 @@ public:
   void handle_write_completed(const WriteResult& wr,
                               const std::vector<uint8_t>& data,
                               const std::vector<uint32_t>& strb_per_beat) {
-    if (wr.resp != Resp::OKAY) return;
+    // Skip memory-error completions (slave never reached memory).
+    if (wr.resp == Resp::DECERR || wr.resp == Resp::SLVERR) return;
+    // Phase C: a failed exclusive write (AxLOCK=Exclusive that did not earn
+    // EXOKAY at the slave) returns OKAY without committing to memory per
+    // IHI 0022 §A7.2.3. Skip the expected_ update so the next read still
+    // observes the pre-attempt value. A successful exclusive (EXOKAY) and a
+    // normal write (OKAY) both fall through to commit.
+    if (wr.lock == LockType::Exclusive && wr.resp == Resp::OKAY) return;
     const std::size_t bpb = 1ull << wr.size;
     const std::size_t beat_count = static_cast<std::size_t>(wr.len) + 1u;
     assert(data.size() >= beat_count * bpb &&

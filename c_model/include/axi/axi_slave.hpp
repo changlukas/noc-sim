@@ -9,6 +9,22 @@
 
 namespace ni::cmodel::axi {
 
+// AXI4 IHI 0022 §A7.2.4 exclusive access tag, recorded by the slave's
+// exclusive monitor when an exclusive AR is admitted. A subsequent exclusive
+// AW on the same ID matches against the recorded attributes (address range,
+// length, size, burst, cache, protection); a mismatch — or any intervening
+// normal AW that overlaps tag's address range — invalidates the tag.
+struct ExclusiveTag {
+  uint64_t addr_start = 0;  // inclusive
+  uint64_t addr_end   = 0;  // exclusive
+  uint8_t  len = 0;
+  uint8_t  size = 0;
+  Burst    burst = Burst::INCR;
+  uint8_t  cache = 0;
+  uint8_t  prot  = 0;
+  bool     ready = false;  // set on RLAST; gates exclusive-write match
+};
+
 class AxiSlave {
 public:
   explicit AxiSlave(IMemoryPort& memory_port, std::size_t channel_queue_depth = 32)
@@ -38,12 +54,31 @@ public:
   std::size_t b_q_size()  const { return b_q_.size();  }
   std::size_t r_q_size()  const { return r_q_.size();  }
 
+  // Phase C: exclusive-monitor inspection helpers (unit-test surface).
+  bool has_exclusive_tag(uint8_t id) const {
+    return exclusive_tags_.find(id) != exclusive_tags_.end();
+  }
+  bool exclusive_tag_ready(uint8_t id) const {
+    auto it = exclusive_tags_.find(id);
+    return it != exclusive_tags_.end() && it->second.ready;
+  }
+  ExclusiveTag peek_exclusive_tag(uint8_t id) const {
+    return exclusive_tags_.at(id);
+  }
+  bool peek_b_queue_empty() const { return b_q_.empty(); }
+  const BBeat& peek_b_queue_front() const { return b_q_.front(); }
+
 private:
   struct WriteBurstState {
     AwBeat aw;
     std::size_t beats_submitted = 0;
     std::size_t beats_completed = 0;
     Resp worst_resp = Resp::OKAY;  // accumulate worst across burst
+    // Phase C: locked-in at AW admission. is_exclusive=true means W beats are
+    // gated (E4: suppress memory submit when !exclusive_match), and the B
+    // response carries EXOKAY / OKAY based on exclusive_match (E6).
+    bool is_exclusive    = false;
+    bool exclusive_match = false;
   };
   struct ReadBurstState {
     ArBeat ar;
@@ -66,9 +101,29 @@ private:
   // map keying — each id has its own FIFO chain.
   std::map<uint8_t, std::deque<WriteBurstState>> active_writes_;
   std::map<uint8_t, std::deque<ReadBurstState>>  active_reads_;
+  // Phase C: per-ID exclusive monitor (IHI 0022 §A7.2). At most one tag per
+  // ID; admitted on exclusive AR (E1), invalidated on overlapping normal AW
+  // (E2) or on exclusive AW lookup (E3), turned ready on RLAST (E5).
+  std::map<uint8_t, ExclusiveTag> exclusive_tags_;
   uint64_t bounds_base_ = 0;
   std::size_t bounds_size_ = 0;
   bool bounds_set_ = false;
+
+  // Helper: compute the tag's [addr_start, addr_end) range from an AW/AR beat.
+  // INCR/FIXED → linear [addr, addr + total). WRAP → [wrap_lower, wrap_upper).
+  // Caller must ensure exclusive-rule preconditions (EXCLUSIVE_POW2 +
+  // EXCLUSIVE_ALIGN) hold; otherwise the wrap_lower mask is undefined.
+  template <typename Beat>
+  static std::pair<uint64_t, uint64_t> compute_tag_range(const Beat& b) {
+    const std::size_t bpb = 1ull << b.size;
+    const std::size_t total = (static_cast<std::size_t>(b.len) + 1u) * bpb;
+    if (b.burst == Burst::WRAP) {
+      const uint64_t wrap_lower =
+          b.addr & ~(static_cast<uint64_t>(total) - 1u);
+      return {wrap_lower, wrap_lower + total};
+    }
+    return {b.addr, b.addr + total};
+  }
 };
 
 inline void AxiSlave::tick() {
@@ -90,7 +145,20 @@ inline void AxiSlave::tick() {
       AXI_PROTOCOL_ASSERT(rules::check_w_before_b(
                               st.beats_submitted == static_cast<std::size_t>(st.aw.len) + 1u),
                           "W_BEFORE_B: B response fired before all W beats submitted");
-      b_q_.push_back(BBeat{st.aw.id, st.worst_resp, 0});
+      // Phase C — E6: response priority. Memory error (SLVERR/DECERR) trumps
+      // exclusive status. Otherwise an exclusive AW with matched tag returns
+      // EXOKAY; everything else (normal AW, or exclusive with no-match — but
+      // no-match is suppressed in step 4 / drained in step 4b) returns
+      // worst_resp (defaults to OKAY).
+      Resp final_resp;
+      if (st.worst_resp == Resp::DECERR || st.worst_resp == Resp::SLVERR) {
+        final_resp = st.worst_resp;
+      } else if (st.is_exclusive && st.exclusive_match) {
+        final_resp = Resp::EXOKAY;
+      } else {
+        final_resp = st.worst_resp;  // OKAY for normal writes
+      }
+      b_q_.push_back(BBeat{st.aw.id, final_resp, 0});
       it->second.pop_front();
       if (it->second.empty()) active_writes_.erase(it);
       // Note: aw_issue_order_.front() was popped when the burst's W beats were
@@ -119,6 +187,13 @@ inline void AxiSlave::tick() {
     r_q_.push_back(rb);
     ++st.beats_returned;
     if (rb.last) {
+      // Phase C — E5: an exclusive AR's tag becomes ready on RLAST so a
+      // following exclusive AW can match it (§A7.2.3). Only an existing tag
+      // for this id is promoted; absent tag (normal AR) is left alone.
+      auto tag_it = exclusive_tags_.find(rb.id);
+      if (tag_it != exclusive_tags_.end()) {
+        tag_it->second.ready = true;
+      }
       it->second.pop_front();
       if (it->second.empty()) active_reads_.erase(it);
     }
@@ -168,7 +243,79 @@ inline void AxiSlave::tick() {
         continue;
       }
     }
-    active_writes_[aw.id].push_back(WriteBurstState{aw, 0, 0, Resp::OKAY});
+    // Phase C — E2/E3: exclusive-monitor side-effects at AW admission.
+    //   E2 normal AW (lock=0): erase every tag whose address window overlaps
+    //                          this AW's effective address range (§A7.2.3:
+    //                          any non-exclusive write that may affect the
+    //                          monitored region invalidates the tag).
+    //   E3 exclusive AW (lock=1): look up the per-ID tag; check attributes
+    //                             match (delegated to protocol_rules helper);
+    //                             record match-or-not and ERASE the tag
+    //                             regardless of match — a single exclusive
+    //                             AW consumes the reservation per §A7.2.3.
+    // exclusive_match feeds W submit (E4: suppress memory_port on no-match)
+    // and B drain (E6: EXOKAY on match, OKAY on no-match).
+    AXI_PROTOCOL_ASSERT(rules::check_lock_encoding(aw.lock),
+                        "LOCK_ENCODING: AW.lock must be 0 or 1");
+    const auto aw_lock = static_cast<LockType>(aw.lock);
+    bool is_exclusive_write = false;
+    bool exclusive_match    = false;
+    if (aw_lock == LockType::Exclusive) {
+      AXI_PROTOCOL_ASSERT(
+          rules::check_exclusive_total_bytes_le_max(aw_lock, aw.len, aw.size),
+          "EXCLUSIVE_TOTAL_BYTES: AW exclusive total bytes must be <= 128");
+      AXI_PROTOCOL_ASSERT(
+          rules::check_exclusive_total_beats_le_max(aw_lock, aw.len),
+          "EXCLUSIVE_TOTAL_BEATS: AW exclusive total beats must be <= 16");
+      AXI_PROTOCOL_ASSERT(
+          rules::check_exclusive_total_pow2(aw_lock, aw.len),
+          "EXCLUSIVE_POW2: AW exclusive total beats (len+1) must be a power of 2");
+      AXI_PROTOCOL_ASSERT(
+          rules::check_exclusive_addr_aligned_to_total(aw_lock, aw.addr,
+                                                       aw.len, aw.size),
+          "EXCLUSIVE_ALIGN: AW exclusive addr must align to total burst bytes");
+      AXI_PROTOCOL_ASSERT(
+          rules::check_exclusive_burst_not_fixed(aw_lock, aw.burst),
+          "EXCLUSIVE_BURST_FIXED: AW exclusive burst must not be FIXED");
+      is_exclusive_write = true;
+      auto tag_it = exclusive_tags_.find(aw.id);
+      if (tag_it != exclusive_tags_.end()) {
+        exclusive_match =
+            rules::check_exclusive_write_matches_read_tag(tag_it->second, aw);
+        exclusive_tags_.erase(tag_it);  // consume regardless of match
+      }
+    } else {
+      // E2: normal AW invalidates any tag whose monitored window overlaps.
+      // FIXED reuses one bus word; INCR/WRAP span the full burst window.
+      const std::size_t aw_bpb = 1ull << aw.size;
+      const std::size_t aw_total =
+          (static_cast<std::size_t>(aw.len) + 1u) * aw_bpb;
+      uint64_t aw_start, aw_end;
+      if (aw.burst == Burst::WRAP) {
+        aw_start = aw.addr & ~(static_cast<uint64_t>(aw_total) - 1u);
+        aw_end   = aw_start + aw_total;
+      } else if (aw.burst == Burst::FIXED) {
+        aw_start = aw.addr;
+        aw_end   = aw.addr + aw_bpb;
+      } else {  // INCR
+        aw_start = aw.addr;
+        aw_end   = aw.addr + aw_total;
+      }
+      for (auto it = exclusive_tags_.begin(); it != exclusive_tags_.end(); ) {
+        const auto& tag = it->second;
+        const bool overlap =
+            aw_start < tag.addr_end && tag.addr_start < aw_end;
+        if (overlap) {
+          it = exclusive_tags_.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
+    WriteBurstState st{aw, 0, 0, Resp::OKAY};
+    st.is_exclusive    = is_exclusive_write;
+    st.exclusive_match = exclusive_match;
+    active_writes_[aw.id].push_back(st);
     aw_issue_order_.push_back(aw.id);
     aw_q_.pop_front();
   }
@@ -208,6 +355,21 @@ inline void AxiSlave::tick() {
     req.id   = st.aw.id;
     req.last = w_q_.front().last;
     req.tag  = (static_cast<uint64_t>(front_id) << 32) | beat_idx;
+    // Phase C — E4: a failed exclusive write must NOT commit to memory
+    // (§A7.2.3). Drop the W beat from w_q_ and advance both beats_submitted
+    // and beats_completed (synthetic completion — no memory_port traffic).
+    // The terminal B response is emitted later in step 4b respecting per-ID
+    // FIFO order (so any preceding same-id burst still waiting on memory B
+    // drains first).
+    if (st.is_exclusive && !st.exclusive_match) {
+      ++st.beats_submitted;
+      ++st.beats_completed;
+      w_q_.pop_front();
+      if (st.beats_submitted == static_cast<std::size_t>(st.aw.len) + 1) {
+        aw_issue_order_.pop_front();
+      }
+      continue;
+    }
     if (!memory_port_.submit_write(req)) break;  // retry next tick
     ++st.beats_submitted;
     w_q_.pop_front();
@@ -218,6 +380,35 @@ inline void AxiSlave::tick() {
       aw_issue_order_.pop_front();
       // Continue the loop: a subsequent burst may have W beats already queued.
     }
+  }
+
+  // 4b. Phase C — emit B for failed exclusive writes (E6 partial: no-match).
+  //     These bursts never reach memory_port_, so step 1 cannot drain them.
+  //     Walk each id's chain front-to-back: drain any prefix of bursts whose
+  //     synthetic completion is done. Stop at the first burst still in flight
+  //     so per-id FIFO ordering is preserved (a normal burst ahead of a
+  //     failed-exclusive in the chain still serializes its memory B first).
+  for (auto it = active_writes_.begin(); it != active_writes_.end(); ) {
+    auto& chain = it->second;
+    while (!chain.empty()) {
+      auto& head = chain.front();
+      const bool head_complete =
+          head.beats_completed == static_cast<std::size_t>(head.aw.len) + 1u;
+      if (!head_complete) break;
+      // Only failed-exclusive bursts get drained here; normal/EXOKAY paths
+      // are handled in step 1 when memory's MemWriteResp arrives.
+      if (!(head.is_exclusive && !head.exclusive_match)) break;
+      AXI_PROTOCOL_ASSERT(
+          rules::check_w_before_b(head.beats_submitted ==
+                                  static_cast<std::size_t>(head.aw.len) + 1u),
+          "W_BEFORE_B: failed exclusive must drain all W beats first");
+      // Failed exclusive → OKAY (per §A7.2.3); no memory error possible since
+      // memory was never accessed.
+      b_q_.push_back(BBeat{head.aw.id, Resp::OKAY, 0});
+      chain.pop_front();
+    }
+    if (chain.empty()) it = active_writes_.erase(it);
+    else ++it;
   }
 
   // 5. Start new AR (with burst-atomic OOB pre-check).
@@ -259,6 +450,36 @@ inline void AxiSlave::tick() {
         ar_q_.pop_front();
         continue;
       }
+    }
+    // Phase C — E1: admit exclusive AR (lock=1) → record tag (ready=false).
+    // Per-ID; a same-id second exclusive AR overwrites the previous tag per
+    // §A7.2.3 ("a master can only have one outstanding exclusive read per
+    // ID"). The tag becomes ready on RLAST (E5) and is consumed/erased on the
+    // matching exclusive AW (E3) or an overlapping normal AW (E2).
+    AXI_PROTOCOL_ASSERT(rules::check_lock_encoding(ar.lock),
+                        "LOCK_ENCODING: AR.lock must be 0 or 1");
+    const auto ar_lock = static_cast<LockType>(ar.lock);
+    if (ar_lock == LockType::Exclusive) {
+      AXI_PROTOCOL_ASSERT(
+          rules::check_exclusive_total_bytes_le_max(ar_lock, ar.len, ar.size),
+          "EXCLUSIVE_TOTAL_BYTES: AR exclusive total bytes must be <= 128");
+      AXI_PROTOCOL_ASSERT(
+          rules::check_exclusive_total_beats_le_max(ar_lock, ar.len),
+          "EXCLUSIVE_TOTAL_BEATS: AR exclusive total beats must be <= 16");
+      AXI_PROTOCOL_ASSERT(
+          rules::check_exclusive_total_pow2(ar_lock, ar.len),
+          "EXCLUSIVE_POW2: AR exclusive total beats (len+1) must be a power of 2");
+      AXI_PROTOCOL_ASSERT(
+          rules::check_exclusive_addr_aligned_to_total(ar_lock, ar.addr,
+                                                       ar.len, ar.size),
+          "EXCLUSIVE_ALIGN: AR exclusive addr must align to total burst bytes");
+      AXI_PROTOCOL_ASSERT(
+          rules::check_exclusive_burst_not_fixed(ar_lock, ar.burst),
+          "EXCLUSIVE_BURST_FIXED: AR exclusive burst must not be FIXED");
+      auto [start, end] = compute_tag_range(ar);
+      exclusive_tags_[ar.id] = ExclusiveTag{start, end, ar.len, ar.size,
+                                              ar.burst, ar.cache, ar.prot,
+                                              /*ready=*/false};
     }
     active_reads_[ar.id].push_back(ReadBurstState{ar, 0, 0});
     ar_q_.pop_front();

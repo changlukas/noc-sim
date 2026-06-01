@@ -12,6 +12,7 @@ TEST(Scoreboard, NoUpdateOnDecerr) {
   std::vector<uint32_t> strb1(1, 0xFFFF'FFFFu);
   sb.handle_write_completed(
       axi::WriteResult{0x100, /*size*/5, /*len*/0, axi::Burst::INCR,
+                       axi::LockType::Normal,
                        {0xAB, 0xCD, 0xEF, 0x12}, strb1, axi::Resp::DECERR, 1, 1},
       std::vector<uint8_t>{0xAB, 0xCD, 0xEF, 0x12},
       strb1);
@@ -28,6 +29,7 @@ TEST(Scoreboard, MismatchDetected) {
   wdata[0] = 0xAB; wdata[1] = 0xCD; wdata[2] = 0xEF; wdata[3] = 0x12;
   sb.handle_write_completed(
       axi::WriteResult{0x200, /*size*/5, /*len*/0, axi::Burst::INCR,
+                       axi::LockType::Normal,
                        wdata, strb1, axi::Resp::OKAY, 1, 1},
       wdata,
       strb1);
@@ -45,6 +47,7 @@ TEST(Scoreboard, MatchPassesSilent) {
   wdata[0] = 0xDE; wdata[1] = 0xAD; wdata[2] = 0xBE; wdata[3] = 0xEF;
   sb.handle_write_completed(
       axi::WriteResult{0x300, /*size*/5, /*len*/0, axi::Burst::INCR,
+                       axi::LockType::Normal,
                        wdata, strb1, axi::Resp::OKAY, 1, 1},
       wdata,
       strb1);
@@ -73,6 +76,7 @@ TEST(Scoreboard, SparseWstrbByteMerge) {
   std::vector<uint8_t> data(axi::DATA_BYTES, 0xAAu);
   std::vector<uint32_t> strb{0x0000000Fu};
   axi::WriteResult wr{0x100, /*size*/5, /*len*/0, axi::Burst::INCR,
+                      axi::LockType::Normal,
                       data, strb, axi::Resp::OKAY, 1, 1};
   sb.handle_write_completed(wr, data, strb);
 

@@ -242,6 +242,11 @@ inline bool check_exclusive_total_pow2(LockType lock, uint8_t len) {
 // EXCLUSIVE_ALIGN — exclusive base address must be aligned to total burst
 // bytes (IHI 0022 §A7.2.4). Combined with EXCLUSIVE_POW2 this ensures the
 // (total-1) mask is well-defined. Normal exempt.
+//
+// Precondition: callers should also invoke check_exclusive_total_pow2()
+// before relying on the (total-1) mask in downstream WRAP arithmetic; for a
+// non-power-of-2 total the mask underflow-wraps and the alignment check
+// loses meaning.
 inline bool check_exclusive_addr_aligned_to_total(LockType lock, uint64_t addr,
                                                     uint8_t len, uint8_t size) {
   if (lock == LockType::Normal) return true;
@@ -262,6 +267,11 @@ inline bool check_exclusive_burst_not_fixed(LockType lock, Burst burst) {
 // address window + size + length + burst + cache + protection per
 // IHI 0022 §A7.2.4). Template-driven so the tag struct can live in
 // axi_slave.hpp without a circular include here.
+//
+// Precondition: the caller MUST have already passed the incoming AW through
+// check_exclusive_addr_aligned_to_total() and check_exclusive_total_pow2();
+// otherwise the WRAP-arm (total-1) mask is undefined and the computed
+// [aw_start, aw_end) window is meaningless.
 template <typename ExclusiveTagT>
 inline bool check_exclusive_write_matches_read_tag(const ExclusiveTagT& tag,
                                                     const AwBeat& aw) {

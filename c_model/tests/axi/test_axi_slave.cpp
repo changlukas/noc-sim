@@ -504,3 +504,362 @@ TEST(AxiSlave, FixedBurstAllBeatsSameAddr) {
     EXPECT_EQ(cw.addr, 0x1000u);
   }
 }
+
+// ===========================================================================
+// Phase C — AxiSlave exclusive monitor (IHI 0022 §A7.2.4)
+// ===========================================================================
+
+namespace {
+// Push an exclusive AR (lock=1) with the canonical 1-beat / size=5 / INCR
+// shape used by most monitor tests. Returns the constructed beat for the
+// caller to inspect if needed.
+inline axi::ArBeat push_exclusive_ar(axi::AxiSlave& slave, uint8_t id,
+                                      uint64_t addr, uint8_t len = 0,
+                                      uint8_t size = 5,
+                                      axi::Burst burst = axi::Burst::INCR,
+                                      uint8_t cache = 0, uint8_t prot = 0) {
+  axi::ArBeat ar{};
+  ar.id = id; ar.addr = addr; ar.len = len; ar.size = size; ar.burst = burst;
+  ar.cache = cache; ar.prot = prot; ar.lock = 1;
+  slave.push_ar(ar);
+  return ar;
+}
+
+// Push an exclusive AW + its W beats. STRB is computed per beat from the
+// (1<<size) byte-lane window starting at (per-beat-addr & (DATA_BYTES-1))
+// to satisfy STRB_SPARSE_LEGAL. Caller must set memory bounds before calling.
+inline void push_exclusive_aw_and_w(axi::AxiSlave& slave, uint8_t id,
+                                     uint64_t addr, uint8_t len = 0,
+                                     uint8_t size = 5,
+                                     axi::Burst burst = axi::Burst::INCR,
+                                     uint8_t cache = 0, uint8_t prot = 0,
+                                     uint8_t lock = 1) {
+  axi::AwBeat aw{};
+  aw.id = id; aw.addr = addr; aw.len = len; aw.size = size; aw.burst = burst;
+  aw.cache = cache; aw.prot = prot; aw.lock = lock;
+  slave.push_aw(aw);
+  const std::size_t bpb = 1ull << size;
+  for (uint8_t i = 0; i <= len; ++i) {
+    const uint64_t beat_a = axi::beat_addr(addr, len, size, burst, i);
+    const std::size_t byte_lane =
+        static_cast<std::size_t>(beat_a & (axi::DATA_BYTES - 1));
+    const uint32_t strb =
+        static_cast<uint32_t>(((1ull << bpb) - 1ull) << byte_lane);
+    axi::WBeat w{}; w.data.fill(0xE0 + i); w.strb = strb;
+    w.last = (i == len);
+    slave.push_w(w);
+  }
+}
+
+// Drain an N-beat exclusive AR's R responses so the tag becomes ready (E5).
+// Returns after RLAST so the caller can immediately push a matching AW.
+inline void drain_exclusive_read(test::MockMemoryPort& mem,
+                                  axi::AxiSlave& slave, uint8_t id,
+                                  std::size_t beat_count) {
+  for (int t = 0; t < 4; ++t) slave.tick();
+  ASSERT_GE(mem.captured_reads.size(), beat_count);
+  for (std::size_t i = 0; i < beat_count; ++i) {
+    axi::MemReadResp rresp{};
+    rresp.id = id; rresp.data.fill(0xAA);
+    rresp.resp = axi::Resp::OKAY;
+    rresp.last = (i + 1 == beat_count);
+    rresp.tag = mem.captured_reads[i].tag;
+    mem.queued_read_resps.push_back(rresp);
+  }
+  for (int t = 0; t < 4; ++t) slave.tick();
+  while (auto rb = slave.pop_r()) { (void)rb; }
+}
+}  // namespace
+
+TEST(AxiSlaveExclusive, ExclusiveAR_SetsTag_NotReady) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  push_exclusive_ar(slave, /*id=*/7, /*addr=*/0x1040);
+  slave.tick();
+
+  EXPECT_TRUE(slave.has_exclusive_tag(7));
+  EXPECT_FALSE(slave.exclusive_tag_ready(7));
+  auto tag = slave.peek_exclusive_tag(7);
+  EXPECT_EQ(tag.addr_start, 0x1040u);
+  EXPECT_EQ(tag.addr_end,   0x1060u);  // 1 beat × 32B = 32B window
+}
+
+TEST(AxiSlaveExclusive, ExclusiveAR_RComplete_TagBecomesReady) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  push_exclusive_ar(slave, /*id=*/3, /*addr=*/0x1000);
+  drain_exclusive_read(mem, slave, /*id=*/3, /*beat_count=*/1);
+
+  EXPECT_TRUE(slave.has_exclusive_tag(3));
+  EXPECT_TRUE(slave.exclusive_tag_ready(3));
+}
+
+TEST(AxiSlaveExclusive, NormalWrite_NoOverlap_TagSurvives) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  push_exclusive_ar(slave, /*id=*/4, /*addr=*/0x1000);
+  drain_exclusive_read(mem, slave, /*id=*/4, 1);
+
+  // Normal AW at 0x1100 — outside tag's [0x1000, 0x1020) window.
+  axi::AwBeat aw{};
+  aw.id = 9; aw.addr = 0x1100; aw.len = 0; aw.size = 5;
+  aw.burst = axi::Burst::INCR; aw.lock = 0;
+  slave.push_aw(aw);
+  axi::WBeat w{}; w.data.fill(0xC0); w.strb = 0xFFFFFFFFu; w.last = true;
+  slave.push_w(w);
+  slave.tick();
+
+  EXPECT_TRUE(slave.has_exclusive_tag(4))
+      << "non-overlapping normal AW must not invalidate the tag";
+  EXPECT_TRUE(slave.exclusive_tag_ready(4));
+}
+
+TEST(AxiSlaveExclusive, NormalWrite_Overlap_TagCleared) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  push_exclusive_ar(slave, /*id=*/4, /*addr=*/0x1000);
+  drain_exclusive_read(mem, slave, /*id=*/4, 1);
+
+  // Normal AW at 0x1010 (mid-tag, overlaps [0x1000, 0x1020)).
+  axi::AwBeat aw{};
+  aw.id = 9; aw.addr = 0x1010; aw.len = 0; aw.size = 4;  // 16-byte beat
+  aw.burst = axi::Burst::INCR; aw.lock = 0;
+  slave.push_aw(aw);
+  axi::WBeat w{}; w.data.fill(0xC0); w.strb = 0x0000FFFFu << 16; w.last = true;
+  slave.push_w(w);
+  slave.tick();
+
+  EXPECT_FALSE(slave.has_exclusive_tag(4))
+      << "overlapping normal AW must invalidate the tag";
+}
+
+TEST(AxiSlaveExclusive, ExclusivePair_FullMatch_EXOKAY_CommitsMemory) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  push_exclusive_ar(slave, /*id=*/5, /*addr=*/0x1000);
+  drain_exclusive_read(mem, slave, /*id=*/5, 1);
+
+  // Matching exclusive AW: same id, addr, len, size, burst, cache, prot.
+  push_exclusive_aw_and_w(slave, /*id=*/5, /*addr=*/0x1000);
+  slave.tick();
+
+  // Memory should see the write (commit). Slave should report EXOKAY in B.
+  ASSERT_EQ(mem.captured_writes.size(), 1u);
+  EXPECT_EQ(mem.captured_writes[0].addr, 0x1000u);
+  EXPECT_FALSE(slave.has_exclusive_tag(5))
+      << "exclusive AW must erase the tag (success path)";
+
+  mem.queued_write_resps.push_back(
+      axi::MemWriteResp{5, axi::Resp::OKAY, mem.captured_writes[0].tag});
+  slave.tick();
+  auto b = slave.pop_b();
+  ASSERT_TRUE(b.has_value());
+  EXPECT_EQ(b->resp, axi::Resp::EXOKAY);
+}
+
+TEST(AxiSlaveExclusive, ExclusiveWrite_NoPriorRead_OKAY_NoCommit) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  // No prior exclusive AR — tag absent.
+  push_exclusive_aw_and_w(slave, /*id=*/6, /*addr=*/0x1000);
+  slave.tick();
+
+  EXPECT_EQ(mem.captured_writes.size(), 0u)
+      << "failed exclusive must NOT submit to memory";
+  auto b = slave.pop_b();
+  ASSERT_TRUE(b.has_value());
+  EXPECT_EQ(b->resp, axi::Resp::OKAY)
+      << "failed exclusive returns OKAY (not EXOKAY)";
+}
+
+TEST(AxiSlaveExclusive, ExclusiveWrite_BeforeReady_OKAY_NoCommit) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  // Exclusive AR admitted but R has NOT drained yet → tag.ready=false.
+  push_exclusive_ar(slave, /*id=*/8, /*addr=*/0x1000);
+  slave.tick();
+  EXPECT_TRUE(slave.has_exclusive_tag(8));
+  EXPECT_FALSE(slave.exclusive_tag_ready(8));
+
+  push_exclusive_aw_and_w(slave, /*id=*/8, /*addr=*/0x1000);
+  slave.tick();
+  EXPECT_EQ(mem.captured_writes.size(), 0u);
+  auto b = slave.pop_b();
+  ASSERT_TRUE(b.has_value());
+  EXPECT_EQ(b->resp, axi::Resp::OKAY);
+}
+
+TEST(AxiSlaveExclusive, ExclusiveWrite_SizeMismatch_OKAY_NoCommit) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  // AR: 1 beat, size=5 (32B), addr=0x1000.
+  push_exclusive_ar(slave, /*id=*/2, /*addr=*/0x1000, /*len=*/0, /*size=*/5);
+  drain_exclusive_read(mem, slave, /*id=*/2, 1);
+
+  // AW: 1 beat, size=4 (16B), addr=0x1000 — size mismatches the tag.
+  push_exclusive_aw_and_w(slave, /*id=*/2, /*addr=*/0x1000, /*len=*/0,
+                           /*size=*/4);
+  slave.tick();
+  EXPECT_EQ(mem.captured_writes.size(), 0u);
+  auto b = slave.pop_b();
+  ASSERT_TRUE(b.has_value());
+  EXPECT_EQ(b->resp, axi::Resp::OKAY)
+      << "attribute mismatch → OKAY, not EXOKAY";
+  EXPECT_FALSE(slave.has_exclusive_tag(2))
+      << "exclusive AW consumes the tag regardless of match";
+}
+
+TEST(AxiSlaveExclusive, ExclusiveWriteOnOob_DECERR) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x100);  // 256 bytes
+
+  // Exclusive AW outside bounds. The OOB pre-check runs BEFORE the exclusive
+  // logic and emits DECERR — exclusive resp priority puts memory errors above
+  // EXOKAY/OKAY. No tag exists, so no tag bookkeeping fires either.
+  axi::AwBeat aw{};
+  aw.id = 13; aw.addr = 0x10E0; aw.len = 0; aw.size = 5;
+  aw.burst = axi::Burst::INCR; aw.lock = 1;
+  // 1 beat × 32B → addr 0x10E0 + 32 = 0x1100; bounds upper = 0x1100. The
+  // burst-atomic OOB check uses strict ">" so 0x1100 is in-bounds. To fail
+  // OOB push a 2-beat exclusive instead.
+  aw.len = 1;  // 2 beats × 32B = 64; 0x10E0 + 64 = 0x1120 > 0x1100 → OOB.
+  slave.push_aw(aw);
+  for (uint8_t i = 0; i < 2; ++i) {
+    axi::WBeat w{}; w.data.fill(0); w.strb = 0xFFFFFFFFu; w.last = (i == 1);
+    slave.push_w(w);
+  }
+  slave.tick();
+
+  EXPECT_EQ(mem.captured_writes.size(), 0u);
+  auto b = slave.pop_b();
+  ASSERT_TRUE(b.has_value());
+  EXPECT_EQ(b->resp, axi::Resp::DECERR)
+      << "OOB pre-check trumps exclusive resp priority";
+}
+
+TEST(AxiSlaveExclusive, ExclusiveWRAP_TagRangeIsWrapWindow) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  // EXCLUSIVE_ALIGN requires addr aligned to total burst bytes. For
+  // len=3 size=5 → total=128, the only valid bases in [0x1000, 0x2000) are
+  // multiples of 128. Pick 0x1080 → wrap_lower=0x1080, wrap_upper=0x1100.
+  // The tag's [addr_start, addr_end) window matches the WRAP window; the
+  // BURST type field also rides on the tag for the §A7.2.4 attribute match.
+  push_exclusive_ar(slave, /*id=*/11, /*addr=*/0x1080, /*len=*/3,
+                    /*size=*/5, axi::Burst::WRAP);
+  slave.tick();
+  ASSERT_TRUE(slave.has_exclusive_tag(11));
+  auto tag = slave.peek_exclusive_tag(11);
+  EXPECT_EQ(tag.addr_start, 0x1080u);
+  EXPECT_EQ(tag.addr_end,   0x1100u);
+  EXPECT_EQ(tag.burst,      axi::Burst::WRAP);
+}
+
+TEST(AxiSlaveExclusive, MultiId_NormalWriteErasesMultipleTags_IteratorSafe) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  // Three exclusive ARs at adjacent addresses — all tags overlap a single
+  // normal AW at 0x1000 size=2 burst=INCR len=15 (16 × 4B = 64B).
+  push_exclusive_ar(slave, /*id=*/1, /*addr=*/0x1000);  // [0x1000, 0x1020)
+  push_exclusive_ar(slave, /*id=*/2, /*addr=*/0x1020);  // [0x1020, 0x1040)
+  push_exclusive_ar(slave, /*id=*/3, /*addr=*/0x1080);  // [0x1080, 0x10A0)
+  slave.tick();
+  EXPECT_TRUE(slave.has_exclusive_tag(1));
+  EXPECT_TRUE(slave.has_exclusive_tag(2));
+  EXPECT_TRUE(slave.has_exclusive_tag(3));
+
+  // Normal AW with addr range [0x1000, 0x1040) — overlaps id 1 and 2, not 3.
+  // 16 beats × 4B = 64B. Per-beat byte_lane rolls 0,4,8,...,28,0,... so
+  // STRB must track it to satisfy STRB_SPARSE_LEGAL.
+  axi::AwBeat aw{};
+  aw.id = 9; aw.addr = 0x1000; aw.len = 15; aw.size = 2;
+  aw.burst = axi::Burst::INCR; aw.lock = 0;
+  slave.push_aw(aw);
+  for (uint8_t i = 0; i < 16; ++i) {
+    const uint64_t ba = axi::beat_addr(0x1000, 15, 2, axi::Burst::INCR, i);
+    const std::size_t bl =
+        static_cast<std::size_t>(ba & (axi::DATA_BYTES - 1));
+    axi::WBeat w{}; w.data.fill(0xC0);
+    w.strb = static_cast<uint32_t>(0xFu << bl);
+    w.last = (i == 15);
+    slave.push_w(w);
+  }
+  // Multiple ticks because the slave forwards 1 W beat per tick to memory
+  // (one burst, 16 beats).
+  for (int t = 0; t < 20; ++t) slave.tick();
+
+  EXPECT_FALSE(slave.has_exclusive_tag(1));
+  EXPECT_FALSE(slave.has_exclusive_tag(2));
+  EXPECT_TRUE(slave.has_exclusive_tag(3))
+      << "tag outside the AW window must survive";
+}
+
+TEST(AxiSlaveExclusive, ExclusiveAR_SameId_SecondOverwritesFirst) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  push_exclusive_ar(slave, /*id=*/5, /*addr=*/0x1000);
+  drain_exclusive_read(mem, slave, /*id=*/5, 1);
+  EXPECT_TRUE(slave.exclusive_tag_ready(5));
+
+  // Second exclusive AR at a different address — must replace the previous
+  // tag (per §A7.2.3: one outstanding exclusive read per ID).
+  push_exclusive_ar(slave, /*id=*/5, /*addr=*/0x1080);
+  slave.tick();
+  ASSERT_TRUE(slave.has_exclusive_tag(5));
+  auto tag = slave.peek_exclusive_tag(5);
+  EXPECT_EQ(tag.addr_start, 0x1080u);
+  EXPECT_FALSE(tag.ready) << "the new tag starts not-ready";
+}
+
+TEST(AxiSlaveExclusive, DifferentId_ExclusiveAW_DoesNotAffectOtherTag) {
+  test::MockMemoryPort mem;
+  axi::AxiSlave slave(mem);
+  slave.set_memory_bounds(0x1000, 0x1000);
+
+  // Two exclusive ARs at different ids; drain both so both tags ready.
+  push_exclusive_ar(slave, /*id=*/1, /*addr=*/0x1000);
+  push_exclusive_ar(slave, /*id=*/2, /*addr=*/0x1100);
+  for (int t = 0; t < 4; ++t) slave.tick();
+  ASSERT_GE(mem.captured_reads.size(), 2u);
+  for (std::size_t i = 0; i < 2; ++i) {
+    axi::MemReadResp rresp{};
+    rresp.id = mem.captured_reads[i].id;
+    rresp.data.fill(0xAA); rresp.resp = axi::Resp::OKAY;
+    rresp.last = true; rresp.tag = mem.captured_reads[i].tag;
+    mem.queued_read_resps.push_back(rresp);
+  }
+  for (int t = 0; t < 4; ++t) slave.tick();
+  while (auto rb = slave.pop_r()) { (void)rb; }
+  EXPECT_TRUE(slave.exclusive_tag_ready(1));
+  EXPECT_TRUE(slave.exclusive_tag_ready(2));
+
+  // Exclusive AW on id=1 consumes only id=1's tag.
+  push_exclusive_aw_and_w(slave, /*id=*/1, /*addr=*/0x1000);
+  slave.tick();
+  EXPECT_FALSE(slave.has_exclusive_tag(1));
+  EXPECT_TRUE(slave.has_exclusive_tag(2))
+      << "exclusive AW on id=1 must leave id=2's tag untouched";
+}

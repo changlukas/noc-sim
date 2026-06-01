@@ -924,3 +924,51 @@ transactions:
       << "ReadResult must fire exactly once per scenario_txn";
   EXPECT_TRUE(master.done());
 }
+
+// Phase C: AxiMaster propagates scenario_txn.lock onto the AW/AR.lock wire as
+// a 1-bit value (LockType::Exclusive → 1, Normal → 0). Pure wire-through —
+// the master does not interpret the lock; the slave's exclusive monitor does.
+TEST_F(AxiMasterTest, LockFieldPropagatesToAwLock) {
+  auto wpath = write_hex_tmp_data(
+      "w_lock_excl",
+      "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F "
+      "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x1000
+    id: 0x5
+    len: 0
+    size: 5
+    burst: INCR
+    lock: exclusive
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_lock_excl.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].lock, 1u);
+}
+
+TEST_F(AxiMasterTest, LockDefaultsToZero_OnNormalTxn) {
+  auto wpath = write_hex_tmp_data(
+      "w_lock_norm",
+      "00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F "
+      "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F");
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: write
+    addr: 0x1000
+    id: 0x5
+    len: 0
+    size: 5
+    burst: INCR
+    data_file: )YAML") + wpath + "\n");
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_lock_norm.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_aw.size(), 1u);
+  EXPECT_EQ(mock.captured_aw[0].lock, 0u);
+}

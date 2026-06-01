@@ -65,6 +65,11 @@ struct WriteResult {
   uint8_t  size;                       // log2(bytes_per_beat)
   uint8_t  len;                        // beats - 1
   Burst    burst;
+  // Phase C: mirrors the originating scenario_txn.lock so the scoreboard can
+  // distinguish a failed exclusive write (lock=Exclusive + resp=OKAY → no
+  // memory commit) from a normal write (resp=OKAY → commit) without peeking
+  // at the slave's exclusive monitor state.
+  LockType lock = LockType::Normal;
   std::vector<uint8_t> data;           // packed user bytes, (len+1)*(1<<size)
   std::vector<uint32_t> strb_per_beat; // bus-level WSTRB per beat (lane-positioned)
   Resp resp;
@@ -132,6 +137,7 @@ public:
                                     op.src_txn.size,
                                     op.src_txn.len,
                                     op.src_txn.burst,
+                                    op.src_txn.lock,
                                     op.data,
                                     op.strb_per_beat,
                                     op.worst_resp_,
@@ -260,6 +266,8 @@ public:
         // Align AR addr DOWN to (1<<size) boundary, symmetric with AW.
         ar.addr = sub.addr & ~((1ull << sub.size) - 1);
         ar.len = sub.len; ar.size = sub.size; ar.burst = sub.burst;
+        // Phase C: wire-through scenario_txn.lock onto AR.lock (1-bit).
+        ar.lock = (op.src_txn.lock == LockType::Exclusive) ? 1u : 0u;
         if (!slave_.push_ar(ar)) break;
         ++op.next_ar_sub_idx_;
       }
@@ -357,6 +365,10 @@ private:
         AwBeat aw{};
         aw.id = id; aw.addr = aligned_addr;
         aw.len = sub.len; aw.size = sub.size; aw.burst = sub.burst;
+        // Phase C: pure wire-through of scenario_txn.lock onto AW.lock. AXI4
+        // AxLOCK is 1-bit; LockType::Exclusive maps to 1, Normal to 0. Every
+        // sub-burst of one operation carries the same lock value.
+        aw.lock = (op.src_txn.lock == LockType::Exclusive) ? 1u : 0u;
         if (!slave_.push_aw(aw)) return;  // backpressure: retry next tick
         ++op.next_aw_sub_idx_;
       }
