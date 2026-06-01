@@ -733,13 +733,13 @@ TEST(AxiSlaveExclusive, ExclusiveWriteOnOob_DECERR) {
   // Exclusive AW outside bounds. The OOB pre-check runs BEFORE the exclusive
   // logic and emits DECERR — exclusive resp priority puts memory errors above
   // EXOKAY/OKAY. No tag exists, so no tag bookkeeping fires either.
+  // 2-beat exclusive burst at upper bound — 1-beat (32B) would still fit at
+  // 0x10E0..0x1100 because bounds end at 0x1100 (strict ">" check); the 2nd
+  // beat at 0x1100..0x111F pushes the burst to 0x1120 > 0x1100 → DECERR.
   axi::AwBeat aw{};
-  aw.id = 13; aw.addr = 0x10E0; aw.len = 0; aw.size = 5;
+  aw.id = 13; aw.addr = 0x10E0; aw.size = 5;
   aw.burst = axi::Burst::INCR; aw.lock = 1;
-  // 1 beat × 32B → addr 0x10E0 + 32 = 0x1100; bounds upper = 0x1100. The
-  // burst-atomic OOB check uses strict ">" so 0x1100 is in-bounds. To fail
-  // OOB push a 2-beat exclusive instead.
-  aw.len = 1;  // 2 beats × 32B = 64; 0x10E0 + 64 = 0x1120 > 0x1100 → OOB.
+  aw.len = 1;  // 2 beats
   slave.push_aw(aw);
   for (uint8_t i = 0; i < 2; ++i) {
     axi::WBeat w{}; w.data.fill(0); w.strb = 0xFFFFFFFFu; w.last = (i == 1);

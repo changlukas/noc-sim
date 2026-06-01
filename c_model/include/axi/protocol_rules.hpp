@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <deque>
 #include <map>
+#include <utility>
 
 #ifdef NDEBUG
   #define AXI_PROTOCOL_ASSERT(cond, msg) ((void)0)
@@ -268,6 +269,28 @@ inline bool check_exclusive_burst_not_fixed(LockType lock, Burst burst) {
 // IHI 0022 §A7.2.4). Template-driven so the tag struct can live in
 // axi_slave.hpp without a circular include here.
 //
+// Helper: compute the exclusive-monitor tag's [addr_start, addr_end) range
+// from an AW/AR beat. INCR → linear [addr, addr + total). WRAP → aligned
+// [wrap_lower, wrap_upper) window. FIXED is rejected upstream by
+// check_exclusive_burst_not_fixed (IHI 0022 §A7.2.4 bars exclusive FIXED), so
+// this helper need not handle it; the E2 normal-AW invalidation path that
+// also consults FIXED uses a separate single-beat span.
+//
+// Precondition: callers MUST have already passed the beat through
+// check_exclusive_total_pow2() and check_exclusive_addr_aligned_to_total();
+// otherwise the WRAP-arm (total-1) mask is undefined.
+template <typename Beat>
+inline std::pair<uint64_t, uint64_t> compute_tag_range(const Beat& b) {
+  const std::size_t bpb = 1ull << b.size;
+  const std::size_t total = (static_cast<std::size_t>(b.len) + 1u) * bpb;
+  if (b.burst == Burst::WRAP) {
+    const uint64_t wrap_lower =
+        b.addr & ~(static_cast<uint64_t>(total) - 1u);
+    return {wrap_lower, wrap_lower + total};
+  }
+  return {b.addr, b.addr + total};
+}
+
 // Precondition: the caller MUST have already passed the incoming AW through
 // check_exclusive_addr_aligned_to_total() and check_exclusive_total_pow2();
 // otherwise the WRAP-arm (total-1) mask is undefined and the computed
@@ -276,17 +299,7 @@ template <typename ExclusiveTagT>
 inline bool check_exclusive_write_matches_read_tag(const ExclusiveTagT& tag,
                                                     const AwBeat& aw) {
   if (!tag.ready) return false;
-  const std::size_t bpb = 1ull << aw.size;
-  const std::size_t total = (static_cast<std::size_t>(aw.len) + 1u) * bpb;
-  uint64_t aw_start;
-  uint64_t aw_end;
-  if (aw.burst == Burst::WRAP) {
-    aw_start = aw.addr & ~(static_cast<uint64_t>(total) - 1u);
-    aw_end   = aw_start + total;
-  } else {
-    aw_start = aw.addr;
-    aw_end   = aw.addr + total;
-  }
+  const auto [aw_start, aw_end] = compute_tag_range(aw);
   return tag.addr_start == aw_start
       && tag.addr_end   == aw_end
       && tag.len        == aw.len

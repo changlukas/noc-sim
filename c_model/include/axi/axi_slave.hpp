@@ -6,6 +6,7 @@
 #include <deque>
 #include <map>
 #include <optional>
+#include <tuple>
 
 namespace ni::cmodel::axi {
 
@@ -65,8 +66,6 @@ public:
   ExclusiveTag peek_exclusive_tag(uint8_t id) const {
     return exclusive_tags_.at(id);
   }
-  bool peek_b_queue_empty() const { return b_q_.empty(); }
-  const BBeat& peek_b_queue_front() const { return b_q_.front(); }
 
 private:
   struct WriteBurstState {
@@ -108,22 +107,6 @@ private:
   uint64_t bounds_base_ = 0;
   std::size_t bounds_size_ = 0;
   bool bounds_set_ = false;
-
-  // Helper: compute the tag's [addr_start, addr_end) range from an AW/AR beat.
-  // INCR/FIXED → linear [addr, addr + total). WRAP → [wrap_lower, wrap_upper).
-  // Caller must ensure exclusive-rule preconditions (EXCLUSIVE_POW2 +
-  // EXCLUSIVE_ALIGN) hold; otherwise the wrap_lower mask is undefined.
-  template <typename Beat>
-  static std::pair<uint64_t, uint64_t> compute_tag_range(const Beat& b) {
-    const std::size_t bpb = 1ull << b.size;
-    const std::size_t total = (static_cast<std::size_t>(b.len) + 1u) * bpb;
-    if (b.burst == Burst::WRAP) {
-      const uint64_t wrap_lower =
-          b.addr & ~(static_cast<uint64_t>(total) - 1u);
-      return {wrap_lower, wrap_lower + total};
-    }
-    return {b.addr, b.addr + total};
-  }
 };
 
 inline void AxiSlave::tick() {
@@ -286,20 +269,15 @@ inline void AxiSlave::tick() {
       }
     } else {
       // E2: normal AW invalidates any tag whose monitored window overlaps.
-      // FIXED reuses one bus word; INCR/WRAP span the full burst window.
-      const std::size_t aw_bpb = 1ull << aw.size;
-      const std::size_t aw_total =
-          (static_cast<std::size_t>(aw.len) + 1u) * aw_bpb;
+      // FIXED reuses one bus word — span = single beat. INCR/WRAP delegate to
+      // compute_tag_range, which mirrors the exclusive-tag window math.
       uint64_t aw_start, aw_end;
-      if (aw.burst == Burst::WRAP) {
-        aw_start = aw.addr & ~(static_cast<uint64_t>(aw_total) - 1u);
-        aw_end   = aw_start + aw_total;
-      } else if (aw.burst == Burst::FIXED) {
+      if (aw.burst == Burst::FIXED) {
+        const std::size_t aw_bpb = 1ull << aw.size;
         aw_start = aw.addr;
         aw_end   = aw.addr + aw_bpb;
-      } else {  // INCR
-        aw_start = aw.addr;
-        aw_end   = aw.addr + aw_total;
+      } else {  // INCR or WRAP
+        std::tie(aw_start, aw_end) = rules::compute_tag_range(aw);
       }
       for (auto it = exclusive_tags_.begin(); it != exclusive_tags_.end(); ) {
         const auto& tag = it->second;
@@ -476,7 +454,7 @@ inline void AxiSlave::tick() {
       AXI_PROTOCOL_ASSERT(
           rules::check_exclusive_burst_not_fixed(ar_lock, ar.burst),
           "EXCLUSIVE_BURST_FIXED: AR exclusive burst must not be FIXED");
-      auto [start, end] = compute_tag_range(ar);
+      auto [start, end] = rules::compute_tag_range(ar);
       exclusive_tags_[ar.id] = ExclusiveTag{start, end, ar.len, ar.size,
                                               ar.burst, ar.cache, ar.prot,
                                               /*ready=*/false};

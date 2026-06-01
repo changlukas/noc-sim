@@ -951,6 +951,29 @@ transactions:
   EXPECT_EQ(mock.captured_aw[0].lock, 1u);
 }
 
+// AR symmetry with the AW wire-through test above: lock=exclusive on a read
+// scenario_txn must surface as ar.lock=1. The master never interprets the
+// field; it only routes it onto the AR bus for the slave's exclusive monitor.
+TEST_F(AxiMasterTest, LockFieldPropagatesToArLock) {
+  auto yaml = write_tmp(std::string(R"YAML(
+transactions:
+  - op: read
+    addr: 0x1000
+    id: 0x5
+    len: 0
+    size: 5
+    burst: INCR
+    lock: exclusive
+    dump_file: r_ar_lock.txt
+)YAML"));
+  ni::cmodel::axi::testing::MockSlave mock;
+  axi::AxiMasterT<ni::cmodel::axi::testing::MockSlave> master(
+      yaml, mock, std::string(::testing::TempDir()) + "/r_ar_lock.txt");
+  master.tick();
+  ASSERT_EQ(mock.captured_ar.size(), 1u);
+  EXPECT_EQ(mock.captured_ar[0].lock, 1u);
+}
+
 TEST_F(AxiMasterTest, LockDefaultsToZero_OnNormalTxn) {
   auto wpath = write_hex_tmp_data(
       "w_lock_norm",
